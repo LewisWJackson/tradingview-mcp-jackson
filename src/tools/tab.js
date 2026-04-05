@@ -8,8 +8,11 @@ export function registerTabTools(server) {
     catch (err) { return jsonResult({ success: false, error: err.message }, true); }
   });
 
-  server.tool('tab_new', 'Open a new chart tab', {}, async () => {
-    try { return jsonResult(await core.newTab()); }
+  server.tool('tab_new', 'Open a new chart tab', {
+    type: z.string().optional().describe('Tab type to open (e.g. "layout"). Omit to stay on selection screen.'),
+    name: z.string().optional().describe('Name of the item to select (e.g. layout name). Required when type is specified.'),
+  }, async ({ type, name }) => {
+    try { return jsonResult(await core.newTab({ type, name })); }
     catch (err) { return jsonResult({ success: false, error: err.message }, true); }
   });
 
