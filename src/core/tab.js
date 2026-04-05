@@ -154,6 +154,46 @@ export async function newTab({ type, name } = {}) {
 }
 
 /**
+ * Dismiss the "unsaved changes" dialog if it appears.
+ * Checks both the shell and all chart targets since the dialog
+ * can render in either context.
+ */
+async function dismissUnsavedDialog() {
+  const CDP_mod = (await import('chrome-remote-interface')).default;
+  const resp = await fetch(`http://${CDP_HOST}:${CDP_PORT}/json/list`);
+  const targets = await resp.json();
+  const pages = targets.filter(t => t.type === 'page');
+
+  for (const target of pages) {
+    let client;
+    try {
+      client = await CDP_mod({ host: CDP_HOST, port: CDP_PORT, target: target.id });
+      await client.Runtime.enable();
+      const { result } = await client.Runtime.evaluate({
+        expression: `
+          (() => {
+            const buttons = document.querySelectorAll('button');
+            for (const btn of buttons) {
+              if (/close without saving/i.test(btn.textContent)) {
+                btn.click();
+                return 'dismissed';
+              }
+            }
+            return 'not found';
+          })()
+        `,
+        returnByValue: true,
+      });
+      await client.close();
+      if (result.value === 'dismissed') return 'dismissed';
+    } catch {
+      if (client) try { await client.close(); } catch {}
+    }
+  }
+  return 'no dialog';
+}
+
+/**
  * Close the active tab via the Electron shell's close button.
  */
 export async function closeTab() {
@@ -180,21 +220,32 @@ export async function closeTab() {
         const closeBtn = activeTab.querySelector('.tab-close-button-container button');
         if (!closeBtn) return 'no close button';
         closeBtn.click();
-        return 'closed';
+        return 'clicked';
       })()
     `,
     returnByValue: true,
   });
   await shellClient.close();
 
-  if (result.value !== 'closed') {
+  if (result.value !== 'clicked') {
     throw new Error(`Failed to close tab: ${result.value}`);
   }
 
-  await new Promise(r => setTimeout(r, 1000));
+  // Wait briefly then dismiss "unsaved changes" dialog if it appears
+  await new Promise(r => setTimeout(r, 500));
+  await dismissUnsavedDialog();
+
+  // Poll until the tab count actually decreases or timeout
+  let after;
+  for (let i = 0; i < 10; i++) {
+    await new Promise(r => setTimeout(r, 500));
+    after = await list();
+    if (after.tab_count < before.tab_count) break;
+    // Dialog may have reappeared or not been found yet — retry dismiss
+    await dismissUnsavedDialog();
+  }
 
   // Reconnect to the first available chart tab
-  const after = await list();
   if (after.tabs.length > 0) {
     await connectToTarget(after.tabs[0].id);
   }
