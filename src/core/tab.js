@@ -155,39 +155,44 @@ export async function newTab({ type, name } = {}) {
 
 /**
  * Dismiss the "unsaved changes" dialog if it appears.
- * Checks both the shell and all chart targets since the dialog
- * can render in either context.
+ * The dialog spawns as a separate Electron window (new CDP target)
+ * that may take a moment to appear in the target list.
+ * Polls for up to 3 seconds, then gives up (no dialog = no unsaved changes).
  */
 async function dismissUnsavedDialog() {
   const CDP_mod = (await import('chrome-remote-interface')).default;
-  const resp = await fetch(`http://${CDP_HOST}:${CDP_PORT}/json/list`);
-  const targets = await resp.json();
-  const pages = targets.filter(t => t.type === 'page');
 
-  for (const target of pages) {
-    let client;
-    try {
-      client = await CDP_mod({ host: CDP_HOST, port: CDP_PORT, target: target.id });
-      await client.Runtime.enable();
-      const { result } = await client.Runtime.evaluate({
-        expression: `
-          (() => {
-            const buttons = document.querySelectorAll('button');
-            for (const btn of buttons) {
-              if (/close without saving/i.test(btn.textContent)) {
-                btn.click();
-                return 'dismissed';
+  for (let attempt = 0; attempt < 6; attempt++) {
+    await new Promise(r => setTimeout(r, 500));
+    const resp = await fetch(`http://${CDP_HOST}:${CDP_PORT}/json/list`);
+    const targets = await resp.json();
+    const pages = targets.filter(t => t.type === 'page');
+
+    for (const target of pages) {
+      let client;
+      try {
+        client = await CDP_mod({ host: CDP_HOST, port: CDP_PORT, target: target.id });
+        await client.Runtime.enable();
+        const { result } = await client.Runtime.evaluate({
+          expression: `
+            (() => {
+              const buttons = document.querySelectorAll('button');
+              for (const btn of buttons) {
+                if (/close without saving/i.test(btn.textContent)) {
+                  btn.click();
+                  return 'dismissed';
+                }
               }
-            }
-            return 'not found';
-          })()
-        `,
-        returnByValue: true,
-      });
-      await client.close();
-      if (result.value === 'dismissed') return 'dismissed';
-    } catch {
-      if (client) try { await client.close(); } catch {}
+              return 'not found';
+            })()
+          `,
+          returnByValue: true,
+        });
+        await client.close();
+        if (result.value === 'dismissed') return 'dismissed';
+      } catch {
+        if (client) try { await client.close(); } catch {}
+      }
     }
   }
   return 'no dialog';
@@ -231,18 +236,15 @@ export async function closeTab() {
     throw new Error(`Failed to close tab: ${result.value}`);
   }
 
-  // Wait briefly then dismiss "unsaved changes" dialog if it appears
-  await new Promise(r => setTimeout(r, 500));
+  // Dismiss "unsaved changes" dialog if it appears (polls for up to 3s)
   await dismissUnsavedDialog();
 
-  // Poll until the tab count actually decreases or timeout
+  // Wait for the tab to actually close
   let after;
   for (let i = 0; i < 10; i++) {
     await new Promise(r => setTimeout(r, 500));
     after = await list();
     if (after.tab_count < before.tab_count) break;
-    // Dialog may have reappeared or not been found yet — retry dismiss
-    await dismissUnsavedDialog();
   }
 
   // Reconnect to the first available chart tab
