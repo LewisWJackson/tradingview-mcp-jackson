@@ -166,12 +166,19 @@ async function dismissUnsavedDialog() {
     await new Promise(r => setTimeout(r, 500));
     const resp = await fetch(`http://${CDP_HOST}:${CDP_PORT}/json/list`);
     const targets = await resp.json();
-    const pages = targets.filter(t => t.type === 'page');
+    // Only check file:// targets (dialog is an Electron window) and skip empty URLs
+    const candidates = targets.filter(t =>
+      t.type === 'page' && t.url && t.url.length > 0 && /^file:\/\//i.test(t.url)
+    );
 
-    for (const target of pages) {
+    for (const target of candidates) {
       let client;
       try {
-        client = await CDP_mod({ host: CDP_HOST, port: CDP_PORT, target: target.id });
+        // Use a timeout to avoid hanging on unresponsive targets
+        client = await Promise.race([
+          CDP_mod({ host: CDP_HOST, port: CDP_PORT, target: target.id }),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 2000)),
+        ]);
         await client.Runtime.enable();
         const { result } = await client.Runtime.evaluate({
           expression: `
