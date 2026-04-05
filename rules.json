@@ -1,0 +1,59 @@
+{
+  "watchlist": ["NSE:NIFTY", "NSE:BANKNIFTY", "NSE:NIFTYF1"],
+  "default_timeframe": "60",
+
+  "strategy": {
+    "name": "Nifty ORB Half-Range [MTF]",
+    "type": "Opening Range Breakout (ORB) — Short Side Only",
+    "timeframe": "60m",
+    "orb_window": "9:15 IST to 10:15 IST (first 60 minutes)",
+    "entry_window": "10:15 IST to 13:00 IST",
+    "eod_close": "14:45 IST",
+    "filters": ["Supertrend (3.0, 10)", "Daily-anchored VWAP"],
+    "sl": "ORB midpoint (half-range from breakout side)",
+    "tp": "1:1 R:R (half-range from entry)",
+    "edge": "Short-only — PF 1.067, 56.36% win rate, 55 trades (Jan 2025 to Apr 2026)"
+  },
+
+  "bias_criteria": {
+    "bearish_short_entry": [
+      "Price breaks BELOW the ORB low after 10:15 IST",
+      "Supertrend is bearish (direction > 0, red)",
+      "Price is BELOW the daily-anchored VWAP",
+      "No prior trade taken today (one trade per day)"
+    ],
+    "bullish_long_entry": [
+      "Price breaks ABOVE the ORB high after 10:15 IST",
+      "Supertrend is bullish (direction < 0, green)",
+      "Price is ABOVE the daily-anchored VWAP",
+      "No prior trade taken today (one trade per day)"
+    ],
+    "no_trade": [
+      "Both Supertrend and VWAP filters disagree with breakout direction",
+      "Already traded once today",
+      "Time is past 13:00 IST",
+      "ORB range is unusually wide (high volatility / gap day)"
+    ]
+  },
+
+  "risk_rules": [
+    "R:R is fixed at 1:1 minimum (TP = 1x half-range, SL = half-range)",
+    "One trade per day per instrument — no re-entries",
+    "All positions closed by 14:45 IST (EOD close) — no overnight holds",
+    "Short side only — backtested edge; longs currently disabled",
+    "No trades in the first 60 minutes (9:15–10:15 IST) — ORB formation period",
+    "No entries after 13:00 IST — insufficient time before EOD close",
+    "Commission budget: 0.05% per side — account for this in sizing",
+    "If 3 consecutive losses, stop for the day and review filters"
+  ],
+
+  "indicator_settings": {
+    "supertrend_multiplier": 3.0,
+    "supertrend_atr_length": 10,
+    "vwap": "Daily-anchored (resets each session at 9:15 IST)",
+    "orb_end_hour": 10,
+    "orb_end_minute": 15
+  },
+
+  "notes": "Strategy backtested on NSE:NIFTY 60m from Jan 2025 to Apr 2026. Short side shows positive edge (PF 1.067). Long side backtested negative — disabled. For live trading consider using NIFTYF1 futures where commission is a smaller % of trade value. Key macro events (RBI MPC dates, US CPI, budget days) should be avoided — add those to a blackout calendar."
+}
