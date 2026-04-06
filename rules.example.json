@@ -27,5 +27,5 @@
     "If I have 2 losing trades in a row, stop for the day"
   ],
 
-  "notes": "Add any other context you want Claude to factor in — e.g. macro events this week, key dates, anything that should affect your bias."
+  "notes": "Add any other context you want OpenCode to factor in — e.g. macro events this week, key dates, anything that should affect your bias."
 }

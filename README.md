@@ -19,7 +19,7 @@ Built on top of the original [tradingview-mcp](https://github.com/tradesdontlie/
 
 | Feature | What it does |
 |---------|-------------|
-| `morning_brief` | One command that scans your watchlist, reads all your indicators, and returns structured data for Claude to generate your session bias |
+| `morning_brief` | One command that scans your watchlist, reads all your indicators, and returns structured data for OpenCode to generate your session bias |
 | `session_save` / `session_get` | Saves your daily brief to `~/.tradingview-mcp/sessions/` so you can compare today vs yesterday |
 | `rules.json` | Write your trading rules once — bias criteria, risk rules, watchlist. The morning brief applies them automatically every day |
 | Launch bug fix | Fixed `tv_launch` compatibility with TradingView Desktop v2.14+ |
@@ -29,14 +29,14 @@ Built on top of the original [tradingview-mcp](https://github.com/tradesdontlie/
 
 ## One-Shot Setup
 
-Paste this into Claude Code and it will handle everything:
+Paste this into OpenCode and it will handle everything:
 
 ```
-Set up TradingView MCP Jackson for me. 
-Clone https://github.com/LewisWJackson/tradingview-mcp-jackson.git to ~/tradingview-mcp-jackson, run npm install, then add it to my MCP config at ~/.claude/.mcp.json (merge with any existing servers, don't overwrite them). 
-The config block is: { "mcpServers": { "tradingview": { "command": "node", "args": ["/Users/YOUR_USERNAME/tradingview-mcp-jackson/src/server.js"] } } } — replace YOUR_USERNAME with my actual username.
-Then copy rules.example.json to rules.json and open it so I can fill in my trading rules.
-Finally restart and verify with tv_health_check.
+Set up TradingView MCP for me — it's self-contained with no global installs.
+Clone https://github.com/LewisWJackson/tradingview-mcp.git to ~/tradingview-mcp, run npm install.
+The project already has opencode.json with MCP config — OpenCode will auto-discover it.
+Copy rules.example.json to rules.json so I can fill in my trading rules.
+Verify with tv_health_check.
 ```
 
 Or follow the manual steps below.
@@ -47,8 +47,21 @@ Or follow the manual steps below.
 
 - **TradingView Desktop app** (paid subscription required for real-time data)
 - **Node.js 18+**
-- **Claude Code** (for MCP tools) or any terminal (for CLI)
+- **OpenCode** (for MCP tools) or any terminal (for CLI)
 - **macOS, Windows, or Linux**
+
+---
+
+## Project is Self-Contained
+
+Everything you need is in this project. No global installs or global config changes.
+
+- **Dependencies** — `npm install` installs packages into the project (`node_modules/`), not globally
+- **MCP config** — Project's `opencode.json` is auto-discovered by OpenCode when you open this project
+- **Skills** — Located in `.opencode/skills/` in this project, no global skills setup needed
+- **Rules** — Your `rules.json` stays in this project, not in any global location
+
+Nothing gets written to `~/.config/opencode/` or anywhere else on your system. Clone, install, and you're ready.
 
 ---
 
@@ -57,8 +70,8 @@ Or follow the manual steps below.
 ### 1. Clone and install
 
 ```bash
-git clone https://github.com/LewisWJackson/tradingview-mcp-jackson.git ~/tradingview-mcp-jackson
-cd ~/tradingview-mcp-jackson
+git clone https://github.com/LewisWJackson/tradingview-mcp.git ~/tradingview-mcp
+cd ~/tradingview-mcp
 npm install
 ```
 
@@ -71,7 +84,7 @@ cp rules.example.json rules.json
 Open `rules.json` and fill in:
 - Your **watchlist** (symbols to scan each morning)
 - Your **bias criteria** (what makes something bullish/bearish/neutral for you)
-- Your **risk rules** (the rules you want Claude to check before every session)
+- Your **risk rules** (the rules you want OpenCode to check before every session)
 
 ### 3. Launch TradingView with CDP
 
@@ -94,30 +107,32 @@ scripts\launch_tv_debug.bat
 
 Or use the MCP tool after setup: `"Use tv_launch to start TradingView in debug mode"`
 
-### 4. Add to Claude Code
+### 4. OpenCode Auto-Discovers MCP
 
-Add to `~/.claude/.mcp.json` (merge with any existing servers):
+This project includes `opencode.json` at the root. When OpenCode opens this project, it automatically discovers and starts the TradingView MCP server.
+
+For global MCP config (all projects), add to `~/.config/opencode/opencode.json`:
 
 ```json
 {
-  "mcpServers": {
+  "mcp": {
     "tradingview": {
-      "command": "node",
-      "args": ["/Users/YOUR_USERNAME/tradingview-mcp-jackson/src/server.js"]
+      "type": "local",
+      "command": ["node", "/PATH/TO/tradingview-mcp/src/server.js"]
     }
   }
 }
 ```
 
-Replace `YOUR_USERNAME` with your actual username. On Mac: `echo $USER` to check.
+Replace `/PATH/TO/tradingview-mcp` with your actual install path.
 
 ### 5. Verify
 
-Restart Claude Code, then ask: *"Use tv_health_check to verify TradingView is connected"*
+Ask OpenCode: *"Use tv_health_check to verify TradingView is connected"*
 
 ### 6. Run your first morning brief
 
-Ask Claude: *"Run morning_brief and give me my session bias"*
+Ask OpenCode: *"Run morning_brief and give me my session bias"*
 
 Or from the terminal:
 ```bash
@@ -134,8 +149,8 @@ This is the feature that turns this from a toolkit into a daily habit.
 **Before every session:**
 
 1. TradingView is open (launched with debug port)
-2. Run: `tv brief` in your terminal (or ask Claude: *"run morning_brief"*)
-3. Claude scans every symbol in your watchlist, reads your indicator values, applies your `rules.json` criteria, and prints:
+2. Run: `tv brief` in your terminal (or ask OpenCode: *"run morning_brief"*)
+3. OpenCode scans every symbol in your watchlist, reads your indicator values, applies your `rules.json` criteria, and prints:
 
 ```
 BTCUSD  | BIAS: Bearish  | KEY LEVEL: 94,200  | WATCH: RSI crossing 50 on 4H
@@ -166,11 +181,11 @@ Overall: Cautious session. BTC leading bearish, SOL the exception — watch for 
 
 ---
 
-## How Claude Knows Which Tool to Use
+## How OpenCode Knows Which Tool to Use
 
-Claude reads `CLAUDE.md` automatically when working in this project. It contains the full decision tree.
+OpenCode reads `AGENTS.md` automatically when working in this project. It contains the full decision tree.
 
-| You say... | Claude uses... |
+| You say... | OpenCode uses... |
 |------------|---------------|
 | "Run my morning brief" | `morning_brief` → apply rules → `session_save` |
 | "What was my bias yesterday?" | `session_get` |
@@ -292,7 +307,7 @@ Full command list: `tv --help`
 |---------|----------|
 | `cdp_connected: false` | TradingView isn't running with `--remote-debugging-port=9222`. Use the launch script. |
 | `ECONNREFUSED` | TradingView isn't running or port 9222 is blocked |
-| MCP server not showing in Claude Code | Check `~/.claude/.mcp.json` syntax, restart Claude Code |
+| MCP server not showing in OpenCode | Check `opencode.json` syntax |
 | `tv` command not found | Run `npm link` from the project directory |
 | `morning_brief` — "No rules.json found" | Run `cp rules.example.json rules.json` and fill it in |
 | `morning_brief` — watchlist empty | Add symbols to the `watchlist` array in `rules.json` |
@@ -304,7 +319,7 @@ Full command list: `tv --help`
 ## Architecture
 
 ```
-Claude Code  ←→  MCP Server (stdio)  ←→  CDP (port 9222)  ←→  TradingView Desktop (Electron)
+OpenCode  ←→  MCP Server (stdio)  ←→  CDP (port 9222)  ←→  TradingView Desktop (Electron)
 ```
 
 - **78 original tools** + **3 morning brief tools** = 81 MCP tools total

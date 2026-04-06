@@ -1,7 +1,7 @@
 /**
  * Morning brief core logic.
  * Reads rules.json, scans watchlist symbols, returns structured data
- * for Claude to apply bias criteria and generate a session brief.
+ * for OpenCode to apply bias criteria and generate a session brief.
  */
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { homedir } from "node:os";

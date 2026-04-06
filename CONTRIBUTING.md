@@ -4,7 +4,7 @@ Thanks for your interest in contributing to tradingview-mcp.
 
 ## Scope
 
-This tool is a **local bridge** between Claude Code and the TradingView Desktop app running on your machine. All contributions must stay within this scope.
+This tool is a **local bridge** between OpenCode and the TradingView Desktop app running on your machine. All contributions must stay within this scope.
 
 ### What's in scope
 

@@ -1,4 +1,4 @@
-# TradingView MCP — Claude Instructions
+# TradingView MCP — OpenCode Instructions
 
 68 tools for reading and controlling a live TradingView Desktop chart via CDP (port 9222).
 
@@ -123,7 +123,7 @@ These tools can return large payloads. Follow these rules to avoid context bloat
 ## Architecture
 
 ```
-Claude Code ←→ MCP Server (stdio) ←→ CDP (localhost:9222) ←→ TradingView Desktop (Electron)
+OpenCode ←→ MCP Server (stdio) ←→ CDP (localhost:9222) ←→ TradingView Desktop (Electron)
 ```
 
 Pine graphics path: `study._graphics._primitivesCollection.dwglines.get('lines').get(false)._primitivesDataById`

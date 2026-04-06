@@ -5,7 +5,7 @@ import * as core from "../core/morning.js";
 export function registerMorningTools(server) {
   server.tool(
     "morning_brief",
-    "Scan your watchlist, read all indicator values, and return structured data for a session brief. Reads rules.json for your bias criteria and watchlist. Claude applies the rules to generate your daily bias.",
+    "Scan your watchlist, read all indicator values, and return structured data for a session brief. Reads rules.json for your bias criteria and watchlist. OpenCode applies the rules to generate your daily bias.",
     {
       rules_path: z
         .string()
@@ -30,7 +30,7 @@ export function registerMorningTools(server) {
       brief: z
         .string()
         .describe(
-          "The brief text to save (output from morning_brief after Claude applies the rules).",
+          "The brief text to save (output from morning_brief after OpenCode applies the rules).",
         ),
       date: z
         .string()
