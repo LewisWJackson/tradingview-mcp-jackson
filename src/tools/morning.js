@@ -11,7 +11,7 @@ export function registerMorningTools(server) {
         .string()
         .optional()
         .describe(
-          "Optional path to rules.json. Defaults to rules.json in the project root.",
+          "Optional path to rules.json. Defaults to rules.json in the <project root>/rules/.",
         ),
     },
     async ({ rules_path } = {}) => {
@@ -25,8 +25,13 @@ export function registerMorningTools(server) {
 
   server.tool(
     "session_save",
-    "Save today's morning brief to ~/.tradingview-mcp/sessions/YYYY-MM-DD.json for future reference.",
+    "Save today's morning brief to <project root>/.sessions/<rules_name>.YYYY-MM-DD.json for future reference.",
     {
+      rulesname: z
+        .string()
+        .describe(
+          "The name of the rules file without the .json extension",
+        ),
       brief: z
         .string()
         .describe(
@@ -37,9 +42,9 @@ export function registerMorningTools(server) {
         .optional()
         .describe("Date string YYYY-MM-DD. Defaults to today."),
     },
-    async ({ brief, date } = {}) => {
+    async ({ rulesname, brief, date } = {}) => {
       try {
-        return jsonResult(core.saveSession({ brief, date }));
+        return jsonResult(core.saveSession({ rulesname, brief, date }));
       } catch (err) {
         return jsonResult({ success: false, error: err.message }, true);
       }
@@ -50,6 +55,10 @@ export function registerMorningTools(server) {
     "session_get",
     "Retrieve a saved session brief. Returns today's if available, otherwise yesterday's.",
     {
+      rulesname: z
+        .string()
+        .describe("The rules name without the .json extentions"
+        ),
       date: z
         .string()
         .optional()
@@ -57,7 +66,7 @@ export function registerMorningTools(server) {
     },
     async ({ date } = {}) => {
       try {
-        return jsonResult(core.getSession({ date }));
+        return jsonResult(core.getSession({ rulesname, date }));
       } catch (err) {
         return jsonResult({ success: false, error: err.message }, true);
       }

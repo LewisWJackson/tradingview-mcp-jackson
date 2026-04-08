@@ -6,3 +6,7 @@ temp_*
 discovery-log.json
 .opencode/
 rules.json
+.sessions/
+
+rules/*
+!rules/rules.example.json

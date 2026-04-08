@@ -31,7 +31,7 @@ Use `study_filter` parameter to target a specific indicator by name substring (e
 4. `data_get_pine_labels` → labeled levels with context (e.g., "Settlement", "ASN O/U")
 5. `data_get_pine_tables` → session stats, analytics tables
 6. `data_get_ohlcv` with `summary: true` → price action summary
-7. `capture_screenshot` → visual confirmation
+7. (Only use `capture_screenshot` if the user explicitly asks for a visual)
 
 ### "Change the chart"
 - `chart_set_symbol` → switch ticker (e.g., "AAPL", "ES1!", "NYMEX:CL1!")
@@ -88,12 +88,16 @@ Use `study_filter` parameter to target a specific indicator by name substring (e
 
 These tools can return large payloads. Follow these rules to avoid context bloat:
 
-1. **Always use `summary: true` on `data_get_ohlcv`** unless you specifically need individual bars
-2. **Always use `study_filter`** on pine tools when you know which indicator you want — don't scan all studies unnecessarily
-3. **Never use `verbose: true`** on pine tools unless the user specifically asks for raw drawing data with IDs/colors
-4. **Avoid calling `pine_get_source`** on complex scripts — it can return 200KB+. Only read if you need to edit the code.
-5. **Avoid calling `data_get_indicator`** on protected/encrypted indicators — their inputs are encoded blobs. Use `data_get_study_values` instead for current values.
-6. **Use `capture_screenshot`** for visual context instead of pulling large datasets — a screenshot is ~300KB but gives you the full visual picture
+1. **NEVER use screenshots for data** — always use data tools directly
+   - Price → use `quote_get`
+   - Volume → use `data_get_ohlcv`
+   - Indicator values → use `data_get_study_values`
+   - Only use `capture_screenshot` when the user explicitly asks for a visual/image
+2. **Always use `summary: true` on `data_get_ohlcv`** unless you specifically need individual bars
+3. **Always use `study_filter`** on pine tools when you know which indicator you want — don't scan all studies unnecessarily
+4. **Never use `verbose: true`** on pine tools unless the user specifically asks for raw drawing data with IDs/colors
+5. **Avoid calling `pine_get_source`** on complex scripts — it can return 200KB+. Only read if you need to edit the code.
+6. **Avoid calling `data_get_indicator`** on protected/encrypted indicators — their inputs are encoded blobs. Use `data_get_study_values` instead for current values.
 7. **Call `chart_get_state` once** at the start to get entity IDs, then reference them — don't re-call repeatedly
 8. **Cap your OHLCV requests** — `count: 20` for quick analysis, `count: 100` for deeper work, `count: 500` only when specifically needed
 

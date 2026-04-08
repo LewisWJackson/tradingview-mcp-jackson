@@ -12,12 +12,13 @@ import * as data from "./data.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = resolve(__dirname, "../../");
-const SESSIONS_DIR = join(homedir(), ".tradingview-mcp", "sessions");
+const RULES_ROOT = join(PROJECT_ROOT, "rules");
+const SESSIONS_DIR = join(PROJECT_ROOT, ".sessions")
 
 function loadRules(rulesPath) {
   const candidates = [
     rulesPath,
-    join(PROJECT_ROOT, "rules.json"),
+    join(RULES_ROOT, "rules.json"),
     join(homedir(), ".tradingview-mcp", "rules.json"),
   ].filter(Boolean);
 
@@ -33,11 +34,11 @@ function loadRules(rulesPath) {
 
   throw new Error(
     "No rules.json found. Copy rules.example.json to rules.json and fill in your trading rules.\n" +
-      "Looked in:\n" +
-      candidates
-        .filter(Boolean)
-        .map((p) => `  - ${p}`)
-        .join("\n"),
+    "Looked in:\n" +
+    candidates
+      .filter(Boolean)
+      .map((p) => `  - ${p}`)
+      .join("\n"),
   );
 }
 
@@ -57,7 +58,7 @@ export async function runBrief({ rules_path } = {}) {
     const currentState = await chart.getState();
     originalSymbol = currentState.symbol;
     originalTimeframe = currentState.resolution;
-  } catch (_) {}
+  } catch (_) { }
 
   const results = [];
 
@@ -92,7 +93,7 @@ export async function runBrief({ rules_path } = {}) {
       await chart.setSymbol({ symbol: originalSymbol });
       if (originalTimeframe)
         await chart.setTimeframe({ timeframe: originalTimeframe });
-    } catch (_) {}
+    } catch (_) { }
   }
 
   return {
@@ -114,11 +115,11 @@ export async function runBrief({ rules_path } = {}) {
   };
 }
 
-export function saveSession({ brief, date } = {}) {
+export function saveSession({ rulesname, brief, date } = {}) {
   mkdirSync(SESSIONS_DIR, { recursive: true });
 
   const dateStr = date || new Date().toISOString().split("T")[0];
-  const filePath = join(SESSIONS_DIR, `${dateStr}.json`);
+  const filePath = join(SESSIONS_DIR, rulesname, `${dateStr}.json`);
 
   const existing = existsSync(filePath)
     ? JSON.parse(readFileSync(filePath, "utf8"))
@@ -134,9 +135,9 @@ export function saveSession({ brief, date } = {}) {
   return { success: true, path: filePath, date: dateStr };
 }
 
-export function getSession({ date } = {}) {
+export function getSession({ rulesname, date } = {}) {
   const dateStr = date || new Date().toISOString().split("T")[0];
-  const filePath = join(SESSIONS_DIR, `${dateStr}.json`);
+  const filePath = join(SESSIONS_DIR, rulesname, `${dateStr}.json`);
 
   if (existsSync(filePath)) {
     return { success: true, ...JSON.parse(readFileSync(filePath, "utf8")) };

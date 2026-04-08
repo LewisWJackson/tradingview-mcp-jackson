@@ -20,8 +20,8 @@ Built on top of the original [tradingview-mcp](https://github.com/tradesdontlie/
 | Feature | What it does |
 |---------|-------------|
 | `morning_brief` | One command that scans your watchlist, reads all your indicators, and returns structured data for OpenCode to generate your session bias |
-| `session_save` / `session_get` | Saves your daily brief to `~/.tradingview-mcp/sessions/` so you can compare today vs yesterday |
-| `rules.json` | Write your trading rules once — bias criteria, risk rules, watchlist. The morning brief applies them automatically every day |
+| `session_save` / `session_get` | Saves your daily brief to `.sessions/` directory within the project so you can compare today vs yesterday |
+| Multiple rule files | Support for different rule files in `rules/` directory — each with its own assets and criteria |
 | Launch bug fix | Fixed `tv_launch` compatibility with TradingView Desktop v2.14+ |
 | `tv brief` CLI | Run your morning brief from the terminal in one word |
 
@@ -59,7 +59,8 @@ Everything you need is in this project. No global installs or global config chan
 - **Dependencies** — `npm install` installs packages into the project (`node_modules/`), not globally
 - **MCP config** — Project's `opencode.json` is auto-discovered by OpenCode when you open this project
 - **Skills** — Located in `.opencode/skills/` in this project, no global skills setup needed
-- **Rules** — Your `rules.json` stays in this project, not in any global location
+- **Rules** — Your rule files stay in `rules/` directory within the project
+- **Sessions** — Saved briefs are stored in `.sessions/` directory within the project
 
 Nothing gets written to `~/.config/opencode/` or anywhere else on your system. Clone, install, and you're ready.
 
@@ -142,6 +143,22 @@ tv brief
 
 ---
 
+## Justfile Operations
+
+This project includes a `.justfile` for convenient commands:
+
+```bash
+just              # list all available tasks (default)
+just on           # launch TradingView (auto-detects Linux/Mac/Windows)
+just status       # check CDP connection status
+```
+
+The `on` task automatically selects the correct launch script based on your platform.
+
+**Note:** You can also use the manual launch scripts as documented above.
+
+---
+
 ## Morning Brief Workflow
 
 This is the feature that turns this from a toolkit into a daily habit.
@@ -150,7 +167,7 @@ This is the feature that turns this from a toolkit into a daily habit.
 
 1. TradingView is open (launched with debug port)
 2. Run: `tv brief` in your terminal (or ask OpenCode: *"run morning_brief"*)
-3. OpenCode scans every symbol in your watchlist, reads your indicator values, applies your `rules.json` criteria, and prints:
+3. OpenCode scans every symbol in your watchlist, reads your indicator values, applies your rules file criteria, and prints:
 
 ```
 BTCUSD  | BIAS: Bearish  | KEY LEVEL: 94,200  | WATCH: RSI crossing 50 on 4H
@@ -162,6 +179,15 @@ Overall: Cautious session. BTC leading bearish, SOL the exception — watch for 
 
 4. Save it: *"save this brief"* (uses `session_save`)
 5. Next morning, compare: *"get yesterday's session"* (uses `session_get`)
+
+### Multiple Rule Files
+
+You can create multiple rule files for different asset classes or strategies:
+
+- Place rule files in the `rules/` directory (e.g., `rules/crypto.json`, `rules/forex.json`)
+- Each rule file can have its own watchlist, bias criteria, and risk rules
+- When saving sessions, specify which rule file to use — sessions are saved per rule file
+- This lets you run morning briefs for different markets and keep them organized separately
 
 ---
 
@@ -205,9 +231,9 @@ OpenCode reads `AGENTS.md` automatically when working in this project. It contai
 
 | Tool | What it does |
 |------|-------------|
-| `morning_brief` | Scan watchlist, read indicators, return structured data for session bias. Reads `rules.json` automatically. |
-| `session_save` | Save the generated brief to `~/.tradingview-mcp/sessions/YYYY-MM-DD.json` |
-| `session_get` | Retrieve today's brief (or yesterday's if today not saved yet) |
+| `morning_brief` | Scan watchlist, read indicators, return structured data for session bias. Reads rule files from `rules/` directory. |
+| `session_save` | Save the generated brief to `.sessions/<rulesname>.YYYY-MM-DD.json` |
+| `session_get` | Retrieve today's brief for a ruleset (or yesterday's if today not saved yet) |
 
 ### Chart Reading
 
@@ -309,8 +335,8 @@ Full command list: `tv --help`
 | `ECONNREFUSED` | TradingView isn't running or port 9222 is blocked |
 | MCP server not showing in OpenCode | Check `opencode.json` syntax |
 | `tv` command not found | Run `npm link` from the project directory |
-| `morning_brief` — "No rules.json found" | Run `cp rules.example.json rules.json` and fill it in |
-| `morning_brief` — watchlist empty | Add symbols to the `watchlist` array in `rules.json` |
+| `morning_brief` — "No rules found" | Ensure you have a rule file in `rules/` directory |
+| `morning_brief` — watchlist empty | Add symbols to the `watchlist` array in your rule file |
 | Tools return stale data | TradingView still loading — wait a few seconds |
 | Pine Editor tools fail | Open Pine Editor panel first: `ui_open_panel pine-editor open` |
 

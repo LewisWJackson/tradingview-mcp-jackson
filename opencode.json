@@ -3,8 +3,14 @@
   "mcp": {
     "tradingview": {
       "type": "local",
-      "command": ["node", "src/server.js"],
+      "command": [
+        "node",
+        "src/server.js"
+      ],
       "enabled": true
     }
-  }
+  },
+  "plugin": [
+    "context-mode"
+  ]
 }
