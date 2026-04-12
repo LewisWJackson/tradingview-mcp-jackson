@@ -21,6 +21,10 @@ REM Check MSIX / Windows Store installs
 if "%TV_EXE%"=="" (
     for /f "tokens=*" %%i in ('dir /s /b "%PROGRAMFILES%\WindowsApps\TradingView*\TradingView.exe" 2^>nul') do set "TV_EXE=%%i"
 )
+REM WindowsApps has restrictive ACLs that block dir; fall back to PowerShell Get-AppxPackage
+if "%TV_EXE%"=="" (
+    for /f "usebackq delims=" %%i in (`powershell -NoProfile -Command "$p = Get-AppxPackage -Name '*TradingView*' | Select-Object -First 1; if ($p) { Join-Path $p.InstallLocation 'TradingView.exe' }" 2^>nul`) do set "TV_EXE=%%i"
+)
 if "%TV_EXE%"=="" (
     for /f "tokens=*" %%i in ('where TradingView.exe 2^>nul') do set "TV_EXE=%%i"
 )
