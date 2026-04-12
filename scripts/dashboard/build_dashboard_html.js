@@ -89,6 +89,52 @@ async function fetchBreakingNews() {
   return deduped.slice(0, 15);
 }
 
+// ═══ Yahoo Finance live quote fetcher ═══
+async function fetchLiveQuotes(symbols, crumb, cookies) {
+  const quotes = {};
+  console.log(`[quotes] fetching live prices for ${symbols.length} symbols...`);
+  const syms = symbols.join(',');
+  try {
+    const url = `https://query2.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(syms)}&crumb=${encodeURIComponent(crumb)}`;
+    const res = await yahooGet(url, cookies);
+    if (res.status === 200) {
+      const data = JSON.parse(res.body);
+      for (const q of (data.quoteResponse?.result || [])) {
+        quotes[q.symbol] = q.regularMarketPrice ?? q.postMarketPrice ?? null;
+      }
+    }
+  } catch (e) {
+    console.warn('[quotes] live fetch failed:', e.message);
+  }
+  return quotes;
+}
+
+// Fetch yield quotes with daily change data (^TNX = 10Y, 2YY=F = 2Y)
+async function fetchYieldQuotes(crumb, cookies) {
+  const yields = {};
+  try {
+    const url = `https://query2.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent('^TNX,2YY=F')}&crumb=${encodeURIComponent(crumb)}`;
+    const res = await yahooGet(url, cookies);
+    if (res.status === 200) {
+      const data = JSON.parse(res.body);
+      for (const q of (data.quoteResponse?.result || [])) {
+        const key = q.symbol === '^TNX' ? 'us10y' : 'us02y';
+        yields[key] = {
+          price: q.regularMarketPrice,
+          change: q.regularMarketChange,
+          changePct: q.regularMarketChangePercent,
+        };
+      }
+    }
+    if (Object.keys(yields).length) {
+      console.log(`[yields] ${Object.entries(yields).map(([k, v]) => `${k}=${v.price} (${v.changePct >= 0 ? '+' : ''}${v.changePct.toFixed(2)}%)`).join(', ')}`);
+    }
+  } catch (e) {
+    console.warn('[yields] fetch failed:', e.message);
+  }
+  return yields;
+}
+
 // ═══ Yahoo Finance options chain fetcher (crumb/cookie auth) ═══
 async function yahooGet(url, cookies) {
   return new Promise((resolve, reject) => {
@@ -213,6 +259,30 @@ try {
   }
 } catch (e) {
   console.warn('Could not read morning brief JSON:', e.message);
+}
+
+// Load trading rules
+let tradingRules = [];
+try {
+  const rulesPath = path.resolve(path.dirname(process.argv[1] || '.'), '../../rules.json');
+  if (fs.existsSync(rulesPath)) {
+    const r = JSON.parse(fs.readFileSync(rulesPath, 'utf8'));
+    tradingRules = r.risk_rules || [];
+  }
+} catch (e) {
+  console.warn('Could not read rules.json:', e.message);
+}
+
+// Load explosion scanner results if present
+let explosionResults = null;
+try {
+  const explosionPath = path.resolve(path.dirname(process.argv[1] || '.'), 'scanner/explosion_results.json');
+  if (fs.existsSync(explosionPath)) {
+    explosionResults = JSON.parse(fs.readFileSync(explosionPath, 'utf8'));
+    console.log(`[explosion] loaded ${explosionResults.results?.length || 0} candidates from ${explosionResults.scanDate}`);
+  }
+} catch (e) {
+  console.warn('Could not read explosion results:', e.message);
 }
 
 // ---------- parsers ----------
@@ -445,17 +515,29 @@ for (const p of equityCurve) {
 }
 
 // 9. Compute unrealized P&L for open option positions
-// Current stock prices (embedded — update via morning brief routine)
-const currentPrices = {
-  AMZN: 238.38,
-  MSFT: 370.87,
-  GOOGL: 317.24,
-  TSM: 370.60,
-  CIFR: 16.53,
-  ET: 19.19,
-  NOW: 83.00,
-  SPX: 6816.90,
-};
+// Fetch live prices from Yahoo Finance (fallback to stale defaults if fetch fails)
+const _fallbackPrices = { AMZN: 238.38, MSFT: 370.87, GOOGL: 317.24, TSM: 370.60, CIFR: 16.53, ET: 19.19, NOW: 83.00, SPX: 6816.90 };
+const _quoteSymbols = [...new Set(openLegs.map((l) => l.symbol))];
+let currentPrices;
+let liveYields = {};
+try {
+  const { crumb, cookies } = await yahooGetCrumb();
+  const [live, ylds] = await Promise.all([
+    fetchLiveQuotes(_quoteSymbols, crumb, cookies),
+    fetchYieldQuotes(crumb, cookies),
+  ]);
+  liveYields = ylds;
+  if (Object.keys(live).length > 0) {
+    currentPrices = { ..._fallbackPrices, ...live };
+    console.log(`[quotes] live prices: ${Object.entries(live).map(([s, p]) => s + '=' + p).join(', ')}`);
+  } else {
+    currentPrices = _fallbackPrices;
+    console.warn('[quotes] no live data returned, using fallback prices');
+  }
+} catch (e) {
+  currentPrices = _fallbackPrices;
+  console.warn('[quotes] fetch failed, using fallback prices:', e.message);
+}
 
 // Days from open date to today for time-value estimation
 const today = new Date();
@@ -599,17 +681,36 @@ function renderMorningBrief(b) {
   const topActionClass = topAction.toLowerCase().includes('skip') ? 'skip' :
                          topAction.toLowerCase().includes('execute') ? 'execute' : 'wait';
 
-  // Market snapshot cells
+  // Market snapshot cells — handle both flat numbers and {price} objects
   const ms = b.marketSnapshot || {};
+  const priceOf = (v) => v == null ? null : (typeof v === 'object' ? v.price : v);
+  const pctOf = (v) => typeof v === 'object' ? (v.change || '') : '';
+  const trendOf = (v) => typeof v === 'object' ? (v.trend || '') : '';
+
+  const yield10y = priceOf(ms.yield10y ?? ms.us10y);
+  const yield2y = priceOf(ms.yield2y ?? ms.us02y);
+  const spread = priceOf(ms.yieldSpread);
+
+  // Daily change from live Yahoo yield quotes (^TNX, 2YY=F)
+  const y10 = liveYields.us10y || {};
+  const y2 = liveYields.us02y || {};
+  const fmtYieldChg = (y) => {
+    if (y.changePct == null) return '';
+    const sign = y.changePct >= 0 ? '+' : '';
+    const bps = y.change != null ? Math.round(y.change * 100) : null;
+    const bpsStr = bps != null ? ` (${bps >= 0 ? '+' : ''}${bps} bps)` : '';
+    return `${sign}${y.changePct.toFixed(2)}%${bpsStr}`;
+  };
+
   const gridCells = [
-    { label: 'SPX', value: ms.spx?.price, note: '' },
-    { label: 'VIX', value: ms.vix?.price, note: '' },
-    { label: 'VVIX', value: ms.vvix?.price, note: '' },
-    { label: 'ES1!', value: ms.esOvernight?.price, note: ms.esOvernight?.gap },
-    { label: '10Y', value: ms.yield10y?.price?.toFixed(3) + '%', note: '' },
-    { label: '2Y', value: ms.yield2y?.price?.toFixed(3) + '%', note: '' },
-    { label: '10Y-2Y', value: '+' + ms.yieldSpread?.bps + ' bps', note: 'normal' },
-    { label: 'Regime', value: ms.regime || '—', note: '' },
+    { label: 'SPX', value: priceOf(ms.spx), note: pctOf(ms.spx) },
+    { label: 'QQQ', value: priceOf(ms.qqq), note: pctOf(ms.qqq) },
+    { label: 'VIX', value: priceOf(ms.vix), note: pctOf(ms.vix) },
+    { label: 'RUT', value: priceOf(ms.rut), note: pctOf(ms.rut) },
+    { label: '10Y', value: (y10.price ?? yield10y) != null ? (y10.price ?? yield10y).toFixed(3) + '%' : null, note: fmtYieldChg(y10) },
+    { label: '2Y', value: (y2.price ?? yield2y) != null ? (y2.price ?? yield2y).toFixed(3) + '%' : null, note: fmtYieldChg(y2) },
+    { label: '10Y-2Y', value: spread != null ? (spread >= 0 ? '+' : '') + spread.toFixed(1) + ' bps' : null, note: ms.yieldDirection || '' },
+    { label: 'Regime', value: ms.regimeInterpretation ? ms.regimeInterpretation.split('.')[0] : (ms.regime || '—'), note: '' },
   ];
   const gridHtml = gridCells
     .map(
@@ -806,7 +907,10 @@ function renderUnrealizedPnL(b) {
   const money = (n) => n == null ? '—' : (n >= 0 ? '+' : '') + '$' + Math.round(n).toLocaleString();
   const pct = (n) => n == null ? '—' : (n >= 0 ? '+' : '') + n.toFixed(1) + '%';
 
-  const rows = (u.holdings || []).map((h) => {
+  const holdings = u.holdings || [];
+  const knownCount = holdings.filter((h) => h.costBasis != null).length;
+
+  const rows = holdings.map((h) => {
     const knownPnL = h.unrealizedPnL != null;
     return `
     <tr>
@@ -829,17 +933,17 @@ function renderUnrealizedPnL(b) {
     <div class="brief-cell" style="border-left:3px solid var(--blue)">
       <div class="brief-cell-label">Total Market Value</div>
       <div class="brief-cell-value">$${Math.round(s.totalMarketValue || 0).toLocaleString()}</div>
-      <div class="brief-cell-note">6 holdings</div>
+      <div class="brief-cell-note">${holdings.length} holding${holdings.length !== 1 ? 's' : ''}</div>
     </div>
     <div class="brief-cell" style="border-left:3px solid var(--green)">
       <div class="brief-cell-label">Unrealized Stock P&L</div>
       <div class="brief-cell-value positive">${money(s.totalKnownUnrealizedGain)}</div>
-      <div class="brief-cell-note">known basis only (3 of 6)</div>
+      <div class="brief-cell-note">known basis only (${knownCount} of ${holdings.length})</div>
     </div>
     <div class="brief-cell" style="border-left:3px solid var(--yellow)">
       <div class="brief-cell-label">Realized Options P&L</div>
       <div class="brief-cell-value positive">${money(s.totalRealizedOptionsGain)}</div>
-      <div class="brief-cell-note">since Feb 2026</div>
+      <div class="brief-cell-note">${s.realizedSince || 'all time'}</div>
     </div>
     <div class="brief-cell" style="border-left:3px solid var(--purple)">
       <div class="brief-cell-label">Total Known P&L</div>
@@ -963,6 +1067,103 @@ function renderOpenOptionsUnrealized(openUnreal, summary) {
 }
 
 const openOptionsHtml = renderOpenOptionsUnrealized(openUnrealized, unrealizedSummary);
+
+// ---------- dynamic recommendations rendering ----------
+
+function renderRecommendations(b, rules) {
+  const esc = (s) => String(s || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+  if (!b) {
+    return `
+<div class="panel span-12">
+  <h2>🎯 Active Recommendations</h2>
+  <div style="color:var(--text-dim);font-size:13px;padding:20px;">
+    No morning brief loaded. Run <code>run morning brief</code> in Claude Code to populate recommendations.
+  </div>
+</div>`;
+  }
+
+  const es = b.executiveSummary || {};
+  const trades = es.trades || [];
+  const manage = es.manageExisting || [];
+  const growth = es.growthEntries || [];
+  const events = b.events || [];
+  const kills = b.killSwitches || [];
+  const checklist = b.checklistForMonday || b.checklistForTuesday || b.checklistForToday || [];
+
+  // Tab 1: Critical / This Week — trades + kill switches + checklist
+  const criticalItems = [];
+  for (const t of trades) {
+    criticalItems.push({ text: `<strong>${esc(t.strategy || t.action)}</strong>`, why: esc(t.reasoning), cls: 'critical' });
+  }
+  for (const k of kills.filter(k => k.active)) {
+    criticalItems.push({ text: `<strong>⚠️ ${esc(k.name)}</strong>`, why: 'Kill switch active — restricts new entries.', cls: 'critical' });
+  }
+  for (const c of checklist) {
+    criticalItems.push({ text: `<strong>${esc(c)}</strong>`, why: '', cls: 'critical' });
+  }
+
+  // Tab 2: Discipline Rules — from rules.json
+  const ruleItems = rules.map(r => ({ text: `<strong>${esc(r)}</strong>`, why: '', cls: 'rule' }));
+
+  // Tab 3: Position Monitoring — manageExisting
+  const posItems = manage.map(m => ({
+    text: `<strong>${esc(m.position)}</strong> — ${esc(m.action)}`,
+    why: esc(m.reasoning),
+    cls: 'position',
+  }));
+
+  // Tab 4: Market Context — events + growth entries
+  const watchItems = [];
+  for (const e of events) {
+    const impact = e.impact === 'high' ? '🔴' : e.impact === 'medium' ? '🟡' : '🟢';
+    watchItems.push({ text: `<strong>${impact} ${esc(e.day)} ${esc(e.date)} — ${esc(e.name)}</strong>`, why: esc(e.tradingAction), cls: 'watch' });
+  }
+  for (const g of growth) {
+    watchItems.push({ text: `<strong>📈 ${esc(g.ticker)}</strong> — ${esc(g.suggested)}`, why: esc(g.reasoning), cls: 'watch' });
+  }
+
+  const renderTab = (items) => items.map((item, i) => `
+        <li class="rec-item ${item.cls}"><div class="rec-row"><div class="rec-num">${i + 1}</div><div>${item.text}${item.why ? `<div class="why">${item.why}</div>` : ''}</div></div></li>`).join('');
+
+  const briefDate = b.generatedAt ? new Date(b.generatedAt).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10);
+
+  return `
+<div class="panel span-12">
+  <h2>🎯 Active Recommendations</h2>
+  <div style="color: var(--text-dim); font-size: 12px; margin-bottom: 12px;">
+    From morning brief generated ${briefDate}. ${b.staleWarning ? '<strong style="color:var(--yellow);">' + esc(b.staleWarning) + '</strong>' : ''}
+  </div>
+  <div class="rec-tabs">
+    <button class="rec-tab active" data-tab="critical">🔴 This Week (${criticalItems.length})</button>
+    <button class="rec-tab" data-tab="rule">🟡 Discipline Rules (${ruleItems.length})</button>
+    <button class="rec-tab" data-tab="position">🟢 Position Monitoring (${posItems.length})</button>
+    <button class="rec-tab" data-tab="watch">🔵 Market Context (${watchItems.length})</button>
+  </div>
+
+  <div class="rec-panel active" id="rec-critical">
+    <div class="rec-header critical">🚨 ${esc(es.topAction || 'Action items this week')}</div>
+    <ul class="rec-list">${renderTab(criticalItems)}</ul>
+  </div>
+
+  <div class="rec-panel" id="rec-rule">
+    <div class="rec-header rule">📋 Trading discipline rules</div>
+    <ul class="rec-list">${renderTab(ruleItems)}</ul>
+  </div>
+
+  <div class="rec-panel" id="rec-position">
+    <div class="rec-header position">📂 Open position management</div>
+    <ul class="rec-list">${renderTab(posItems)}</ul>
+  </div>
+
+  <div class="rec-panel" id="rec-watch">
+    <div class="rec-header watch">🌍 Upcoming events & entry targets</div>
+    <ul class="rec-list">${renderTab(watchItems)}</ul>
+  </div>
+</div>`;
+}
+
+const recommendationsHtml = renderRecommendations(brief, tradingRules);
 
 function renderCashPanel(b) {
   if (!b || !b.cash) return '';
@@ -1198,6 +1399,105 @@ if (process.env.SKIP_OPTIONS === '1' && fs.existsSync(__optionsCachePath)) {
 }
 
 // Build card shells — tables are rendered client-side from embedded JSON
+// Build per-ticker intel lookup from all brief data sources
+function buildTickerIntel() {
+  const intel = {};
+  if (!brief) return intel;
+  const esc = (s) => String(s || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const es = brief.executiveSummary || {};
+
+  // perTicker reads
+  for (const t of (brief.perTicker || [])) {
+    const sym = t.symbol || t.ticker;
+    if (!intel[sym]) intel[sym] = { reads: [], positions: [], entries: [], events: [], news: [] };
+    intel[sym].reads.push({ label: t.label, note: t.note, price: t.price });
+  }
+
+  // manageExisting (match ticker from position string)
+  for (const m of (es.manageExisting || [])) {
+    const match = m.position.match(/^([A-Z]+)/);
+    if (match) {
+      const sym = match[1];
+      if (!intel[sym]) intel[sym] = { reads: [], positions: [], entries: [], events: [], news: [] };
+      intel[sym].positions.push({ position: m.position, action: m.action, reasoning: m.reasoning });
+    }
+  }
+
+  // growthEntries
+  for (const g of (es.growthEntries || [])) {
+    if (!intel[g.ticker]) intel[g.ticker] = { reads: [], positions: [], entries: [], events: [], news: [] };
+    intel[g.ticker].entries.push({ suggested: g.suggested, reasoning: g.reasoning, credit: g.targetCredit, collateral: g.collateral });
+  }
+
+  // events (match ticker from name)
+  for (const e of (brief.events || [])) {
+    // Extract ticker symbols mentioned in parentheses like "JPMorgan (JPM)"
+    const paren = e.name.match(/\(([A-Z]{1,5})\)/);
+    if (paren) {
+      const sym = paren[1];
+      if (!intel[sym]) intel[sym] = { reads: [], positions: [], entries: [], events: [], news: [] };
+      intel[sym].events.push({ day: e.day, date: e.date, name: e.name, impact: e.impact, action: e.tradingAction });
+    }
+  }
+
+  // news (from tickerNews fetched earlier)
+  for (const [sym, articles] of Object.entries(tickerNews)) {
+    if (!intel[sym]) intel[sym] = { reads: [], positions: [], entries: [], events: [], news: [] };
+    intel[sym].news = (articles || []).slice(0, 3);
+  }
+
+  return intel;
+}
+
+// tickerIntelMap is built after news fetch — see below
+
+function renderTickerIntelStrip(sym) {
+  const info = tickerIntelMap[sym];
+  if (!info) return '';
+
+  const esc = (s) => String(s || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const parts = [];
+
+  // Signal badge + brief read
+  if (info.reads.length) {
+    const r = info.reads[0];
+    const labelCls = (r.label || '').toLowerCase().includes('skip') ? 'opt-intel-skip'
+      : (r.label || '').toLowerCase().includes('execute') ? 'opt-intel-go'
+      : (r.label || '').toLowerCase().includes('watch') ? 'opt-intel-watch'
+      : 'opt-intel-neutral';
+    parts.push(`<div class="opt-intel-signal ${labelCls}"><span class="opt-intel-badge">${esc(r.label)}</span> ${esc(r.note)}</div>`);
+  }
+
+  // Open positions to manage
+  for (const p of info.positions) {
+    const urgent = /DO NOTHING|NO ACTION|NEVER/i.test(p.action) ? '' : ' opt-intel-urgent';
+    parts.push(`<div class="opt-intel-pos${urgent}"><strong>${esc(p.position)}</strong> → ${esc(p.action)}<div class="opt-intel-reason">${esc(p.reasoning)}</div></div>`);
+  }
+
+  // New entry suggestion
+  for (const e of info.entries) {
+    parts.push(`<div class="opt-intel-entry"><strong>Entry target:</strong> ${esc(e.suggested)}<div class="opt-intel-reason">${esc(e.reasoning)}</div><div class="opt-intel-meta">Credit: ${esc(e.credit)} · Collateral: $${(e.collateral || 0).toLocaleString()}</div></div>`);
+  }
+
+  // Upcoming events
+  for (const ev of info.events) {
+    const icon = ev.impact === 'high' ? '🔴' : ev.impact === 'medium' ? '🟡' : '🟢';
+    parts.push(`<div class="opt-intel-event">${icon} <strong>${esc(ev.day)} ${esc(ev.date)}</strong> — ${esc(ev.name)}<div class="opt-intel-reason">${esc(ev.action)}</div></div>`);
+  }
+
+  // Top news headlines
+  if (info.news.length) {
+    const headlines = info.news.map(n => {
+      const ago = !n.pubDate ? '' : (() => { const ms = Date.now() - new Date(n.pubDate).getTime(); return ms < 3600000 ? Math.floor(ms/60000) + 'm' : ms < 86400000 ? Math.floor(ms/3600000) + 'h' : Math.floor(ms/86400000) + 'd'; })();
+      return `<a href="${esc(n.link)}" target="_blank" rel="noopener" class="opt-intel-headline">${ago ? '<span class="opt-intel-ago">' + ago + '</span> ' : ''}${esc(n.title)}</a>`;
+    }).join('');
+    parts.push(`<div class="opt-intel-news">${headlines}</div>`);
+  }
+
+  if (!parts.length) return '';
+  return `<div class="opt-intel-strip">${parts.join('')}</div>`;
+}
+
 function renderOptionsCardShell(sym) {
   const d = optionsData[sym];
   if (!d) return `<div class="opt-card"><div class="opt-card-header"><strong>${sym}</strong> <span style="color:var(--text-dim)">— no data</span></div></div>`;
@@ -1207,17 +1507,26 @@ function renderOptionsCardShell(sym) {
     const label = exp + (dte > 0 ? ' (' + dte + ' DTE)' : ' (expired)');
     return `<option value="${exp}"${i === 0 ? ' selected' : ''}>${label}</option>`;
   }).join('');
+  const intelHtml = renderTickerIntelStrip(sym);
   return `
   <div class="opt-card" data-sym="${sym}">
     <div class="opt-card-header">
       <div><strong>${sym}</strong> <span class="opt-price">$${d.price.toFixed(2)}</span></div>
       <div class="opt-exp-filter">
-        <label style="font-size:11px;color:var(--text-dim);margin-right:6px;">Expiration:</label>
+        <label style="font-size:11px;color:var(--text-dim);margin-right:4px;">Exp:</label>
         <select class="opt-exp-select" data-sym="${sym}">
           ${expOptions}
         </select>
+        <label style="font-size:11px;color:var(--text-dim);margin-left:10px;margin-right:4px;">Strikes:</label>
+        <select class="opt-strike-select" data-sym="${sym}">
+          <option value="5" selected>ATM ±5</option>
+          <option value="10">ATM ±10</option>
+          <option value="20">ATM ±20</option>
+          <option value="0">All</option>
+        </select>
       </div>
     </div>
+    ${intelHtml}
     <div class="opt-tables" id="opt-tables-${sym}"></div>
   </div>`;
 }
@@ -1226,25 +1535,10 @@ const optionsFetched = Object.keys(optionsData).length;
 const totalExps = Object.values(optionsData).reduce((s, d) => s + Object.keys(d.chains).length, 0);
 const optionsTimestamp = new Date().toLocaleString('en-US', { timeZone: 'America/New_York', dateStyle: 'medium', timeStyle: 'short' });
 const optionsJsonBlob = JSON.stringify(optionsData);
-const optionsHtml = `
-<div class="panel span-12">
-  <h2>⛓ Options Chains</h2>
-  <div style="color:var(--text-dim);font-size:12px;margin-bottom:12px;">
-    ${optionsFetched}/${optionsSymbols.length} symbols · ${totalExps} total expirations fetched · Data as of ${optionsTimestamp} ET · Rebuild dashboard for fresh data
-  </div>
-  <div style="margin-bottom:12px;">
-    <label style="font-size:12px;color:var(--text-dim);margin-right:6px;">Show strikes:</label>
-    <select id="opt-strike-range" style="background:var(--panel-hi);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:4px 8px;font-size:12px;">
-      <option value="5">ATM ±5</option>
-      <option value="10">ATM ±10</option>
-      <option value="20">ATM ±20</option>
-      <option value="0">All strikes</option>
-    </select>
-  </div>
-  <div class="opt-grid">
-    ${optionsSymbols.map(renderOptionsCardShell).join('\n')}
-  </div>
-</div>
+// optionsHtml is built after news fetch so ticker intel has access to tickerNews
+let optionsHtml; // assigned below
+
+const _optionsScriptHead = `
 <script>
 (function(){
   const OD = ${optionsJsonBlob};
@@ -1275,7 +1569,8 @@ const optionsHtml = `
     if (!d) return;
     const chain = d.chains[exp];
     if (!chain) return;
-    const range = parseInt(document.getElementById('opt-strike-range').value) || 5;
+    const strikeSel = document.querySelector('.opt-strike-select[data-sym="' + sym + '"]');
+    const range = strikeSel ? parseInt(strikeSel.value) || 5 : 5;
     const el = document.getElementById('opt-tables-' + sym);
     if (!el) return;
     el.innerHTML =
@@ -1294,8 +1589,14 @@ const optionsHtml = `
     sel.addEventListener('change', () => renderCard(sel.dataset.sym, sel.value));
   });
 
-  // Strike range change re-renders all
-  document.getElementById('opt-strike-range')?.addEventListener('change', renderAll);
+  // Per-card strike range change
+  document.querySelectorAll('.opt-strike-select').forEach(sel => {
+    sel.addEventListener('change', () => {
+      const sym = sel.dataset.sym;
+      const expSel = document.querySelector('.opt-exp-select[data-sym="' + sym + '"]');
+      if (expSel) renderCard(sym, expSel.value);
+    });
+  });
 
   // Initial render
   renderAll();
@@ -1307,6 +1608,20 @@ const [tickerNews, breakingNews] = await Promise.all([
   fetchTickerNews(chartTickers, 5),
   fetchBreakingNews(),
 ]);
+
+// Now build tickerIntelMap and optionsHtml (needs tickerNews for per-card news)
+const tickerIntelMap = buildTickerIntel();
+optionsHtml = `
+<div class="panel span-12">
+  <h2>⛓ Options Chains</h2>
+  <div style="color:var(--text-dim);font-size:12px;margin-bottom:12px;">
+    ${optionsFetched}/${optionsSymbols.length} symbols · ${totalExps} total expirations fetched · Data as of ${optionsTimestamp} ET · Rebuild dashboard for fresh data
+  </div>
+  <div class="opt-grid">
+    ${optionsSymbols.map(renderOptionsCardShell).join('\n')}
+  </div>
+</div>
+` + _optionsScriptHead;
 const newsTimestamp = new Date().toLocaleString('en-US', { timeZone: 'America/New_York', dateStyle: 'medium', timeStyle: 'short' });
 
 function escHtml(s) { return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
@@ -1362,6 +1677,286 @@ const chartsHtml = `
   </div>
 </div>`;
 
+// ---------- futures section (live TradingView streaming widgets) ----------
+
+const futuresGroups = [
+  {
+    label: 'Index Futures — market direction & overnight gaps',
+    contracts: [
+      { symbol: 'CME_MINI:ES1!', name: 'S&P 500 E-mini', why: 'Overall market — sets tone for all positions' },
+      { symbol: 'CME_MINI:NQ1!', name: 'Nasdaq 100 E-mini', why: 'Tech-heavy — MSFT, GOOGL, AMZN, META, NVDA' },
+      { symbol: 'CBOT_MINI:YM1!', name: 'Dow E-mini', why: 'Blue chips — JPM, UNH, V, CAT, HON' },
+      { symbol: 'CME_MINI:RTY1!', name: 'Russell 2000 E-mini', why: 'Breadth — small caps confirm or diverge from large' },
+    ],
+  },
+  {
+    label: 'Volatility — premium selling conditions',
+    contracts: [
+      { symbol: 'CBOE:VIX', name: 'VIX (spot)', why: 'Premium gauge — above 20 = fat premiums, below 15 = thin' },
+      { symbol: 'CFE:VX1!', name: 'VIX Front-Month Future', why: 'Contango/backwardation — term structure shapes theta' },
+    ],
+  },
+  {
+    label: 'Rates — options pricing & sector rotation',
+    contracts: [
+      { symbol: 'CBOT:ZN1!', name: '10-Year T-Note', why: 'Rates direction — drives MSFT/tech valuations' },
+      { symbol: 'CBOT:ZB1!', name: '30-Year T-Bond', why: 'Long end — risk appetite signal' },
+    ],
+  },
+  {
+    label: 'Commodities — geopolitical & portfolio hedges',
+    contracts: [
+      { symbol: 'NYMEX:CL1!', name: 'Crude Oil WTI', why: 'Iran/ceasefire proxy — directly affects ET (5,000 shares)' },
+      { symbol: 'COMEX:GC1!', name: 'Gold', why: 'Risk-off gauge — spikes signal hedging demand' },
+    ],
+  },
+  {
+    label: 'Crypto — CIFR correlation',
+    contracts: [
+      { symbol: 'CME:BTC1!', name: 'Bitcoin Futures', why: 'CIFR (557 shares + 5 CCs) tracks BTC closely' },
+    ],
+  },
+];
+
+function buildFuturesTile(contract) {
+  const encoded = encodeURIComponent(contract.symbol);
+  const src = `https://s.tradingview.com/widgetembed/?symbol=${encoded}&interval=D&theme=dark&style=1&locale=en&toolbar_bg=%231e222d&enable_publishing=false&save_image=false&withdateranges=1&hide_side_toolbar=1&allow_symbol_change=0&studies=MAExp%407%7CClose%7C0%7C%234caf50%7C%234caf50%7Ctrue%7C0~MAExp%4021%7CClose%7C0%7C%23ffc107%7C%23ffc107%7Ctrue%7C0`;
+  return `
+    <div class="futures-tile">
+      <div class="futures-tile-header">
+        <div>
+          <span class="futures-tile-name">${contract.name}</span>
+          <span class="futures-tile-sym">${contract.symbol.split(':').pop()}</span>
+        </div>
+        <a class="chart-tile-link" href="https://www.tradingview.com/chart/?symbol=${encoded}" target="_blank" rel="noopener">Open ↗</a>
+      </div>
+      <div class="futures-tile-why">${contract.why}</div>
+      <iframe src="${src}" frameborder="0" allowtransparency="true" scrolling="no" loading="lazy"></iframe>
+    </div>`;
+}
+
+const futuresHtml = `
+<div class="panel span-12">
+  <h2>🔮 Futures — Live Streaming Data</h2>
+  <div style="color:var(--text-dim);font-size:12px;margin-bottom:16px;">
+    Real-time feeds — prices stream live while this tab is open. Grouped by how they affect your wheel strategy.
+  </div>
+  ${futuresGroups.map(g => `
+    <div class="futures-group">
+      <div class="futures-group-label">${g.label}</div>
+      <div class="futures-grid">
+        ${g.contracts.map(buildFuturesTile).join('\n')}
+      </div>
+    </div>
+  `).join('\n')}
+</div>`;
+
+// ---------- trade alert banner ----------
+
+function buildAlertBanner() {
+  const esc = (s) => String(s || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const alerts = [];
+
+  if (!brief) return '';
+
+  const es = brief.executiveSummary || {};
+  const now = new Date();
+
+  // Kill switches (highest urgency)
+  for (const k of (brief.killSwitches || [])) {
+    if (k.active) {
+      alerts.push({ urgency: 'red', icon: '🚨', text: esc(k.name) });
+    }
+  }
+
+  // Top action
+  if (es.topAction) {
+    const cls = /skip|no new|pause/i.test(es.topAction) ? 'red' : /watch|wait/i.test(es.topAction) ? 'yellow' : 'green';
+    alerts.push({ urgency: cls, icon: '📋', text: `TODAY: ${esc(es.topAction)}` });
+  }
+
+  // Manage existing — only urgent ones
+  for (const m of (es.manageExisting || [])) {
+    if (/check|monitor|close|roll/i.test(m.action) && !/no action|do nothing|never|hands off/i.test(m.action)) {
+      alerts.push({ urgency: 'yellow', icon: '⚡', text: `${esc(m.position)} → ${esc(m.action)}` });
+    }
+  }
+
+  // Trades to execute
+  for (const t of (es.trades || [])) {
+    if (/execute/i.test(t.action)) {
+      alerts.push({ urgency: 'green', icon: '✅', text: `EXECUTE: ${esc(t.strategy)} — ${esc(t.reasoning).slice(0, 80)}` });
+    } else if (/skip/i.test(t.action)) {
+      alerts.push({ urgency: 'red', icon: '🛑', text: `SKIP: ${esc(t.strategy)} — ${esc(t.reasoning).slice(0, 80)}` });
+    }
+  }
+
+  // Growth entries with timing
+  for (const g of (es.growthEntries || [])) {
+    if (/wait|after/i.test(g.suggested)) {
+      alerts.push({ urgency: 'yellow', icon: '⏳', text: `${esc(g.ticker)}: ${esc(g.suggested).slice(0, 90)}` });
+    } else {
+      alerts.push({ urgency: 'green', icon: '🎯', text: `${esc(g.ticker)}: ${esc(g.suggested).slice(0, 90)}` });
+    }
+  }
+
+  // Events this week
+  for (const e of (brief.events || [])) {
+    if (e.impact === 'high') {
+      alerts.push({ urgency: 'yellow', icon: '📅', text: `${esc(e.day)} ${esc(e.date)}: ${esc(e.name)} — ${esc(e.tradingAction).slice(0, 70)}` });
+    }
+  }
+
+  // Per-ticker MR flags and signals
+  for (const t of (brief.perTicker || [])) {
+    if (/MR.*EXTENDED|EXTREMELY/i.test(t.label)) {
+      alerts.push({ urgency: 'red', icon: '📊', text: `${esc(t.symbol)} MEAN-REVERSION EXTENDED — do not chase` });
+    } else if (/EXECUTE/i.test(t.label)) {
+      alerts.push({ urgency: 'green', icon: '💰', text: `${esc(t.symbol)}: ${esc(t.label)} — ${esc(t.note).slice(0, 70)}` });
+    }
+  }
+
+  // Breaking news (top 3)
+  for (const n of (breakingNews || []).slice(0, 3)) {
+    alerts.push({ urgency: 'blue', icon: '📰', text: esc(n.title) });
+  }
+
+  // Explosion Potential high-score alerts
+  for (const c of (explosionResults?.results || [])) {
+    if (c.score >= 75) {
+      alerts.push({ urgency: 'green', icon: '💥', text: `${esc(c.symbol)} ${c.score}/100 — ${esc(c.play).slice(0, 70)}` });
+    }
+  }
+
+  if (!alerts.length) return '';
+
+  // Duplicate the items so the scroll loops seamlessly
+  const items = alerts.map(a =>
+    `<span class="alert-item alert-${a.urgency}">${a.icon} ${a.text}</span>`
+  ).join('<span class="alert-sep">│</span>');
+
+  return `
+<div class="alert-banner" id="alert-banner">
+  <div class="alert-banner-label">⚡ LIVE ALERTS</div>
+  <div class="alert-banner-track">
+    <div class="alert-banner-scroll" id="alert-scroll">
+      ${items}<span class="alert-sep">│</span>${items}
+    </div>
+  </div>
+</div>`;
+}
+
+const alertBannerHtml = buildAlertBanner();
+
+// ---------- Explosion Potential renderer ----------
+
+function renderExplosionCard(c) {
+  const esc = (s) => String(s || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const isEP = (c.tags || []).some(t => /episodic/i.test(t));
+  const cardClass = isEP ? 'exp-card exp-card-ep' : 'exp-card';
+
+  // Score color
+  let scoreColor = '#e74c3c'; // red < 50
+  if (c.score >= 75) scoreColor = '#2ecc71';
+  else if (c.score >= 60) scoreColor = '#f1c40f';
+  else if (c.score >= 50) scoreColor = '#e67e22';
+
+  const changePctStr = c.changePct >= 0 ? `+${c.changePct.toFixed(2)}%` : `${c.changePct.toFixed(2)}%`;
+  const changeColor = c.changePct >= 0 ? 'var(--green)' : 'var(--red, #e74c3c)';
+
+  // Signal bars
+  const signals = c.signals || {};
+  const bars = [
+    { label: 'Trend', value: signals.trendStructure || 0, max: 25 },
+    { label: 'Volume', value: signals.volumeMomentum || 0, max: 30 },
+    { label: 'VCP', value: signals.volatilityContraction || 0, max: 25 },
+    { label: 'Catalyst', value: signals.catalystPremium || 0, max: 20 },
+  ];
+  const barsHtml = bars.map(b => {
+    const pct = Math.min(100, (b.value / b.max) * 100);
+    return `<div>
+      <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text-dim);margin-bottom:2px;">
+        <span>${b.label}</span><span>${b.value}/${b.max}</span>
+      </div>
+      <div class="exp-bar-track"><div class="exp-bar-fill" style="width:${pct}%"></div></div>
+    </div>`;
+  }).join('');
+
+  // Tags
+  const tagsHtml = (c.tags || []).map(t => {
+    const tl = t.toLowerCase();
+    if (/accumulate/i.test(tl)) return '<span class="exp-tag exp-tag-acc">ACCUMULATE</span>';
+    if (/harvest/i.test(tl)) return '<span class="exp-tag exp-tag-harv">HARVEST</span>';
+    if (/episodic/i.test(tl)) return '<span class="exp-tag exp-tag-ep">EPISODIC PIVOT</span>';
+    return `<span class="exp-tag">${esc(t.toUpperCase())}</span>`;
+  }).join(' ');
+
+  // Metrics
+  const d = c.details || {};
+  const metricsHtml = `<div class="exp-metrics">
+    Vol: ${(d.volumeRatio || 0).toFixed(1)}x &nbsp;|&nbsp;
+    IVR: ${d.ivRank != null ? d.ivRank : '—'} &nbsp;|&nbsp;
+    52wk: ${d.distFrom52wkHigh != null ? d.distFrom52wkHigh.toFixed(1) + '%' : '—'} &nbsp;|&nbsp;
+    EMA: ${d.emaStacked ? '✅ stacked' : '—'}
+  </div>`;
+
+  // News (top 2)
+  const newsItems = (c.news || []).slice(0, 2);
+  const newsHtml = newsItems.length ? `<div class="exp-news">${newsItems.map(n => {
+    const ago = n.pubDate ? timeAgo(n.pubDate) : '';
+    return `<a class="exp-news-link" href="${esc(n.link)}" target="_blank" rel="noopener">${esc(n.title)}${ago ? ` <span class="exp-news-ago">${ago}</span>` : ''}</a>`;
+  }).join('')}</div>` : '';
+
+  return `<div class="${cardClass}" data-tags="${esc((c.tags || []).join(' ').toLowerCase())}">
+    <div class="exp-card-header">
+      <div>
+        <span style="font-size:18px;font-weight:700;">${esc(c.symbol)}</span>
+        <span style="font-size:12px;color:var(--text-dim);margin-left:6px;">${esc(c.name)}</span>
+        <div style="margin-top:4px;">
+          <span style="font-size:15px;font-weight:600;">$${(c.price || 0).toFixed(2)}</span>
+          <span style="font-size:12px;color:${changeColor};margin-left:6px;">${changePctStr}</span>
+        </div>
+      </div>
+      <div class="exp-score" style="background:${scoreColor};">${c.score}</div>
+    </div>
+    <div class="exp-signals">${barsHtml}</div>
+    <div class="exp-tags">${tagsHtml}</div>
+    ${c.play ? `<div class="exp-play">${esc(c.play)}</div>` : ''}
+    ${metricsHtml}
+    ${newsHtml}
+  </div>`;
+}
+
+function buildExplosionHtml() {
+  if (!explosionResults || !explosionResults.results?.length) {
+    return `<div class="panel span-12">
+      <h2>💥 Explosion Potential</h2>
+      <p style="color:var(--text-dim);padding:20px;">No explosion scan results found. Run the scanner to populate this tab.</p>
+    </div>`;
+  }
+  const r = explosionResults;
+  const meta = `<div style="color:var(--text-dim);font-size:12px;margin-bottom:16px;">
+    Scanned: ${r.scanDate || '—'} &nbsp;|&nbsp;
+    Universe: ${r.universe || '—'} → Stage 1: ${r.stage1Passed || '—'} → Qualified: ${r.results.length}
+    &nbsp;|&nbsp; TV deep scan: ${r.tvDeepScan ? 'Yes' : 'No'}
+  </div>`;
+  const filters = `<div style="margin-bottom:16px;display:flex;gap:6px;flex-wrap:wrap;">
+    <button class="exp-filter active" data-filter="all">All</button>
+    <button class="exp-filter" data-filter="accumulate">Accumulate</button>
+    <button class="exp-filter" data-filter="harvest">Harvest</button>
+    <button class="exp-filter" data-filter="episodic pivot">Episodic Pivot</button>
+  </div>`;
+  const cards = r.results.map(renderExplosionCard).join('\n');
+  return `<div class="panel span-12">
+    <h2>💥 Explosion Potential</h2>
+    ${meta}
+    ${filters}
+    <div class="exp-grid">${cards}</div>
+  </div>`;
+}
+
+const explosionHtml = buildExplosionHtml();
+
 // ---------- generate HTML ----------
 
 const html = `<!DOCTYPE html>
@@ -1397,6 +1992,74 @@ const html = `<!DOCTYPE html>
   }
   header { max-width: 1600px; margin: 0 auto 24px; }
   h1 { font-size: 28px; font-weight: 600; margin: 0 0 4px 0; }
+
+  /* Trade Alert Banner */
+  .alert-banner {
+    display: flex;
+    align-items: stretch;
+    background: linear-gradient(90deg, #1a1a2e 0%, #16213e 100%);
+    border-top: 1px solid rgba(255,255,255,0.06);
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    overflow: hidden;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+  .alert-banner-label {
+    flex-shrink: 0;
+    background: linear-gradient(135deg, #e53935 0%, #c62828 100%);
+    color: #fff;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    padding: 10px 16px;
+    display: flex;
+    align-items: center;
+    white-space: nowrap;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+    animation: alert-pulse 2s ease-in-out infinite;
+  }
+  @keyframes alert-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.8; }
+  }
+  .alert-banner-track {
+    flex: 1;
+    overflow: hidden;
+    position: relative;
+    mask-image: linear-gradient(90deg, transparent 0%, black 3%, black 97%, transparent 100%);
+    -webkit-mask-image: linear-gradient(90deg, transparent 0%, black 3%, black 97%, transparent 100%);
+  }
+  .alert-banner-scroll {
+    display: inline-flex;
+    align-items: center;
+    white-space: nowrap;
+    animation: alert-scroll var(--scroll-duration, 60s) linear infinite;
+    padding: 9px 0;
+  }
+  .alert-banner-scroll:hover { animation-play-state: paused; }
+  @keyframes alert-scroll {
+    0% { transform: translateX(0); }
+    100% { transform: translateX(-50%); }
+  }
+  .alert-item {
+    font-size: 12px;
+    font-weight: 500;
+    padding: 3px 10px;
+    border-radius: 3px;
+    display: inline-block;
+    line-height: 1.4;
+  }
+  .alert-red { color: #ff6b6b; background: rgba(229,57,53,0.1); }
+  .alert-yellow { color: #ffd54f; background: rgba(255,213,79,0.08); }
+  .alert-green { color: #69f0ae; background: rgba(105,240,174,0.08); }
+  .alert-blue { color: #64b5f6; background: rgba(100,181,246,0.08); }
+  .alert-sep {
+    color: rgba(255,255,255,0.12);
+    margin: 0 12px;
+    font-size: 14px;
+    user-select: none;
+  }
   .subtitle { color: var(--text-dim); font-size: 14px; }
   .container { max-width: 1600px; margin: 0 auto; display: grid; grid-template-columns: repeat(12, 1fr); gap: 16px; }
   .panel {
@@ -1913,6 +2576,64 @@ const html = `<!DOCTYPE html>
     display: block;
   }
 
+  /* Futures section */
+  .futures-group {
+    margin-bottom: 24px;
+  }
+  .futures-group-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 10px;
+    padding-left: 4px;
+    border-left: 3px solid var(--blue);
+    padding: 4px 10px;
+  }
+  .futures-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 16px;
+  }
+  .futures-tile {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .futures-tile-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 12px;
+    background: var(--panel-hi);
+    border-bottom: 1px solid var(--border);
+  }
+  .futures-tile-name { font-weight: 600; font-size: 13px; color: var(--text); }
+  .futures-tile-sym {
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-left: 8px;
+    font-family: monospace;
+    background: rgba(255,255,255,0.05);
+    padding: 1px 6px;
+    border-radius: 3px;
+  }
+  .futures-tile-why {
+    font-size: 11px;
+    color: var(--text-dim);
+    padding: 6px 12px;
+    border-bottom: 1px solid var(--border);
+    line-height: 1.4;
+  }
+  .futures-tile iframe {
+    width: 100%;
+    height: 350px;
+    border: 0;
+    display: block;
+  }
+
   /* Options chain tab */
   .opt-grid {
     display: flex;
@@ -1972,6 +2693,189 @@ const html = `<!DOCTYPE html>
     min-width: 180px;
   }
   .opt-exp-select:focus { border-color: var(--blue); outline: none; }
+  .opt-strike-select {
+    background: var(--panel);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 4px 8px;
+    font-size: 12px;
+    cursor: pointer;
+  }
+
+  /* Per-ticker intel strip */
+  .opt-intel-strip {
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    font-size: 12px;
+    background: var(--panel);
+  }
+  .opt-intel-signal {
+    padding: 6px 10px;
+    border-radius: 4px;
+    line-height: 1.5;
+  }
+  .opt-intel-skip { background: rgba(244,67,54,0.08); border-left: 3px solid #f44336; }
+  .opt-intel-go { background: rgba(76,175,80,0.08); border-left: 3px solid #4caf50; }
+  .opt-intel-watch { background: rgba(255,193,7,0.08); border-left: 3px solid #ffc107; }
+  .opt-intel-neutral { background: rgba(100,100,100,0.08); border-left: 3px solid var(--text-dim); }
+  .opt-intel-badge {
+    display: inline-block;
+    font-weight: 700;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 1px 6px;
+    border-radius: 3px;
+    margin-right: 6px;
+    background: rgba(255,255,255,0.08);
+  }
+  .opt-intel-pos {
+    padding: 5px 10px;
+    border-left: 3px solid var(--blue);
+    background: rgba(33,150,243,0.06);
+    border-radius: 4px;
+    line-height: 1.5;
+  }
+  .opt-intel-pos.opt-intel-urgent { border-left-color: #ff9800; background: rgba(255,152,0,0.08); }
+  .opt-intel-entry {
+    padding: 5px 10px;
+    border-left: 3px solid #4caf50;
+    background: rgba(76,175,80,0.06);
+    border-radius: 4px;
+    line-height: 1.5;
+  }
+  .opt-intel-event {
+    padding: 5px 10px;
+    border-left: 3px solid #9c27b0;
+    background: rgba(156,39,176,0.06);
+    border-radius: 4px;
+    line-height: 1.5;
+  }
+  .opt-intel-reason { color: var(--text-dim); font-size: 11px; margin-top: 2px; }
+  .opt-intel-meta { color: var(--text-dim); font-size: 11px; margin-top: 3px; font-family: monospace; }
+  .opt-intel-news {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+  .opt-intel-headline {
+    color: var(--text-dim);
+    text-decoration: none;
+    font-size: 11px;
+    line-height: 1.4;
+    display: block;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .opt-intel-headline:hover { color: var(--blue); text-decoration: underline; }
+  .opt-intel-ago {
+    display: inline-block;
+    font-size: 10px;
+    color: var(--text-dim);
+    background: rgba(255,255,255,0.05);
+    padding: 0 4px;
+    border-radius: 2px;
+    margin-right: 4px;
+    font-family: monospace;
+  }
+
+  /* Explosion Potential section */
+  .exp-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+  .exp-card {
+    background: var(--panel-hi);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px;
+    transition: border-color 0.2s;
+  }
+  .exp-card:hover { border-color: var(--blue); }
+  .exp-card-ep {
+    border-color: #9b59b6;
+    box-shadow: 0 0 12px rgba(155, 89, 182, 0.3);
+    animation: ep-pulse 2s ease-in-out infinite;
+  }
+  @keyframes ep-pulse {
+    0%, 100% { box-shadow: 0 0 8px rgba(155, 89, 182, 0.2); }
+    50% { box-shadow: 0 0 20px rgba(155, 89, 182, 0.5); }
+  }
+  .exp-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 12px;
+  }
+  .exp-score {
+    width: 44px; height: 44px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 800; font-size: 16px; color: #fff;
+    flex-shrink: 0;
+  }
+  .exp-signals {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+  .exp-bar-track {
+    height: 5px;
+    background: rgba(255,255,255,0.08);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+  .exp-bar-fill {
+    height: 100%;
+    border-radius: 3px;
+    background: linear-gradient(90deg, var(--blue), #2ecc71);
+  }
+  .exp-tags { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
+  .exp-tag {
+    font-size: 10px; font-weight: 700; padding: 2px 8px;
+    border-radius: 4px; text-transform: uppercase;
+    background: rgba(255,255,255,0.08); color: var(--text-dim);
+  }
+  .exp-tag-acc { background: rgba(46,204,113,0.2); color: #2ecc71; }
+  .exp-tag-harv { background: rgba(241,196,15,0.2); color: #f1c40f; }
+  .exp-tag-ep { background: rgba(155,89,182,0.2); color: #bb86fc; }
+  .exp-play {
+    font-size: 12px; color: var(--text-dim);
+    line-height: 1.4; margin-bottom: 8px;
+    overflow: hidden; text-overflow: ellipsis;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  }
+  .exp-metrics {
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: 11px; color: var(--text-dim);
+    margin-bottom: 8px;
+  }
+  .exp-news { display: flex; flex-direction: column; gap: 4px; }
+  .exp-news-link {
+    font-size: 12px; color: var(--blue); text-decoration: none;
+    display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .exp-news-link:hover { text-decoration: underline; }
+  .exp-news-ago {
+    font-size: 10px; color: var(--text-dim);
+    background: rgba(255,255,255,0.05);
+    padding: 0 4px; border-radius: 2px;
+    margin-left: 4px; font-family: monospace;
+  }
+  .exp-filter {
+    padding: 6px 14px; font-size: 12px; font-weight: 600;
+    background: var(--panel); color: var(--text-dim);
+    border: 1px solid var(--border); border-radius: 6px; cursor: pointer;
+  }
+  .exp-filter:hover { color: var(--text); border-color: var(--text-dim); }
+  .exp-filter.active { color: var(--blue); border-color: var(--blue); background: rgba(59,130,246,0.1); }
 
   /* Breaking News section */
   .news-list { display: flex; flex-direction: column; gap: 2px; }
@@ -2033,6 +2937,8 @@ const html = `<!DOCTYPE html>
   @media (max-width: 1200px) {
     .kpi { grid-template-columns: repeat(2, 1fr); }
     .span-8, .span-6, .span-4, .span-3 { grid-column: span 12; }
+    .futures-grid { grid-template-columns: 1fr; }
+    .exp-grid { grid-template-columns: 1fr; }
   }
 </style>
 </head>
@@ -2044,12 +2950,15 @@ const html = `<!DOCTYPE html>
       <h1>Queen Mommy Trading Dashboard</h1>
       <div class="subtitle">Generated: ${new Date().toLocaleString('en-US', { timeZone: 'America/Los_Angeles', dateStyle: 'medium', timeStyle: 'short' })} · Source: ${path.basename(INPUT)}</div>
     </div>
-    <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;">
+    <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px;">
+      <div id="live-clock" style="font-family:monospace;font-size:14px;line-height:1.5;text-align:right;"></div>
       <div style="font-size:12px;color:var(--text-dim)">Auto-refresh: <span id="refresh-countdown">15:00</span></div>
       <button id="pause-refresh" style="background:var(--panel-hi);border:1px solid var(--border);color:var(--text);padding:6px 12px;border-radius:6px;cursor:pointer;font-size:12px;">⏸ Pause auto-refresh</button>
     </div>
   </div>
 </header>
+
+${alertBannerHtml}
 
 <nav class="main-tabs">
   <button class="main-tab active" data-target="current">
@@ -2071,6 +2980,16 @@ const html = `<!DOCTYPE html>
     <span class="main-tab-icon">⛓</span>
     <span class="main-tab-label">Options Chains</span>
     <span class="main-tab-count">${optionsFetched} chains</span>
+  </button>
+  <button class="main-tab" data-target="futures">
+    <span class="main-tab-icon">🔮</span>
+    <span class="main-tab-label">Futures</span>
+    <span class="main-tab-count">live feed</span>
+  </button>
+  <button class="main-tab" data-target="explosion">
+    <span class="main-tab-icon">💥</span>
+    <span class="main-tab-label">Explosion Potential</span>
+    <span class="main-tab-count">${explosionResults?.results?.length || 0} candidates</span>
   </button>
 </nav>
 
@@ -2102,6 +3021,16 @@ const html = `<!DOCTYPE html>
   <div class="main-section section-options">
   ${optionsHtml}
   </div><!-- end options -->
+
+  <!-- ══════ FUTURES section: live TradingView streaming widgets ══════ -->
+  <div class="main-section section-futures">
+  ${futuresHtml}
+  </div><!-- end futures -->
+
+  <!-- ══════ EXPLOSION POTENTIAL section ══════ -->
+  <div class="main-section section-explosion">
+  ${explosionHtml}
+  </div><!-- end explosion -->
 
   <!-- ══════ HISTORICAL section 1: KPIs ══════ -->
   <div class="main-section section-historical">
@@ -2135,81 +3064,7 @@ const html = `<!DOCTYPE html>
   <!-- ══════ CURRENT / ACTIVE section 2: recommendations ══════ -->
   <div class="main-section section-current active">
 
-  <!-- Active Recommendations (pinned) -->
-  <div class="panel span-12">
-    <h2>🎯 Active Recommendations</h2>
-    <div style="color: var(--text-dim); font-size: 12px; margin-bottom: 12px;">
-      Updates when market conditions or positions change. Dashboard generated ${new Date().toISOString().slice(0, 10)}.
-    </div>
-    <div class="rec-tabs">
-      <button class="rec-tab active" data-tab="critical">🔴 This Week (7)</button>
-      <button class="rec-tab" data-tab="rule">🟡 Discipline Rules (9)</button>
-      <button class="rec-tab" data-tab="position">🟢 Position Monitoring (10)</button>
-      <button class="rec-tab" data-tab="watch">🔵 Market Context (8)</button>
-    </div>
-
-    <!-- Critical this-week actions -->
-    <div class="rec-panel active" id="rec-critical">
-      <div class="rec-header critical">🚨 Growth pivot — time-sensitive actions this week</div>
-      <ul class="rec-list">
-        <li class="rec-item critical"><div class="rec-row"><div class="rec-num">1</div><div><strong>Pivot wheel entries from defensives to beaten-down growth</strong><div class="why">KO, MRK, JNJ are at/near all-time highs after a crowded defensive rotation. Stop opening new CSPs on them. Redirect capital to MSFT, GOOGL, META where IV is elevated and valuations are compressed.</div></div></div></li>
-        <li class="rec-item critical"><div class="rec-row"><div class="rec-num">2</div><div><strong>Open MSFT CSP at $340–$355 strike, 30-45 DTE</strong><div class="why">MSFT is -33% from ATH at 21× forward P/E (5-year avg is 30×). Analyst consensus: $596 target = 60% upside. Best risk/reward in the portfolio.</div></div></div></li>
-        <li class="rec-item critical"><div class="rec-row"><div class="rec-num">3</div><div><strong>Open GOOGL CSP at $290–$300 strike, 30-45 DTE</strong><div class="why">Bouncing from $272 April low to $317. Strongest 5Y return (+168%) of your holdings. Ceasefire rotation is tailwind.</div></div></div></li>
-        <li class="rec-item critical"><div class="rec-row"><div class="rec-num">4</div><div><strong>Let GOOGL $297.50 CC exp 4/17 get called</strong><div class="why">ITM by $19. Locks in profit. Redeploy cash into a lower-strike CSP after assignment.</div></div></div></li>
-        <li class="rec-item critical"><div class="rec-row"><div class="rec-num">5</div><div><strong>Let AMZN $220 CC exp 4/24 get called</strong><div class="why">ITM by $18. Trims concentration before you re-enter via CSPs at better levels.</div></div></div></li>
-        <li class="rec-item critical"><div class="rec-row"><div class="rec-num">6</div><div><strong>Check MSFT $355 CSP at Monday open</strong><div class="why">If at 50% profit, close early. If not, hold. MSFT is your highest-conviction name.</div></div></div></li>
-        <li class="rec-item critical"><div class="rec-row"><div class="rec-num">7</div><div><strong>Watch ceasefire deadline ~4/22</strong><div class="why">If it holds, growth rotation accelerates. If it breaks, pause new entries for 48 hours but don’t panic-sell existing positions.</div></div></div></li>
-      </ul>
-    </div>
-
-    <!-- Discipline rules -->
-    <div class="rec-panel" id="rec-rule">
-      <div class="rec-header rule">📋 Updated rules — growth pivot + loss analysis</div>
-      <ul class="rec-list">
-        <li class="rec-item rule"><div class="rec-row"><div class="rec-num">1</div><div><strong>Sell covered calls at 15-20 delta, not 30+</strong><div class="why">AMZN/GOOGL/TSM $5-8k losses were all 30-delta CCs caught in the ceasefire rally. Lower delta = more cushion = fewer defensive rolls.</div></div></div></li>
-        <li class="rec-item rule"><div class="rec-row"><div class="rec-num">2</div><div><strong>Ladder CC expirations</strong><div class="why">All losing CCs were opened March 30 for the same week. Never have more than 1-2 contracts expiring on the same date per name.</div></div></div></li>
-        <li class="rec-item rule"><div class="rec-row"><div class="rec-num">3</div><div><strong>Consider assignment before rolling</strong><div class="why">Rolling up-and-out cost ~$1k in realized "losses" even when stock rose. If strike is still above cost basis, often cheaper to take assignment.</div></div></div></li>
-        <li class="rec-item rule"><div class="rec-row"><div class="rec-num">4</div><div><strong>Size down before known binary events</strong><div class="why">All 7 losses clustered in 3 weeks around events. FOMC, CPI, NFP, earnings, geopolitical: cut size 50% or skip entirely.</div></div></div></li>
-        <li class="rec-item rule"><div class="rec-row"><div class="rec-num">5</div><div><strong>Track stock + option combined P&L</strong><div class="why">Dashboard shows Call account -$945 but underlying AMZN/GOOGL stock gains dwarf that. Weekly: tally unrealized stock gains against realized option P&L for true picture.</div></div></div></li>
-        <li class="rec-item rule"><div class="rec-row"><div class="rec-num">6</div><div><strong>No new defensive wheel entries at ATH</strong><div class="why">KO, MRK, JNJ, WMT, COST are crowded. Thin premium + high assignment risk at peak prices. Wait for a 10%+ pullback before entering.</div></div></div></li>
-        <li class="rec-item rule"><div class="rec-row"><div class="rec-num">7</div><div><strong>Never sell a covered call below cost basis</strong><div class="why">Standard wheel rule. On MSFT 200 sacred shares: never sell CCs at all. On others: CC strikes must be above effective basis.</div></div></div></li>
-        <li class="rec-item rule"><div class="rec-row"><div class="rec-num">8</div><div><strong>Take profit at 50% for CSPs</strong><div class="why">Your CSP account is +$9,414 doing exactly this. Keep doing it. Don't get greedy.</div></div></div></li>
-        <li class="rec-item rule"><div class="rec-row"><div class="rec-num">9</div><div><strong>Manage at 21 DTE</strong><div class="why">Standard tastytrade rule: close or roll any position with ≤21 days to expiration, regardless of P&L.</div></div></div></li>
-      </ul>
-    </div>
-
-    <!-- Position monitoring -->
-    <div class="rec-panel" id="rec-position">
-      <div class="rec-header position">📂 Daily check for each open position — growth pivot active</div>
-      <ul class="rec-list">
-        <li class="rec-item position"><div class="rec-row"><div class="rec-num">1</div><div><strong>GOOGL $297.50 CC exp 4/17</strong> — near-certain assignment<div class="why">ITM by $19. Let it expire ITM. Redeploy into GOOGL CSP at $290–$300.</div></div></div></li>
-        <li class="rec-item position"><div class="rec-row"><div class="rec-num">2</div><div><strong>AMZN $220 CC exp 4/24</strong> — likely assignment<div class="why">ITM by $18. Let it go. Still keeps 850+ shares.</div></div></div></li>
-        <li class="rec-item position"><div class="rec-row"><div class="rec-num">3</div><div><strong>AMZN $240 CCs (×3) exp 5/1</strong> — near the money<div class="why">If AMZN > $242, expect assignment. Growth rotation = upside pressure.</div></div></div></li>
-        <li class="rec-item position"><div class="rec-row"><div class="rec-num">4</div><div><strong>AMZN $250 CCs (×4) exp 5/15</strong> — comfortable<div class="why">No action unless AMZN breaks $248.</div></div></div></li>
-        <li class="rec-item position"><div class="rec-row"><div class="rec-num">5</div><div><strong>MSFT $355 CSP</strong> — check at open Monday<div class="why">200 sacred shares untouchable. If assigned on CSP, new 100 shares CAN be wheeled.</div></div></div></li>
-        <li class="rec-item position"><div class="rec-row"><div class="rec-num">6</div><div><strong>TSM 100 shares + 1 CC</strong> — strongest chart<div class="why">Near $370 vs $390 ATH. Don’t overwrite. Semi cycle is your friend.</div></div></div></li>
-        <li class="rec-item position"><div class="rec-row"><div class="rec-num">7</div><div><strong>CIFR 557 shares + 5 CCs</strong> — crypto proxy<div class="why">Monitor BTC correlation. Let wheel cycle naturally.</div></div></div></li>
-        <li class="rec-item position"><div class="rec-row"><div class="rec-num">8</div><div><strong>ET 5,000 shares</strong> — pure income anchor<div class="why">Dividend yield is the thesis. Nothing to change.</div></div></div></li>
-        <li class="rec-item position"><div class="rec-row"><div class="rec-num">9</div><div><strong>New: MSFT CSP target</strong> — open $340–$355 strike, 30-45 DTE<div class="why">Highest conviction entry. -33% from ATH, 21× fwd P/E, 60% analyst upside.</div></div></div></li>
-        <li class="rec-item position"><div class="rec-row"><div class="rec-num">10</div><div><strong>New: GOOGL CSP target</strong> — open $290–$300 after assignment clears<div class="why">Wait for $297.50 CC assignment to free capital, then redeploy.</div></div></div></li>
-      </ul>
-    </div>
-
-    <!-- Market context -->
-    <div class="rec-panel" id="rec-watch">
-      <div class="rec-header watch">🌍 Macro context driving the growth pivot</div>
-      <ul class="rec-list">
-        <li class="rec-item watch"><div class="rec-row"><div class="rec-num">1</div><div><strong>Defensive rotation is over-ripe</strong><div class="why">Consumer defensives up 13.3% YTD. Morningstar rates WMT, COST as overvalued. KO -5.5% from ATH, MRK -9.8% from ATH — not broken but bad entry points for wheels.</div></div></div></li>
-        <li class="rec-item watch"><div class="rec-row"><div class="rec-num">2</div><div><strong>Growth valuations are compressed</strong><div class="why">MSFT at 21× fwd P/E vs 30× 5-yr avg. GOOGL and AMZN recovering from March lows. Best growth entry since 2022.</div></div></div></li>
-        <li class="rec-item watch"><div class="rec-row"><div class="rec-num">3</div><div><strong>Ceasefire rotation catalyst</strong><div class="why">April 7 ceasefire sent growth ETFs up 3-4% in one session. If deadline holds past 4/22, rotation accelerates.</div></div></div></li>
-        <li class="rec-item watch"><div class="rec-row"><div class="rec-num">4</div><div><strong>MSFT Azure growing 39%</strong><div class="why">Revenue +17% YoY, $625B commercial backlog, $81.3B quarterly revenue. Valuation compression is sentiment-driven, not fundamental.</div></div></div></li>
-        <li class="rec-item watch"><div class="rec-row"><div class="rec-num">5</div><div><strong>Analyst consensus on growth</strong><div class="why">33 analysts rate MSFT Strong Buy with $596 avg target (+60%). GOOGL and AMZN have similar consensus upside.</div></div></div></li>
-        <li class="rec-item watch"><div class="rec-row"><div class="rec-num">6</div><div><strong>Premium math favors growth</strong><div class="why">MSFT CSP at $350 yields ~14-20% annualized vs KO CSP at $75 yielding ~8-12%. Better premiums AND better entry prices.</div></div></div></li>
-        <li class="rec-item watch"><div class="rec-row"><div class="rec-num">7</div><div><strong>Iran ceasefire kill switch still active</strong><div class="why">If ceasefire collapses, pause new entries 48 hours. Don't panic-sell. Growth names have more room to absorb a shock at -30% vs defensives at ATH.</div></div></div></li>
-        <li class="rec-item watch"><div class="rec-row"><div class="rec-num">8</div><div><strong>Earnings season starting</strong><div class="why">ASML 4/14, TSM 4/16, JPM 4/17. Wait until after both earnings AND 4/22 deadline before financial sector entries.</div></div></div></li>
-      </ul>
-    </div>
-  </div>
+  ${recommendationsHtml}
 
   </div><!-- end current 2 -->
 
@@ -2548,6 +3403,61 @@ document.querySelectorAll('.rec-tab').forEach(tab => {
   });
 });
 
+// Alert banner — set scroll speed based on content width
+(function() {
+  const scroll = document.getElementById('alert-scroll');
+  if (!scroll) return;
+  // Measure full width, set duration so it scrolls at ~80px/sec
+  requestAnimationFrame(() => {
+    const halfWidth = scroll.scrollWidth / 2;
+    const speed = 80; // pixels per second
+    const duration = Math.max(30, Math.round(halfWidth / speed));
+    scroll.style.setProperty('--scroll-duration', duration + 's');
+    scroll.style.animationDuration = duration + 's';
+  });
+})();
+
+// Live clock — EST + PST with date
+(function() {
+  const el = document.getElementById('live-clock');
+  if (!el) return;
+  const days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  function tick() {
+    const now = new Date();
+    const est = now.toLocaleString('en-US', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
+    const pst = now.toLocaleString('en-US', { timeZone: 'America/Los_Angeles', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
+    const dateFmt = now.toLocaleDateString('en-US', { timeZone: 'America/New_York', weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' });
+    el.innerHTML = '<span style="color:var(--text);">' + dateFmt + '</span><br/>'
+      + '<span style="color:var(--blue);">' + est + ' EST</span>'
+      + ' &nbsp;·&nbsp; '
+      + '<span style="color:var(--green, #3fb950);">' + pst + ' PST</span>';
+  }
+  tick();
+  setInterval(tick, 1000);
+})();
+
+// Staleness indicator — warn if data is older than 15 minutes
+(function() {
+  const buildTime = ${Date.now()};
+  const banner = document.createElement('div');
+  banner.id = 'stale-banner';
+  banner.style.cssText = 'display:none;background:rgba(210,153,34,0.15);border:1px solid var(--yellow);border-radius:6px;padding:8px 14px;margin-top:8px;font-size:12px;color:var(--yellow);text-align:center;';
+  const header = document.querySelector('header');
+  if (header) header.appendChild(banner);
+  function check() {
+    const age = Math.floor((Date.now() - buildTime) / 60000);
+    if (age >= 15) {
+      banner.style.display = 'block';
+      banner.innerHTML = '⚠️ Data is <strong>' + age + ' min</strong> old. '
+        + (age >= 60 ? 'Run <code>node scripts/dashboard/build_dashboard_html.js</code> to refresh, or use <code>--watch</code> mode.' : 'Auto-refresh will update shortly.');
+    } else {
+      banner.style.display = 'none';
+    }
+  }
+  check();
+  setInterval(check, 60000);
+})();
+
 // Auto-refresh countdown + pause control
 (function() {
   const refreshInterval = 900; // seconds (15 min)
@@ -2649,6 +3559,23 @@ document.querySelectorAll('.main-tab').forEach(tab => {
     window.scrollTo({ top: document.querySelector('.container').offsetTop - 80, behavior: 'smooth' });
   });
 });
+
+// Explosion Potential filter buttons
+document.querySelectorAll('.exp-filter').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.exp-filter').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    const filter = btn.dataset.filter;
+    document.querySelectorAll('.exp-card').forEach(card => {
+      if (filter === 'all') {
+        card.style.display = '';
+      } else {
+        const tags = card.querySelector('.exp-tags')?.textContent?.toLowerCase() || '';
+        card.style.display = tags.includes(filter.replace('_', ' ')) ? '' : 'none';
+      }
+    });
+  });
+});
 </script>
 
 </body>
@@ -2658,4 +3585,25 @@ fs.writeFileSync(OUTPUT, html);
 console.log(`Dashboard written to ${OUTPUT}`);
 console.log(`  ${completed.length} completed trades, ${openLegs.length} open`);
 console.log(`  Net P&L: $${totalPnL.toFixed(2)}, Win rate: ${winRate.toFixed(1)}%`);
-console.log(`  Open in a browser to view.`);
+
+// --watch mode: rebuild every 15 minutes so the browser's meta-refresh picks up fresh data
+if (process.argv.includes('--watch')) {
+  const INTERVAL = 15 * 60 * 1000; // 15 minutes
+  console.log(`  Watch mode active — rebuilding every 15 minutes. Press Ctrl+C to stop.`);
+  console.log(`  Open ${OUTPUT} in a browser; it auto-refreshes to pick up new data.`);
+  setInterval(async () => {
+    console.log(`\n[${new Date().toLocaleTimeString()}] Rebuilding...`);
+    try {
+      const { execSync } = await import('child_process');
+      execSync(`node "${process.argv[1]}" "${INPUT}" "${OUTPUT}" "${BRIEF_JSON}"`, {
+        stdio: 'inherit',
+        env: { ...process.env, SKIP_OPTIONS: '1' }, // use cached options for speed
+      });
+    } catch (e) {
+      console.error('Rebuild failed:', e.message);
+    }
+  }, INTERVAL);
+} else {
+  console.log(`  Open in a browser to view.`);
+  console.log(`  Tip: run with --watch to auto-rebuild every 15 min for live data.`);
+}
