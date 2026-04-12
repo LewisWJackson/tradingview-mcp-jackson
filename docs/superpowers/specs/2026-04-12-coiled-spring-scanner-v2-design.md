@@ -25,19 +25,24 @@ Favor objective, measurable inputs over subjective pattern descriptions. The sco
 
 ```
 Universe (1,273 symbols)
-  → Stage 1: Yahoo bulk quote + quality gate (pass/fail)
-  → Stage 1b: Yahoo 30-day OHLCV for candidates (~30-50 stocks)
-  → Stage 2: Scoring engine (120 pts total)
+  → Stage 1: Yahoo bulk quote + hard quality gate (pass/fail)
+  → Stage 1b: Yahoo 3-month OHLCV for candidates (~30-50 stocks)
+  → Stage 2: Scoring engine (120 pts total) + confidence + risk assessment
   → Output: coiled_spring_results.json + dashboard tab
 ```
 
-**New Stage 1b:** After the quality gate narrows to ~30-50 candidates, fetch 30 days of daily OHLCV from Yahoo's `/v8/finance/chart/` endpoint. This provides the historical bars needed for BB width, ATR contraction, volume signature, and pivot proximity — all self-contained in Yahoo, no TradingView dependency for scanning.
+**New Stage 1b:** After the quality gate narrows to ~30-50 candidates, fetch 3 months of daily OHLCV from Yahoo's `/v8/finance/chart/{symbol}?range=3mo&interval=1d` endpoint (~63 trading days). This provides:
+- Accurate 150-day MA approximation (with 50-day and 200-day from quote data)
+- Full base context for VCP detection (most bases form over 4-12 weeks)
+- Better pivot detection with more swing highs/lows to reference
+- Richer volume signature with 60+ days of accumulation data
+- Still manageable API load (~30-50 requests at ~5KB each)
 
 ---
 
-## Quality Gate (pass/fail)
+## Quality Gate: Hard Filters (pass/fail)
 
-Every stock must pass ALL of these before scoring. No points — just in or out.
+Objective, binary filters. Every stock must pass ALL of these before scoring. No points — just in or out.
 
 | Filter | Threshold | Rationale |
 |---|---|---|
@@ -47,7 +52,6 @@ Every stock must pass ALL of these before scoring. No points — just in or out.
 | Still tradeable | `marketState` not "CLOSED_PERMANENTLY", not halted | Kills acquired/delisted stocks (HOLX) |
 | Not already exploded | abs(changePct) < 15% today AND 5-day price change < 20% (from OHLCV) | Kills ZNTL-type results — the move already happened |
 | Not in downtrend | Price > 200-day MA | Only Stage 2 uptrends |
-| Adequate float/liquidity | No recent dilution events flagged in news | Avoid structurally broken candidates |
 
 **Stage 1 pre-filter (replaces v1):** The new filter selects for quiet strength instead of noise:
 - Price > 50-day MA (uptrend)
@@ -56,6 +60,22 @@ Every stock must pass ALL of these before scoring. No points — just in or out.
 - Market cap and liquidity pass quality gate
 
 v1 selected for noise. v2 selects for quiet strength.
+
+## Soft Red Flags (warnings, not disqualifiers)
+
+These are messy, text-based signals that are too unreliable for a hard gate but valuable as context. They do NOT block a candidate — they appear as warnings in the output and on the dashboard card.
+
+Detected via Yahoo RSS news keyword scan on Stage 1b candidates:
+
+| Red Flag | Keywords scanned | Display |
+|---|---|---|
+| Dilution / offering | "offering", "dilution", "shelf registration", "secondary offering", "ATM program" | `redFlags: ["dilution_risk"]` |
+| Litigation | "lawsuit", "sued", "litigation", "SEC investigation", "class action" | `redFlags: ["litigation"]` |
+| FDA / regulatory risk | "FDA rejection", "complete response letter", "clinical hold", "FDA warning" | `redFlags: ["regulatory_risk"]` |
+| Insider selling | "insider sold", "insider selling", "10b5-1 plan sale" | `redFlags: ["insider_selling"]` |
+| Merger / acquisition noise | "merger", "acquisition", "takeover bid", "going private", "buyout" | `redFlags: ["merger_pending"]` |
+
+**Output:** Each candidate gets a `redFlags: string[]` array. Empty if clean. Dashboard cards show a yellow warning icon with tooltip for each flag. The trader decides whether the flag is material.
 
 ---
 
@@ -87,7 +107,7 @@ The core of the scanner. Identifies true volatility compression preceding expans
 | Tight daily range: 5-day avg range < 3% of price | 8 | `avg((high - low) / price)` last 5 days. < 3% = 8 pts, < 5% = 4 pts |
 
 **VCP tightening detection algorithm:**
-1. Find local peaks and troughs in 30-day price data (swing highs/lows using 3-bar pivot)
+1. Find local peaks and troughs in 3-month price data (swing highs/lows using 3-bar pivot)
 2. Calculate depth of each pullback: `(peak - trough) / peak * 100`
 3. If each successive pullback is shallower (e.g., 12% → 7% → 3%), that's VCP tightening
 4. 3+ tightening contractions = full points
@@ -157,6 +177,44 @@ Good setup forming but needs more time. **Action:** Watchlist — check back wee
 - Early positioning opportunity ahead of event
 
 Coil may not be as tight, but a credible catalyst approaches with healthy trend. **Action:** Position early for IV ramp.
+
+## Score Confidence
+
+Not every 88 is created equal. A score built from complete data with no proxy fallbacks is more trustworthy than one assembled from approximations and missing fields.
+
+Each candidate gets a `scoreConfidence` field: `"high"` | `"medium"` | `"low"`
+
+| Level | Criteria |
+|---|---|
+| **high** | All core OHLCV fields present with >= 60 trading days, no proxy fallbacks used, volume data complete, earnings date available |
+| **medium** | 1-2 proxy calculations used (e.g., approximated 150-day MA, estimated ATR from incomplete window), or OHLCV has 30-59 days |
+| **low** | Missing or approximate data in catalyst fields (no earnings date, no short interest), history window < 30 days, IV rank unavailable or crude estimate |
+
+**Implementation:** Each scoring function returns a `confidence` metadata flag alongside its score. The composite confidence is the lowest of any category's confidence (weakest link).
+
+**Dashboard impact:** Cards show a confidence badge. High = solid border. Medium = dashed border. Low = dimmed card with "limited data" label.
+
+---
+
+## Breakout Risk Assessment
+
+Two stocks can score 88 but have very different failure profiles. The `breakoutRisk` field captures this as a derived assessment: `"low"` | `"medium"` | `"high"`
+
+| Risk Driver | Adds risk | Measurement |
+|---|---|---|
+| Extended > 8% above 50-day MA | +1 | `(price - ma50) / ma50 > 0.08` |
+| High daily ATR despite tight pivot distance | +1 | ATR > 2% of price AND pivot distance < 5% (volatile stock near resistance = prone to false breakout) |
+| Weak up/down volume ratio | +1 | Up/down volume ratio < 1.1 (no accumulation conviction) |
+| Weak market/sector backdrop | +1 | SPY below 50-day MA OR stock's sector ETF in bottom 3 performers |
+| Earnings too close (< 20 days) | +1 | Imminent catalyst creates binary event risk |
+
+**Scoring:** Sum risk drivers (0-5). Low = 0-1 drivers. Medium = 2-3 drivers. High = 4-5 drivers.
+
+**Output:** `breakoutRisk: "low"` with `breakoutRiskDrivers: ["extended_above_ma", "weak_sector"]` for transparency.
+
+**Dashboard impact:** Low = green shield icon. Medium = yellow caution. High = red warning. The drivers list shows the specific reasons on hover/tooltip.
+
+---
 
 ### Play Generation
 
@@ -643,17 +701,20 @@ A "failure" is:
 | Avg hold period | 10-30 days | Confirms swing-trade horizon |
 | Signals per week | 2-8 | Enough to trade, not so many it's noise |
 
-## Comparison vs v1
-Run v1 scoring and v2 scoring on the same historical data. Compare:
-- How many v1 "accumulate" candidates were actually post-explosion (already moved 15%+)?
-- How many v2 "coiled_spring" candidates broke out within 30 days?
-- Head-to-head: same universe, same dates, which scoring model has better expectancy?
+## Backtest Phasing
+
+**Phase 1 question (prove the main signal):** How did Coiled Spring candidates (score >= 85) perform? Win rate, avg R-multiple, max drawdown. This is the only question that matters initially.
+
+**Phase 2 question (once main signal validated):** How did Building Base and Catalyst Loaded perform? Did Building Base names that later became Coiled Springs have better outcomes?
+
+**Phase 3 question:** v1 vs v2 head-to-head. Same universe, same dates — which model has better expectancy?
 
 ## Backtest Implementation Notes
 - Use Yahoo `/v8/finance/chart/` with `range=2y&interval=1d` for historical data
 - Process weekly snapshots: for each Monday, calculate scores using only data available as of that date (no look-ahead bias)
-- Log each candidate with: date flagged, score, classification, entry price (next-day open after breakout), stop level, outcome (R-multiple), hold period
+- Log each candidate with: date flagged, score, scoreConfidence, classification, entry price (next-day open after breakout), stop level, outcome (R-multiple), hold period
 - Output: CSV file for analysis + summary statistics
+- Track scoreConfidence distribution: do "high confidence" candidates outperform "medium" ones? This validates the confidence field.
 
 ---
 
@@ -664,9 +725,9 @@ Run v1 scoring and v2 scoring on the same historical data. Compare:
 | Limitation | Impact | Mitigation |
 |---|---|---|
 | Yahoo 150-day MA not available directly | Must approximate as `(50d + 200d) / 2` or calculate from OHLCV | Stage 1b OHLCV fetch provides exact calculation for candidates |
-| IV rank is approximated | Yahoo doesn't provide historical IV; current ATM IV mapped to fixed 15-80% range | Conservative scoring — IV rank is only used in catalyst awareness (3 pts max). Not load-bearing. |
+| IV rank is crude approximation | Yahoo doesn't provide historical IV; current ATM IV mapped to a fixed 15-80% range. This is NOT a real IV rank — it's a rough context field. | Label it clearly as `ivContext` (not `ivRank`) in output. Do not use it in scoring until a reliable source is available. Display as "IV context: ~35 (approximate)" on dashboard. If it becomes unreliable, omit entirely rather than mislead. |
 | Short interest data may be stale | Yahoo's `shortPercentOfFloat` updates bi-monthly (FINRA schedule) | Small weight (3 pts). Treat as bonus confirmation, not primary signal. |
-| 30-day OHLCV limits VCP detection | True VCP patterns can span 3-6 months with 4+ contractions | 30 days catches 2-3 contractions. Extend to `range=3mo` if API permits without rate limiting. |
+| 3-month OHLCV limits deep VCP detection | True VCP patterns can span 6+ months with 4+ contractions | 3 months catches 2-4 contractions — covers most actionable setups. Could extend to `range=6mo` for deeper analysis at cost of larger payloads. |
 | Sector ETF comparison is a proxy | True sector relative strength would use component-weighted baskets | 11 SPDR sector ETFs are a standard, widely-accepted proxy. |
 | Pine Script cannot fetch external symbols on free plans | RS vs SPY requires Premium+ | Proxy: ROC percentile vs own history. Label assumption in output. |
 
@@ -699,12 +760,39 @@ Run v1 scoring and v2 scoring on the same historical data. Compare:
 
 ---
 
+## Market Regime Gate
+
+Formalized as a scanner-level check, not just prose guidance. The scanner fetches SPY, QQQ, and VIX quotes alongside the universe and computes a regime assessment included in every scan output.
+
+```json
+"marketRegime": {
+  "spyAbove200dma": true,
+  "spyAbove50dma": true,
+  "qqqAbove200dma": true,
+  "qqqAbove50dma": false,
+  "vixLevel": 21.4,
+  "regime": "constructive"
+}
+```
+
+| Regime | Condition | Scanner behavior |
+|---|---|---|
+| **constructive** | SPY > 200-day MA AND QQQ > 200-day MA AND VIX < 30 | Normal operation. Candidates labeled "actionable" |
+| **cautious** | SPY > 200-day MA but < 50-day MA, OR VIX 25-35 | Scanner runs but all candidates labeled "watch only — reduced conviction" |
+| **defensive** | SPY < 200-day MA OR VIX > 35 | Scanner runs for watchlist building only. Dashboard header shows red "DEFENSIVE REGIME — NO NEW ENTRIES" banner |
+
+**VIX source:** Fetched as `^VIX` in the Stage 1 sector ETF quote batch (single extra symbol, no additional API call).
+
+**Dashboard impact:** Regime badge appears at top of Coiled Springs tab. In cautious/defensive modes, card action language changes from "Sell CSP at support" to "Watchlist only — wait for regime improvement."
+
+---
+
 ## Data Sources
 
 | Data | Endpoint | When fetched |
 |---|---|---|
 | Quote snapshot (price, MAs, volume, market cap, earnings date) | `/v7/finance/quote` | Stage 1 — full universe in batches of 50 |
-| 30-day daily OHLCV (BB, ATR, VCP, pivot, volume signature) | `/v8/finance/chart/{symbol}?range=1mo&interval=1d` | Stage 1b — ~30-50 candidates that pass quality gate |
+| 3-month daily OHLCV (BB, ATR, VCP, pivot, volume signature) | `/v8/finance/chart/{symbol}?range=3mo&interval=1d` | Stage 1b — ~30-50 candidates that pass quality gate |
 | Options chain (IV rank) | `/v7/finance/options/{symbol}` | Stage 1b — same candidates |
 | News (catalyst keywords) | Yahoo RSS feed | Stage 1b — same candidates |
 | Sector ETF performance | `/v7/finance/quote` for XLK, XLF, XLE, XLV, XLI, XLC, XLY, XLP, XLB, XLRE, XLU | Stage 1 — single batch of 11 symbols |
@@ -719,6 +807,14 @@ File: `coiled_spring_results.json`
   "scannedAt": "2026-04-12T19:14:29.800Z",
   "universe": 1273,
   "stage1Passed": 42,
+  "marketRegime": {
+    "spyAbove200dma": true,
+    "spyAbove50dma": true,
+    "qqqAbove200dma": true,
+    "qqqAbove50dma": false,
+    "vixLevel": 21.4,
+    "regime": "constructive"
+  },
   "results": [
     {
       "symbol": "EXAMPLE",
@@ -726,7 +822,11 @@ File: `coiled_spring_results.json`
       "price": 85.50,
       "changePct": 0.8,
       "score": 92,
+      "scoreConfidence": "high",
       "classification": "coiled_spring",
+      "breakoutRisk": "low",
+      "breakoutRiskDrivers": [],
+      "redFlags": [],
       "signals": {
         "trendHealth": 25,
         "contraction": 35,
@@ -763,16 +863,75 @@ File: `coiled_spring_results.json`
 }
 ```
 
-## Files to Create/Modify
+## Implementation Phasing
+
+### Phase 1: Core Scanner Foundation
+Build the scoring pipeline end-to-end. Get results flowing.
 
 | File | Action | Description |
 |---|---|---|
-| `scripts/scanner/scoring_v2.js` | Create | New scoring engine with all 5 categories |
-| `scripts/scanner/yahoo_screen_v2.js` | Create | Revised Stage 1 with inverted filters + Stage 1b OHLCV fetch |
-| `scripts/scanner/coiled_spring_scanner.js` | Create | New orchestrator replacing explosion_scanner.js |
+| `scripts/scanner/yahoo_screen_v2.js` | Create | Stage 1 with inverted filters + Stage 1b 3-month OHLCV fetch |
+| `scripts/scanner/scoring_v2.js` | Create | Scoring engine: hard quality gate, trend, contraction proxies, volume signature, pivot structure, basic catalyst |
+| `scripts/scanner/coiled_spring_scanner.js` | Create | Orchestrator: market regime check, Stage 1 → 1b → scoring → JSON output |
+
+**Scope for Phase 1:**
+- Hard quality gate only (no red flag scanning yet)
+- VCP: use ATR contraction proxy — skip fancy swing-pivot detection initially
+- IV rank: include as a simple context field, clearly labeled as approximate. Do not make it sound more precise than it is. If Yahoo IV is crude, say so in the output.
+- Catalyst: include earnings date and sector momentum if easily available. Skip news keyword scanning.
+- Score confidence and breakout risk: include from day one — these are simple derived fields.
+- Market regime: include from day one — single extra quote fetch.
+
+### Phase 2: Trust and Validation
+Prove the main signal works before polishing.
+
+| File | Action | Description |
+|---|---|---|
 | `scripts/scanner/scoring_v2.test.js` | Create | Unit tests for all scoring functions |
-| `scripts/pine/coiled_spring_score.pine` | Create | TradingView Pine Script indicator |
+| `scripts/scanner/test_fixtures/` | Create | Small fixture library of known examples |
+
+**Required test fixtures:**
+- Valid coiled spring (tight BB, low ATR, stacked MAs, accumulation days)
+- Already exploded (ZNTL-like: 48% gap, 6x volume)
+- Broken down (below 200-day MA, downtrend)
+- Illiquid (< 1M avg volume, wide spreads)
+- Fake compression (tight range but no accumulation, dead money)
+- Edge case: score exactly at classification boundary (84/85)
+
+**Focus question:** How did Coiled Spring names perform? Building Base and Catalyst Loaded comparison comes later.
+
+### Phase 3: Dashboard and Output QA
+Make the output trustworthy and useful.
+
+| File | Action | Description |
+|---|---|---|
 | `scripts/dashboard/build_dashboard_html.js` | Modify | Update Explosion Potential tab → "Coiled Springs" tab |
+
+**Dashboard cards show:**
+- Score with category breakdown bars (trend / contraction / volume / pivot / catalyst)
+- Score confidence badge (high / medium / low)
+- Breakout risk indicator (green / yellow / red) with drivers on hover
+- Red flags as yellow warning icons with tooltip
+- Market regime banner at tab top
+- Top reason it scored high + top reason to be cautious
+- Play recommendation (adjusted by regime)
+
+### Phase 4: Pine Companion
+Only after scanner output feels credible.
+
+| File | Action | Description |
+|---|---|---|
+| `scripts/pine/coiled_spring_score.pine` | Create | TradingView Pine Script indicator |
+
+**Pine simplifications for v1:**
+- VCP logic: use ATR contraction proxy across 3 windows. Do not over-engineer pivot intelligence in Pine on day one.
+- RS vs SPY: use ROC percentile proxy (documented limitation)
+- Catalyst: omitted entirely (15 pts unavailable in Pine, thresholds adjusted)
+- Watchlist column output for sorting
+
+### Deprecated Files
+| File | Action | Description |
+|---|---|---|
 | `scripts/scanner/explosion_scanner.js` | Deprecate | Keep for reference, no longer called |
 | `scripts/scanner/scoring.js` | Deprecate | Keep for reference, replaced by scoring_v2.js |
 
@@ -790,7 +949,7 @@ File: `coiled_spring_results.json`
 | Total points | 100 | 120 |
 | New category | — | Volume Signature (20 pts) |
 | Catalyst timing | Within 14 days (too late) | 30-45 days out (time to position) |
-| Historical data | Single-day snapshot | 30-day OHLCV for all calculations |
+| Historical data | Single-day snapshot | 3-month OHLCV for all calculations |
 | Classification | accumulate, harvest, episodic_pivot | coiled_spring, building_base, catalyst_loaded |
 | Pine Script | None | Full companion indicator |
 | Risk management | None | Complete entry/exit/sizing framework |
