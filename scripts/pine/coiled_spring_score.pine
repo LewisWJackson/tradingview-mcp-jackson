@@ -1,0 +1,263 @@
+// Coiled Spring Score [v2]
+// Companion Pine Script indicator for the Coiled Spring Scanner v2.
+// Scores stocks on 4 categories (105 pts max) — catalyst awareness (15 pts)
+// is NOT available in Pine Script and is scored only by the Yahoo-based scanner.
+//
+// Pine max score: 105 (not 120) because catalyst data (earnings dates, news,
+// sector ETF rankings, short interest) are unavailable as Pine built-ins.
+//
+// Classification thresholds (adjusted proportionally from 120-pt scale):
+//   Coiled Spring:    >= 72  (≈ 85/120 * 105)
+//   Building Base:    >= 50  (≈ 60/120 * 105)
+//   Below Threshold:  <  50
+//
+// Key proxy assumptions (labeled throughout):
+//   - RS vs SPY: uses ROC percentile vs own history, NOT vs SPY
+//     (Pine free plans cannot fetch external symbols reliably)
+//   - VCP detection: uses ATR contraction across 3 windows, NOT full
+//     swing-pivot detection (would require 100+ bars of pivot logic)
+//   - Market cap filter: not available in Pine — use manual watchlist curation
+
+//@version=6
+indicator("Coiled Spring Score [v2]", overlay=true, max_labels_count=50)
+
+// ─── INPUT PARAMETERS ───────────────────────────────────────────────────────
+
+// Quality Gate
+i_minPrice     = input.float(10.0,    "Min Price",             group="Quality Gate")
+i_minVolume    = input.int(1000000,   "Min Avg Volume",        group="Quality Gate")
+
+// Trend Health
+i_maFast       = input.int(50,        "Fast MA Length",        group="Trend Health")
+i_maMid        = input.int(150,       "Mid MA Length",         group="Trend Health")
+i_maSlow       = input.int(200,       "Slow MA Length",        group="Trend Health")
+i_rsLookback   = input.int(20,        "Relative Strength Lookback", group="Trend Health")
+
+// Contraction Quality
+i_bbLength     = input.int(20,        "BB Length",             group="Contraction")
+i_bbMult       = input.float(2.0,     "BB Multiplier",        group="Contraction")
+i_atrFast      = input.int(5,         "ATR Fast Period",       group="Contraction")
+i_atrSlow      = input.int(20,        "ATR Slow Period",       group="Contraction")
+i_rangeAvg     = input.int(5,         "Range Avg Period",      group="Contraction")
+i_rangePct     = input.float(3.0,     "Tight Range Threshold %", group="Contraction")
+
+// Pivot Structure
+i_pivotLookback = input.int(20,       "Pivot Lookback",        group="Pivot Structure")
+i_extendedPct   = input.float(10.0,   "Extended Above MA %",   group="Pivot Structure")
+
+// Volume Signature
+i_volFast      = input.int(10,        "Volume Fast Avg",       group="Volume")
+i_volSlow      = input.int(50,        "Volume Slow Avg",       group="Volume")
+i_accumDays    = input.int(10,        "Accumulation Lookback", group="Volume")
+
+// Display
+i_showMAs      = input.bool(true,     "Show MA Ribbons",       group="Display")
+i_showResist   = input.bool(true,     "Show Resistance Line",  group="Display")
+i_showAccum    = input.bool(true,     "Show Accumulation Markers", group="Display")
+i_showLabel    = input.bool(true,     "Show Score Label",      group="Display")
+
+// ─── QUALITY GATE ───────────────────────────────────────────────────────────
+
+avgVol50       = ta.sma(volume, 50)
+passesGate     = close >= i_minPrice and avgVol50 >= i_minVolume
+
+// ─── CATEGORY 1: TREND HEALTH (0-30 pts) ───────────────────────────────────
+
+ma50  = ta.sma(close, i_maFast)
+ma150 = ta.sma(close, i_maMid)
+ma200 = ta.sma(close, i_maSlow)
+
+// Stacked alignment: 50 > 150 > 200 (8 pts)
+trendStack = ma50 > ma150 and ma150 > ma200 ? 8 : 0
+
+// Price above 50 MA (5 pts)
+trendAbove = close > ma50 ? 5 : 0
+
+// Within 25% of 52-week high (5 pts)
+high52   = ta.highest(high, 252)
+nearHigh = close >= high52 * 0.75 ? 5 : 0
+
+// RS proxy: ROC percentile vs own history (7 pts)
+// ASSUMPTION: top-percentile ROC vs own history approximates relative strength.
+// This is NOT the same as RS vs SPY — Pine free plans cannot fetch SPY data.
+roc20     = ta.roc(close, i_rsLookback)
+rocPctile = ta.percentrank(roc20, 252)
+rsScore   = rocPctile >= 70 ? 7 : rocPctile >= 50 ? 4 : 0
+
+// Higher highs + higher lows over recent 20 bars (5 pts)
+hh = ta.highest(high, 10) > ta.highest(high, 10)[10]
+hl = ta.lowest(low, 10) > ta.lowest(low, 10)[10]
+hhhlScore = hh and hl ? 5 : 0
+
+trendTotal = trendStack + trendAbove + nearHigh + rsScore + hhhlScore
+
+// ─── CATEGORY 2: CONTRACTION QUALITY (0-40 pts) ────────────────────────────
+
+// BB Width percentile over 126 bars (~6 months) (12 pts)
+[bbUpper, bbBasis, bbLower] = ta.bb(close, i_bbLength, i_bbMult)
+bbWidth   = (bbUpper - bbLower) / bbBasis * 100
+bbPctile  = ta.percentrank(bbWidth, 126)
+bbScore   = bbPctile <= 20 ? 12 : bbPctile <= 30 ? 7 : 0
+
+// ATR contraction ratio: fast ATR / slow ATR (10 pts)
+atrFast   = ta.atr(i_atrFast)
+atrSlow   = ta.atr(i_atrSlow)
+atrRatio  = atrSlow > 0 ? atrFast / atrSlow : 1.0
+atrScore  = atrRatio < 0.5 ? 10 : atrRatio < 0.7 ? 6 : 0
+
+// VCP proxy: declining ATR across 3 windows (10 pts)
+// ASSUMPTION: declining ATR across 3 time windows approximates VCP tightening.
+// Full VCP detection with swing pivots would require 100+ bars of pivot logic.
+atr10ago  = ta.atr(5)[10]
+atr20ago  = ta.atr(5)[20]
+atrNow    = ta.atr(5)
+vcpCount  = 0 + (atrNow < atr10ago ? 1 : 0) + (atr10ago < atr20ago ? 1 : 0)
+vcpScore  = vcpCount >= 2 ? 10 : vcpCount >= 1 ? 6 : 0
+
+// Tight daily range (8 pts)
+avgRange   = ta.sma((high - low) / close * 100, i_rangeAvg)
+rangeScore = avgRange < i_rangePct ? 8 : avgRange < 5.0 ? 4 : 0
+
+contractionTotal = bbScore + atrScore + vcpScore + rangeScore
+
+// ─── CATEGORY 3: VOLUME SIGNATURE (0-20 pts) ───────────────────────────────
+
+// Volume drought ratio (6 pts)
+volFastAvg   = ta.sma(volume, i_volFast)
+volSlowAvg   = ta.sma(volume, i_volSlow)
+droughtRatio = volSlowAvg > 0 ? volFastAvg / volSlowAvg : 1.0
+droughtScore = droughtRatio < 0.7 ? 6 : droughtRatio < 0.85 ? 3 : 0
+
+// Accumulation days: up day + above-avg volume in last N sessions (5 pts)
+isAccumDay(i) =>
+    close[i] > open[i] and volume[i] > volSlowAvg[i]
+
+accumCount = 0
+for i = 0 to i_accumDays - 1
+    accumCount += isAccumDay(i) ? 1 : 0
+accumScore = accumCount >= 3 ? 5 : accumCount >= 2 ? 3 : 0
+
+// Up-volume vs down-volume ratio over 20 bars (5 pts)
+upVol   = 0.0
+downVol = 0.0
+for i = 0 to 19
+    if close[i] > open[i]
+        upVol   += volume[i]
+    else
+        downVol += volume[i]
+udRatio = downVol > 0 ? upVol / downVol : 0.0
+udScore = udRatio > 1.5 ? 5 : udRatio > 1.2 ? 3 : 0
+
+// Volume on higher lows (4 pts)
+// Proxy: check if volume at most recent pivot low > volume at prior pivot low
+pivotLow1  = ta.pivotlow(low, 3, 3)
+pivotLow2  = ta.pivotlow(low, 3, 3)[10]
+volAtLow1  = ta.valuewhen(not na(pivotLow1), volume, 0)
+volAtLow2  = ta.valuewhen(not na(pivotLow2), volume, 0)
+hlVolScore = (not na(volAtLow1) and not na(volAtLow2) and volAtLow1 > volAtLow2) ? 4 : 0
+
+volumeTotal = droughtScore + accumScore + udScore + hlVolScore
+
+// ─── CATEGORY 4: PIVOT STRUCTURE (0-15 pts) ────────────────────────────────
+
+// Distance from 20-bar resistance (6 pts)
+resist    = ta.highest(high, i_pivotLookback)
+distPct   = resist > 0 ? (resist - close) / resist * 100 : 99
+pivotDist = distPct <= 3 ? 6 : distPct <= 5 ? 4 : distPct <= 8 ? 2 : 0
+
+// Resistance touches: bars where high reaches within 1% of resistance (4 pts)
+touchZone  = resist * 0.99
+touchCount = 0
+for i = 0 to i_pivotLookback - 1
+    touchCount += high[i] >= touchZone ? 1 : 0
+touchScore = touchCount >= 2 ? 4 : 0
+
+// Tight closes near highs: avg position of close within bar range (3 pts)
+closePos      = ta.sma((close - low) / math.max(high - low, 0.01), 5)
+closePosScore = closePos > 0.7 ? 3 : 0
+
+// Higher swing lows (2 pts)
+swLow1  = ta.pivotlow(low, 5, 5)
+swLow2  = ta.pivotlow(low, 5, 5)[10]
+hlScore = (not na(swLow1) and not na(swLow2) and swLow1 > swLow2) ? 2 : 0
+
+// Extension penalty: too far above MA50 is risky, not coiled (-5 pts)
+extendedPct = ma50 > 0 ? (close - ma50) / ma50 * 100 : 0
+penalty     = extendedPct > i_extendedPct ? -5 : 0
+
+pivotTotal = math.max(pivotDist + touchScore + closePosScore + hlScore + penalty, 0)
+
+// ─── CATALYST AWARENESS: NOT AVAILABLE IN PINE ─────────────────────────────
+// Catalyst data (earnings dates, news, sector ETF rankings, short interest)
+// is not available as Pine built-in data. This category (15 pts) is scored
+// only by the Yahoo-based scanner. Pine max is therefore 105, not 120.
+
+// ─── COMPOSITE SCORE ────────────────────────────────────────────────────────
+
+// Apply quality gate: if stock fails minimum price/volume, score is 0
+pineScore = passesGate ? trendTotal + contractionTotal + volumeTotal + pivotTotal : 0
+
+// Classification (adjusted thresholds for Pine's 105-pt max)
+classification = pineScore >= 72 ? "COILED SPRING" :
+                 pineScore >= 50 ? "BUILDING BASE" : "BELOW THRESHOLD"
+
+scoreColor = pineScore >= 72 ? color.green :
+             pineScore >= 50 ? color.yellow : color.gray
+
+// ─── VISUAL: MA RIBBONS ────────────────────────────────────────────────────
+
+plot_ma50  = plot(i_showMAs ? ma50  : na, "MA 50",  color.new(color.blue, 30),   linewidth=1)
+plot_ma150 = plot(i_showMAs ? ma150 : na, "MA 150", color.new(color.orange, 30),  linewidth=1)
+plot_ma200 = plot(i_showMAs ? ma200 : na, "MA 200", color.new(color.red, 30),     linewidth=1)
+
+// Fill between MA50 and MA200: green when stacked (bullish), red when inverted
+maFillColor = ma50 > ma200 ? color.new(color.green, 90) : color.new(color.red, 90)
+fill(plot_ma50, plot_ma200, maFillColor, title="MA Ribbon Fill")
+
+// ─── VISUAL: RESISTANCE LINE ───────────────────────────────────────────────
+
+plot(i_showResist ? resist : na, "Resistance (20-bar high)", color.new(color.white, 40),
+     linewidth=2, style=plot.style_stepline_diamond)
+
+// ─── VISUAL: ACCUMULATION DAY MARKERS ──────────────────────────────────────
+
+isAccumToday = close > open and volume > volSlowAvg
+plotshape(i_showAccum and isAccumToday ? low : na,
+          title="Accumulation Day", style=shape.triangleup,
+          location=location.belowbar, color=color.new(color.green, 20),
+          size=size.tiny)
+
+// ─── VISUAL: SCORE LABEL (top-right, last bar only) ────────────────────────
+
+if barstate.islast and i_showLabel
+    gateText = passesGate ? "" : "\n--- QUALITY GATE FAILED ---"
+    labelText = "COILED SPRING SCORE [v2]" +
+         "\n" + classification +
+         "\n─────────────────────" +
+         "\nTotal: " + str.tostring(pineScore) + " / 105" +
+         "\n─────────────────────" +
+         "\nTrend Health:      " + str.tostring(trendTotal)       + " / 30" +
+         "\nContraction:       " + str.tostring(contractionTotal) + " / 40" +
+         "\nVolume Signature:  " + str.tostring(volumeTotal)      + " / 20" +
+         "\nPivot Structure:   " + str.tostring(pivotTotal)       + " / 15" +
+         "\nCatalyst:          N/A (scanner only)" +
+         gateText
+
+    label.new(bar_index + 3, high,
+              text=labelText,
+              style=label.style_label_left,
+              color=color.new(scoreColor, 20),
+              textcolor=color.white,
+              textalign=text.align_left,
+              size=size.normal)
+
+// ─── WATCHLIST COLUMN OUTPUT ────────────────────────────────────────────────
+
+// Add this indicator to a TradingView watchlist column to sort by score.
+plot(pineScore, "CS Score", display=display.status_line)
+
+// Also plot individual category scores for the status line
+plot(trendTotal,       "Trend",       display=display.status_line)
+plot(contractionTotal, "Contraction", display=display.status_line)
+plot(volumeTotal,      "Volume",      display=display.status_line)
+plot(pivotTotal,       "Pivot",       display=display.status_line)
