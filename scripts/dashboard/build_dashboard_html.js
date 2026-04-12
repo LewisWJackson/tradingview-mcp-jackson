@@ -273,16 +273,16 @@ try {
   console.warn('Could not read rules.json:', e.message);
 }
 
-// Load explosion scanner results if present
-let explosionResults = null;
+// Load coiled spring scanner results if present
+let coiledSpringResults = null;
 try {
-  const explosionPath = path.resolve(path.dirname(process.argv[1] || '.'), 'scanner/explosion_results.json');
-  if (fs.existsSync(explosionPath)) {
-    explosionResults = JSON.parse(fs.readFileSync(explosionPath, 'utf8'));
-    console.log(`[explosion] loaded ${explosionResults.results?.length || 0} candidates from ${explosionResults.scanDate}`);
+  const coiledPath = path.resolve(path.dirname(process.argv[1] || '.'), '../scanner/coiled_spring_results.json');
+  if (fs.existsSync(coiledPath)) {
+    coiledSpringResults = JSON.parse(fs.readFileSync(coiledPath, 'utf8'));
+    console.log(`[coiled-spring] loaded ${coiledSpringResults.results?.length || 0} candidates from ${coiledSpringResults.scanDate}`);
   }
 } catch (e) {
-  console.warn('Could not read explosion results:', e.message);
+  console.warn('Could not read coiled spring results:', e.message);
 }
 
 // ---------- parsers ----------
@@ -1821,10 +1821,10 @@ function buildAlertBanner() {
     alerts.push({ urgency: 'blue', icon: '📰', text: esc(n.title) });
   }
 
-  // Explosion Potential high-score alerts
-  for (const c of (explosionResults?.results || [])) {
+  // Coiled Springs high-score alerts
+  for (const c of (coiledSpringResults?.results || [])) {
     if (c.score >= 75) {
-      alerts.push({ urgency: 'green', icon: '💥', text: `${esc(c.symbol)} ${c.score}/100 — ${esc(c.play).slice(0, 70)}` });
+      alerts.push({ urgency: 'green', icon: '🌀', text: `${esc(c.symbol)} ${c.score}/120 — ${esc(c.play).slice(0, 70)}` });
     }
   }
 
@@ -1848,29 +1848,46 @@ function buildAlertBanner() {
 
 const alertBannerHtml = buildAlertBanner();
 
-// ---------- Explosion Potential renderer ----------
+// ---------- Coiled Springs renderer ----------
 
-function renderExplosionCard(c) {
+function renderCoiledSpringCard(c) {
   const esc = (s) => String(s || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  const isEP = (c.tags || []).some(t => /episodic/i.test(t));
-  const cardClass = isEP ? 'exp-card exp-card-ep' : 'exp-card';
 
-  // Score color
-  let scoreColor = '#e74c3c'; // red < 50
-  if (c.score >= 75) scoreColor = '#2ecc71';
-  else if (c.score >= 60) scoreColor = '#f1c40f';
+  // Classification badge
+  const classMap = {
+    coiled_spring: { label: 'COILED SPRING', bg: 'rgba(46,204,113,0.2)', color: '#2ecc71' },
+    building_base: { label: 'BUILDING BASE', bg: 'rgba(241,196,15,0.2)', color: '#f1c40f' },
+    catalyst_loaded: { label: 'CATALYST LOADED', bg: 'rgba(59,130,246,0.2)', color: '#3b82f6' },
+  };
+  const cls = classMap[c.classification] || classMap.building_base;
+
+  // Score color (0-120 scale)
+  let scoreColor = '#e74c3c';
+  if (c.score >= 90) scoreColor = '#2ecc71';
+  else if (c.score >= 70) scoreColor = '#f1c40f';
   else if (c.score >= 50) scoreColor = '#e67e22';
+
+  // Confidence border
+  let borderStyle = '1px solid var(--border)';
+  let dimOverlay = '';
+  if (c.scoreConfidence === 'high') borderStyle = '2px solid #2ecc71';
+  else if (c.scoreConfidence === 'medium') borderStyle = '2px dashed #f1c40f';
+  else if (c.scoreConfidence === 'low') {
+    borderStyle = '1px solid var(--border)';
+    dimOverlay = 'opacity:0.7;';
+  }
 
   const changePctStr = c.changePct >= 0 ? `+${c.changePct.toFixed(2)}%` : `${c.changePct.toFixed(2)}%`;
   const changeColor = c.changePct >= 0 ? 'var(--green)' : 'var(--red, #e74c3c)';
 
-  // Signal bars
+  // 5-category signal bars with distinct colors
   const signals = c.signals || {};
   const bars = [
-    { label: 'Trend', value: signals.trendStructure || 0, max: 25 },
-    { label: 'Volume', value: signals.volumeMomentum || 0, max: 30 },
-    { label: 'VCP', value: signals.volatilityContraction || 0, max: 25 },
-    { label: 'Catalyst', value: signals.catalystPremium || 0, max: 20 },
+    { label: 'Trend',       value: signals.trendHealth || 0,        max: 30, color: '#3b82f6' },
+    { label: 'Contraction', value: signals.contraction || 0,        max: 40, color: '#f59e0b' },
+    { label: 'Volume',      value: signals.volumeSignature || 0,    max: 20, color: '#8b5cf6' },
+    { label: 'Pivot',       value: signals.pivotProximity || 0,     max: 15, color: '#2ecc71' },
+    { label: 'Catalyst',    value: signals.catalystAwareness || 0,  max: 15, color: '#6b7280' },
   ];
   const barsHtml = bars.map(b => {
     const pct = Math.min(100, (b.value / b.max) * 100);
@@ -1878,26 +1895,32 @@ function renderExplosionCard(c) {
       <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text-dim);margin-bottom:2px;">
         <span>${b.label}</span><span>${b.value}/${b.max}</span>
       </div>
-      <div class="exp-bar-track"><div class="exp-bar-fill" style="width:${pct}%"></div></div>
+      <div class="exp-bar-track"><div class="exp-bar-fill" style="width:${pct}%;background:${b.color};"></div></div>
     </div>`;
   }).join('');
 
-  // Tags
-  const tagsHtml = (c.tags || []).map(t => {
-    const tl = t.toLowerCase();
-    if (/accumulate/i.test(tl)) return '<span class="exp-tag exp-tag-acc">ACCUMULATE</span>';
-    if (/harvest/i.test(tl)) return '<span class="exp-tag exp-tag-harv">HARVEST</span>';
-    if (/episodic/i.test(tl)) return '<span class="exp-tag exp-tag-ep">EPISODIC PIVOT</span>';
-    return `<span class="exp-tag">${esc(t.toUpperCase())}</span>`;
-  }).join(' ');
+  // Breakout risk indicator
+  const riskColorMap = { low: '#2ecc71', medium: '#f1c40f', high: '#e74c3c' };
+  const riskColor = riskColorMap[c.breakoutRisk] || '#6b7280';
+  const riskDrivers = (c.breakoutRiskDrivers || []).map(d => esc(d.replace(/_/g, ' '))).join(', ');
+  const riskHtml = `<div style="font-size:11px;margin-bottom:6px;">
+    <span style="color:${riskColor};font-weight:700;">&#9679; Risk: ${esc((c.breakoutRisk || 'unknown').toUpperCase())}</span>
+    ${riskDrivers ? `<span style="color:var(--text-dim);margin-left:6px;">${riskDrivers}</span>` : ''}
+  </div>`;
 
-  // Metrics
+  // Red flags as warning badges
+  const redFlagsHtml = (c.redFlags || []).length ? `<div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:6px;">
+    ${c.redFlags.map(f => `<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:4px;background:rgba(241,196,15,0.2);color:#f1c40f;">&#9888; ${esc(f.replace(/_/g, ' ').toUpperCase())}</span>`).join('')}
+  </div>` : '';
+
+  // Key metrics
   const d = c.details || {};
   const metricsHtml = `<div class="exp-metrics">
-    Vol: ${(d.volumeRatio || 0).toFixed(1)}x &nbsp;|&nbsp;
-    IVR: ${d.ivRank != null ? d.ivRank : '—'} &nbsp;|&nbsp;
-    52wk: ${d.distFrom52wkHigh != null ? d.distFrom52wkHigh.toFixed(1) + '%' : '—'} &nbsp;|&nbsp;
-    EMA: ${d.emaStacked ? '✅ stacked' : '—'}
+    Dist res: ${d.distFromResistance != null ? d.distFromResistance.toFixed(1) + '%' : '—'} &nbsp;|&nbsp;
+    ATR: ${d.atrRatio != null ? d.atrRatio.toFixed(2) : '—'} &nbsp;|&nbsp;
+    VCP: ${d.vcpContractions != null ? d.vcpContractions + 'x' : '—'} &nbsp;|&nbsp;
+    VolDrought: ${d.volDroughtRatio != null ? d.volDroughtRatio.toFixed(2) : '—'} &nbsp;|&nbsp;
+    Accum: ${d.accumulationDays != null ? d.accumulationDays + 'd' : '—'}
   </div>`;
 
   // News (top 2)
@@ -1907,7 +1930,10 @@ function renderExplosionCard(c) {
     return `<a class="exp-news-link" href="${esc(n.link)}" target="_blank" rel="noopener">${esc(n.title)}${ago ? ` <span class="exp-news-ago">${ago}</span>` : ''}</a>`;
   }).join('')}</div>` : '';
 
-  return `<div class="${cardClass}" data-tags="${esc((c.tags || []).join(' ').toLowerCase())}">
+  // Confidence label for low
+  const confLabel = c.scoreConfidence === 'low' ? '<div style="font-size:10px;color:var(--text-dim);text-align:center;margin-top:2px;">limited data</div>' : '';
+
+  return `<div class="exp-card" data-classification="${esc(c.classification)}" style="border:${borderStyle};${dimOverlay}">
     <div class="exp-card-header">
       <div>
         <span style="font-size:18px;font-weight:700;">${esc(c.symbol)}</span>
@@ -1916,46 +1942,66 @@ function renderExplosionCard(c) {
           <span style="font-size:15px;font-weight:600;">$${(c.price || 0).toFixed(2)}</span>
           <span style="font-size:12px;color:${changeColor};margin-left:6px;">${changePctStr}</span>
         </div>
+        <div style="margin-top:4px;">
+          <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:4px;background:${cls.bg};color:${cls.color};">${cls.label}</span>
+        </div>
       </div>
-      <div class="exp-score" style="background:${scoreColor};">${c.score}</div>
+      <div>
+        <div class="exp-score" style="background:${scoreColor};">${c.score}</div>
+        ${confLabel}
+      </div>
     </div>
     <div class="exp-signals">${barsHtml}</div>
-    <div class="exp-tags">${tagsHtml}</div>
+    ${riskHtml}
+    ${redFlagsHtml}
     ${c.play ? `<div class="exp-play">${esc(c.play)}</div>` : ''}
     ${metricsHtml}
     ${newsHtml}
   </div>`;
 }
 
-function buildExplosionHtml() {
-  if (!explosionResults || !explosionResults.results?.length) {
+function buildCoiledSpringHtml() {
+  if (!coiledSpringResults || !coiledSpringResults.results?.length) {
     return `<div class="panel span-12">
-      <h2>💥 Explosion Potential</h2>
-      <p style="color:var(--text-dim);padding:20px;">No explosion scan results found. Run the scanner to populate this tab.</p>
+      <h2>🌀 Coiled Springs</h2>
+      <p style="color:var(--text-dim);padding:20px;">No coiled spring scan results found. Run the scanner to populate this tab.</p>
     </div>`;
   }
-  const r = explosionResults;
+  const r = coiledSpringResults;
+
+  // Market regime banner
+  const mr = r.marketRegime || {};
+  const regimeMap = {
+    constructive: { bg: 'rgba(46,204,113,0.15)', border: '#2ecc71', text: `Market Regime: Constructive (VIX ${mr.vixLevel || '—'})` },
+    cautious:     { bg: 'rgba(241,196,15,0.15)', border: '#f1c40f', text: `Cautious — reduced conviction (VIX ${mr.vixLevel || '—'})` },
+    defensive:    { bg: 'rgba(231,76,60,0.15)',  border: '#e74c3c', text: `DEFENSIVE REGIME — NO NEW ENTRIES (VIX ${mr.vixLevel || '—'})` },
+  };
+  const regime = regimeMap[mr.regime] || regimeMap.constructive;
+  const regimeBanner = `<div style="padding:12px 20px;margin-bottom:16px;border-radius:8px;background:${regime.bg};border-left:4px solid ${regime.border};font-weight:600;font-size:14px;">
+    ${regime.text}
+  </div>`;
+
   const meta = `<div style="color:var(--text-dim);font-size:12px;margin-bottom:16px;">
     Scanned: ${r.scanDate || '—'} &nbsp;|&nbsp;
     Universe: ${r.universe || '—'} → Stage 1: ${r.stage1Passed || '—'} → Qualified: ${r.results.length}
-    &nbsp;|&nbsp; TV deep scan: ${r.tvDeepScan ? 'Yes' : 'No'}
   </div>`;
   const filters = `<div style="margin-bottom:16px;display:flex;gap:6px;flex-wrap:wrap;">
     <button class="exp-filter active" data-filter="all">All</button>
-    <button class="exp-filter" data-filter="accumulate">Accumulate</button>
-    <button class="exp-filter" data-filter="harvest">Harvest</button>
-    <button class="exp-filter" data-filter="episodic pivot">Episodic Pivot</button>
+    <button class="exp-filter" data-filter="coiled_spring">Coiled Spring</button>
+    <button class="exp-filter" data-filter="building_base">Building Base</button>
+    <button class="exp-filter" data-filter="catalyst_loaded">Catalyst Loaded</button>
   </div>`;
-  const cards = r.results.map(renderExplosionCard).join('\n');
+  const cards = r.results.map(renderCoiledSpringCard).join('\n');
   return `<div class="panel span-12">
-    <h2>💥 Explosion Potential</h2>
+    <h2>🌀 Coiled Springs</h2>
+    ${regimeBanner}
     ${meta}
     ${filters}
     <div class="exp-grid">${cards}</div>
   </div>`;
 }
 
-const explosionHtml = buildExplosionHtml();
+const coiledSpringHtml = buildCoiledSpringHtml();
 
 // ---------- generate HTML ----------
 
@@ -2784,7 +2830,7 @@ const html = `<!DOCTYPE html>
     font-family: monospace;
   }
 
-  /* Explosion Potential section */
+  /* Coiled Springs section */
   .exp-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -2822,7 +2868,7 @@ const html = `<!DOCTYPE html>
   }
   .exp-signals {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(5, 1fr);
     gap: 8px;
     margin-bottom: 10px;
   }
@@ -2987,9 +3033,9 @@ ${alertBannerHtml}
     <span class="main-tab-count">live feed</span>
   </button>
   <button class="main-tab" data-target="explosion">
-    <span class="main-tab-icon">💥</span>
-    <span class="main-tab-label">Explosion Potential</span>
-    <span class="main-tab-count">${explosionResults?.results?.length || 0} candidates</span>
+    <span class="main-tab-icon">🌀</span>
+    <span class="main-tab-label">Coiled Springs</span>
+    <span class="main-tab-count">${coiledSpringResults?.results?.length || 0} candidates</span>
   </button>
 </nav>
 
@@ -3027,10 +3073,10 @@ ${alertBannerHtml}
   ${futuresHtml}
   </div><!-- end futures -->
 
-  <!-- ══════ EXPLOSION POTENTIAL section ══════ -->
+  <!-- ══════ COILED SPRINGS section ══════ -->
   <div class="main-section section-explosion">
-  ${explosionHtml}
-  </div><!-- end explosion -->
+  ${coiledSpringHtml}
+  </div><!-- end coiled-springs -->
 
   <!-- ══════ HISTORICAL section 1: KPIs ══════ -->
   <div class="main-section section-historical">
@@ -3560,7 +3606,7 @@ document.querySelectorAll('.main-tab').forEach(tab => {
   });
 });
 
-// Explosion Potential filter buttons
+// Coiled Springs filter buttons
 document.querySelectorAll('.exp-filter').forEach(btn => {
   btn.addEventListener('click', () => {
     document.querySelectorAll('.exp-filter').forEach(b => b.classList.remove('active'));
@@ -3570,8 +3616,7 @@ document.querySelectorAll('.exp-filter').forEach(btn => {
       if (filter === 'all') {
         card.style.display = '';
       } else {
-        const tags = card.querySelector('.exp-tags')?.textContent?.toLowerCase() || '';
-        card.style.display = tags.includes(filter.replace('_', ' ')) ? '' : 'none';
+        card.style.display = card.dataset.classification === filter ? '' : 'none';
       }
     });
   });
