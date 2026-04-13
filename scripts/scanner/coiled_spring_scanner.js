@@ -1,21 +1,21 @@
 #!/usr/bin/env node
 /**
- * Coiled Spring Scanner v2 — Main Orchestrator
+ * Coiled Spring Scanner v3 — Main Orchestrator
  *
- * Ties Stage 1/1b (Yahoo screen) + scoring engine together.
+ * Ties Stage 1/1b (Yahoo screen) + scoring engine + benchmark data together.
  * Writes coiled_spring_results.json.
  *
  * Usage:
  *   node scripts/scanner/coiled_spring_scanner.js [--top=N]
  *
- *   --top=N   Max candidates to output (default 20)
+ *   --top=N   Max candidates to output (default 15)
  */
 
 import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 
-import { runStage1 } from './yahoo_screen_v2.js';
+import { runStage1, fetchOHLCV, getCrumb } from './yahoo_screen_v2.js';
 import {
   scoreTrendHealth,
   scoreContractionQuality,
@@ -23,8 +23,14 @@ import {
   scorePivotStructure,
   scoreCatalystAwareness,
   computeCompositeScore,
+  computeProbabilityScore,
   classifyCandidate,
   generatePlay,
+  calcSectorMomentumRank,
+  calcRiskCategory,
+  calcEntryTrigger,
+  generateNotes,
+  REGIME_MULTIPLIERS,
 } from './scoring_v2.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -36,29 +42,14 @@ const __dirname = dirname(__filename);
 
 const args = process.argv.slice(2);
 const topArg = args.find((a) => a.startsWith('--top='));
-const topN = topArg ? parseInt(topArg.split('=')[1], 10) || 20 : 20;
-
-// ---------------------------------------------------------------------------
-// Sector mapping (symbol → sector ETF)
-// ---------------------------------------------------------------------------
-
-const SECTOR_MAP = {
-  // This is a simplified mapping. For full accuracy, use Yahoo's sector field.
-  // The scanner uses sectorRankings from fetchMarketRegime instead.
-};
-
-function getSectorRank(symbol, quote, sectorRankings) {
-  // Use Yahoo sector field if available, map to ETF, find rank
-  // Fallback: return 6 (middle of pack)
-  return 6;
-}
+const topN = topArg ? parseInt(topArg.split('=')[1], 10) || 15 : 15;
 
 // ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
 
 async function main() {
-  console.log('=== Coiled Spring Scanner v2 ===\n');
+  console.log('=== Coiled Spring Scanner v3 ===\n');
 
   // 1. Load universe
   const universeFile = resolve(__dirname, 'universe.json');
@@ -68,34 +59,88 @@ async function main() {
   // 2. Run Stage 1 + 1b
   const { candidates, marketRegime, sectorRankings, stats } = await runStage1(symbols);
 
+  // 3. Fetch benchmark data (SPY, QQQ, sector ETFs)
+  console.log('  Fetching benchmark data (SPY, QQQ, sector ETFs)...');
+  const SECTOR_ETF_LIST = ['XLK', 'XLF', 'XLV', 'XLE', 'XLI', 'XLY', 'XLP', 'XLU', 'XLB', 'XLRE', 'XLC'];
+  const benchmarkSymbols = ['SPY', 'QQQ', ...SECTOR_ETF_LIST];
+
+  const { crumb, cookies } = await getCrumb();
+  const benchmarkData = {};
+  for (const sym of benchmarkSymbols) {
+    const result = await fetchOHLCV(sym, crumb, cookies);
+    benchmarkData[sym] = result.bars || [];
+  }
+
+  const spyOhlcv = benchmarkData['SPY'] || [];
+  const qqqOhlcv = benchmarkData['QQQ'] || [];
+  const sectorETFData = {};
+  for (const etf of SECTOR_ETF_LIST) {
+    sectorETFData[etf] = benchmarkData[etf] || [];
+  }
+  const sectorRanks = calcSectorMomentumRank(sectorETFData);
+  console.log(`  Benchmarks loaded. Top sectors: ${JSON.stringify(Object.entries(sectorRanks).sort((a, b) => a[1] - b[1]).slice(0, 3).map(([s, r]) => `${s}=#${r}`))}`);
+
   console.log(`\n[scoring] scoring ${candidates.length} candidates...\n`);
 
-  // 3. Score each candidate
+  // 4. Score each candidate
   const scored = [];
   for (const c of candidates) {
-    const sectorRank = getSectorRank(c.symbol, c, sectorRankings);
+    const scoringContext = {
+      regime: marketRegime,
+      spyOhlcv,
+      qqqOhlcv,
+      sectorRanks,
+      candidateSector: c.sector || '',
+    };
 
-    const trend = scoreTrendHealth(c);
+    const trend = scoreTrendHealth(c, scoringContext);
     const contraction = scoreContractionQuality(c);
     const volume = scoreVolumeSignature(c);
     const pivot = scorePivotStructure(c);
-    const catalyst = scoreCatalystAwareness({
-      ...c,
-      sectorRank,
-    });
+    const catalyst = scoreCatalystAwareness(c, scoringContext);
 
     const composite = computeCompositeScore(
       { trend, contraction, volume, pivot, catalyst },
-      { regime: marketRegime.regime, sectorRank },
+      { regime: marketRegime.regime },
     );
+
+    const signals = { trendHealth: trend, contraction, volumeSignature: volume, pivotProximity: pivot, catalystAwareness: catalyst };
+    const probability = computeProbabilityScore(signals, scoringContext);
 
     const classification = classifyCandidate({
       score: composite.score,
+      price: c.price,
+      avgVol10d: c.avgVol10d,
       signals: composite.signals,
-      distFromResistance: pivot.distFromResistance,
+      details: {
+        distFromResistance: pivot.distFromResistance,
+        extendedAbove50ma: pivot.extendedAbove50ma,
+        extensionPct: c.ma50 > 0 ? ((c.price - c.ma50) / c.ma50 * 100) : 0,
+        hasLargeGap: pivot.gapFormedResistance || false,
+        atrExpanding: false,
+      },
     });
 
-    if (classification === 'below_threshold') continue;
+    if (classification === 'below_threshold' || classification === 'disqualified') continue;
+
+    const { risk_category, suggested_stop_percent } = calcRiskCategory(classification, {
+      vcpContractions: contraction.vcpContractions,
+      atrPercentile: contraction.atrPercentile || 50,
+    });
+
+    const { entry_trigger } = calcEntryTrigger(classification, {
+      resistancePrice: pivot.resistancePrice || 0,
+      ma50: c.ma50,
+    });
+
+    const notes = generateNotes(
+      { contraction, catalystAwareness: catalyst },
+      { sectorMomentumRank: catalyst.sectorMomentumRank, earningsDaysOut: catalyst.earningsDaysOut },
+    );
+
+    const trade_readiness = probability.trade_readiness &&
+      (classification === 'coiled_spring' || classification === 'catalyst_loaded') &&
+      composite.breakoutRisk !== 'high';
 
     const play = generatePlay(c.symbol, classification, {
       ma50: c.ma50,
@@ -104,72 +149,100 @@ async function main() {
     }, marketRegime.regime);
 
     scored.push({
+      rank: 0,
       symbol: c.symbol,
       name: c.name,
       price: c.price,
       changePct: c.changePct,
-      score: composite.score,
-      scoreConfidence: composite.scoreConfidence,
-      classification,
-      breakoutRisk: composite.breakoutRisk,
-      breakoutRiskDrivers: composite.breakoutRiskDrivers,
-      redFlags: c.redFlags,
+      probability_score: probability.probability_score,
+      setup_quality: probability.setup_quality,
+      trade_readiness,
+      setup_type: classification,
+      composite_score: composite.score,
+      composite_confidence: composite.scoreConfidence,
+      distance_to_resistance: pivot.distFromResistance,
+      resistance_strength: pivot.resistanceStrength || 1,
+      risk_level: composite.breakoutRisk,
+      risk_category,
+      suggested_stop_percent,
+      entry_trigger,
+      catalyst_tag: catalyst.catalystTag || 'catalyst_unknown',
+      regime_multiplier: probability.regime_multiplier,
+      factor_breakdown: probability.factor_breakdown,
       signals: composite.signals,
       details: {
-        ma50: c.ma50,
-        ma150: c.ma150,
-        ma200: c.ma200,
+        ma50: c.ma50, ma150: c.ma150, ma200: c.ma200,
         maStacked: c.ma50 > c.ma150 && c.ma150 > c.ma200,
         relStrengthPctile: c.relStrengthPctile || 0,
         bbWidthPctile: contraction.bbWidthPctile,
         atrRatio: contraction.atrRatio,
+        atrPercentile: contraction.atrPercentile,
         vcpContractions: contraction.vcpContractions,
         vcpDepths: contraction.vcpDepths,
+        vcpQuality: contraction.vcpQuality,
         dailyRangePct: contraction.dailyRangePct,
+        confirmingSignals: contraction.confirmingSignals,
         volDroughtRatio: volume.volDroughtRatio,
-        accumulationDays: volume.accumulationDays,
+        accDistScore: volume.accDistScore,
         upDownVolRatio: volume.upDownVolRatio,
+        obvSlopeNormalized: volume.obvSlopeNormalized,
+        supportVolumeRatio: volume.supportVolumeRatio,
         distFromResistance: pivot.distFromResistance,
         resistanceTouches: pivot.resistanceTouches,
+        resistanceStrength: pivot.resistanceStrength,
         extendedAbove50ma: pivot.extendedAbove50ma,
+        gapFormedResistance: pivot.gapFormedResistance,
         earningsDaysOut: catalyst.earningsDaysOut,
         sectorMomentumRank: catalyst.sectorMomentumRank,
         shortFloat: catalyst.shortFloat,
-        ivContext: c.ivContext,
-        ivLabel: c.ivLabel,
+        ivContext: c.ivContext, ivLabel: c.ivLabel,
       },
+      breakout_risk: composite.breakoutRisk,
+      breakout_risk_drivers: composite.breakoutRiskDrivers,
+      red_flags: c.redFlags || [],
       play,
-      news: c.news,
+      notes,
+      news: c.news || [],
     });
   }
 
-  // 4. Sort by score descending, take top N
-  scored.sort((a, b) => b.score - a.score);
+  // 5. Sort by probability_score, take top N
+  scored.sort((a, b) => b.probability_score - a.probability_score);
   const results = scored.slice(0, topN);
+  // Assign temporary ranks
+  results.forEach((r, i) => { r.rank = i + 1; });
 
-  // 5. Write output
+  const regimeMultiplier = REGIME_MULTIPLIERS[marketRegime.regime] || 1.0;
+
+  // 6. Write output
   const output = {
     scanDate: new Date().toISOString().slice(0, 10),
     scannedAt: new Date().toISOString(),
     universe: stats.universe,
     stage1Passed: stats.passedFilter,
     marketRegime,
+    regimeMultiplier,
+    benchmarks: {
+      spy20dReturn: spyOhlcv.length >= 21 ? Math.round(((spyOhlcv[spyOhlcv.length - 1].close - spyOhlcv[spyOhlcv.length - 21].close) / spyOhlcv[spyOhlcv.length - 21].close) * 10000) / 10000 : null,
+      qqq20dReturn: qqqOhlcv.length >= 21 ? Math.round(((qqqOhlcv[qqqOhlcv.length - 1].close - qqqOhlcv[qqqOhlcv.length - 21].close) / qqqOhlcv[qqqOhlcv.length - 21].close) * 10000) / 10000 : null,
+    },
+    sectorRanks,
     results,
   };
 
   const outFile = resolve(__dirname, 'coiled_spring_results.json');
   writeFileSync(outFile, JSON.stringify(output, null, 2));
 
-  // 6. Summary
+  // 7. Summary
   console.log(`\n=== Results ===`);
-  console.log(`Market regime: ${marketRegime.regime} (VIX ${marketRegime.vixLevel})`);
+  console.log(`Market regime: ${marketRegime.regime} (VIX ${marketRegime.vixLevel}) | Multiplier: ${regimeMultiplier}`);
   console.log(`Universe: ${stats.universe} → Stage 1: ${stats.passedFilter} → Scored: ${scored.length} → Top ${results.length}`);
 
   for (const r of results) {
-    const conf = r.scoreConfidence === 'high' ? '' : ` [${r.scoreConfidence} confidence]`;
-    const risk = r.breakoutRisk !== 'low' ? ` ⚠${r.breakoutRisk} risk` : '';
-    const flags = r.redFlags.length > 0 ? ` 🚩${r.redFlags.join(',')}` : '';
-    console.log(`  ${r.score} ${r.classification.padEnd(16)} ${r.symbol.padEnd(6)} $${r.price}${conf}${risk}${flags}`);
+    const quality = r.setup_quality.padEnd(8);
+    const risk = r.risk_level !== 'low' ? ` ⚠${r.risk_level}` : '';
+    const flags = (r.red_flags || []).length > 0 ? ` 🚩${r.red_flags.join(',')}` : '';
+    console.log(`  #${r.rank} ${r.probability_score}% ${quality} ${r.setup_type.padEnd(16)} ${r.symbol.padEnd(6)} $${r.price} | ${r.entry_trigger}${risk}${flags}`);
   }
 
   console.log(`\nOutput: ${outFile}`);

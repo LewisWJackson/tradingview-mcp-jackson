@@ -37,7 +37,7 @@ function yahooGet(url, cookies) {
 }
 
 /** Auth flow — returns { crumb, cookies } */
-async function getCrumb() {
+export async function getCrumb() {
   const init = await yahooGet('https://fc.yahoo.com', '');
   const setCookie = init.headers['set-cookie'] || [];
   const cookies = setCookie.map((c) => c.split(';')[0]).join('; ');
