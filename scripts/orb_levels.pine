@@ -2,9 +2,9 @@
 //  Opening Range Breakout — NQ / ES
 //  1-minute chart | RTH 09:30–16:00 ET
 //
-//  65bp levels compound from each prior level's price:
-//    Above  →  ORH × 1.0065 ^ i
-//    Below  →  ORL × 0.9935 ^ i
+//  Fixed-point levels above ORH and below ORL:
+//    Above  →  ORH + (i × pts)   e.g. ORH+65, ORH+130, ORH+195 ...
+//    Below  →  ORL - (i × pts)   e.g. ORL-65, ORL-130, ORL-195 ...
 //
 //  Lines + prices pinned to right-hand axis via plot() + trackprice=true
 // ═══════════════════════════════════════════════════════════════════════════
@@ -15,8 +15,8 @@ indicator("ORB — NQ / ES", overlay=true, max_labels_count=30)
 i_orMin  = input.int  (5,    "OR Window (minutes)",   minval=1,  maxval=60, group="Opening Range",
              tooltip="Number of 1-min bars that define the opening range (default: first 5 min)")
 i_levels = input.int  (5,    "Levels Each Side",      minval=1,  maxval=10, group="Levels")
-i_bps    = input.float(65.0, "Basis Points / Level",  minval=1.0,           group="Levels",
-             tooltip="Each level = prior level price × (1 ± bps/10000). 65bp ≈ 0.65%")
+i_pts    = input.float(65.0, "Points per Level",      minval=0.25,          group="Levels",
+             tooltip="Fixed point increment per level. 65 = ORH+65, ORH+130, ORH+195 ...")
 i_extend = input.bool (false,"Keep Levels Outside RTH",                     group="Style",
              tooltip="If off, levels disappear outside 09:30–16:00 ET")
 i_shade  = input.bool (true, "Shade OR Formation",                          group="Style")
@@ -59,13 +59,11 @@ bgcolor(i_shade and in_rth and not locked ? C_SHADE : na, title="OR Window")
 // show = OR is locked AND (we're in RTH, or user wants outside-RTH extension)
 show = locked and (in_rth or i_extend)
 
-// ─── 65bp Compounding Multipliers ─────────────────────────────────────────────
-mul_up = 1.0 + i_bps / 10000.0   // e.g. 1.0065
-mul_dn = 1.0 - i_bps / 10000.0   // e.g. 0.9935
-
-// Level price helpers — na when hidden or beyond user's level count
-u(i) => show and i <= i_levels ? orh * math.pow(mul_up, i) : na
-d(i) => show and i <= i_levels ? orl * math.pow(mul_dn, i) : na
+// ─── Fixed-Point Level Helpers ────────────────────────────────────────────────
+// Level i above: ORH + i × pts   (e.g. 25238.25 + 65 = 25303.25)
+// Level i below: ORL - i × pts   (e.g. ORL - 65, ORL - 130 ...)
+u(i) => show and i <= i_levels ? orh + i * i_pts : na
+d(i) => show and i <= i_levels ? orl - i * i_pts : na
 
 // ─── Plots — line on chart + price label pinned to right axis ─────────────────
 // plot.style_linebr = line breaks cleanly on na (no flat zero line between sessions)
@@ -107,7 +105,7 @@ if show and i_labels and (barstate.islast or barstate.isrealtime)
     array.clear(lbls)
 
     lx   = bar_index + 6
-    bpTx = str.tostring(i_bps, "#")
+    ptTx = str.tostring(i_pts, "#.##")
 
     // ORH label
     array.push(lbls, label.new(lx, orh,
@@ -121,18 +119,18 @@ if show and i_labels and (barstate.islast or barstate.isrealtime)
          color=color.new(C_ORL, 10), textcolor=color.white,
          style=label.style_label_left, size=size.small))
 
-    // Level labels above
+    // Level labels above  (+65, +130, +195 ...)
     for i = 1 to i_levels
-        lvl = orh * math.pow(mul_up, i)
+        lvl = orh + i * i_pts
         array.push(lbls, label.new(lx, lvl,
-             "+" + str.tostring(i, "#") + "×" + bpTx + "bp  " + str.tostring(lvl, "#.00"),
+             "+" + str.tostring(i * i_pts, "#.##") + "  " + str.tostring(lvl, "#.00"),
              color=color.new(C_UP, 10), textcolor=color.white,
              style=label.style_label_left, size=size.tiny))
 
-    // Level labels below
+    // Level labels below  (-65, -130, -195 ...)
     for i = 1 to i_levels
-        lvl = orl * math.pow(mul_dn, i)
+        lvl = orl - i * i_pts
         array.push(lbls, label.new(lx, lvl,
-             "-" + str.tostring(i, "#") + "×" + bpTx + "bp  " + str.tostring(lvl, "#.00"),
+             "-" + str.tostring(i * i_pts, "#.##") + "  " + str.tostring(lvl, "#.00"),
              color=color.new(C_DN, 10), textcolor=color.white,
              style=label.style_label_left, size=size.tiny))
