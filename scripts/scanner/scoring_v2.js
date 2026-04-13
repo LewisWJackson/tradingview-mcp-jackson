@@ -471,74 +471,132 @@ export function calcVolumeClustering(bars, period = 20) {
 // ---------------------------------------------------------------------------
 
 /**
- * @param {{ avgVol10d: number, avgVol3mo: number, ohlcv: Array<{open:number, close:number, volume:number, low:number}> }} d
- * @returns {{ score: number, confidence: 'high'|'medium'|'low', volDroughtRatio: number, accumulationDays: number, upDownVolRatio: number, volOnHigherLows: boolean }}
+ * @param {{ avgVol10d?: number, avgVol3mo?: number, ohlcv: Array<{open:number, close:number, volume:number, low:number, high:number}> }} d
+ * @returns {{ score: number, confidence: 'high'|'medium'|'low', volDroughtRatio: number, accDistScore: number, upDownVolRatio: number, obvSlopeNormalized: number, supportVolumeRatio: number }}
  */
 export function scoreVolumeSignature(d) {
   const bars = d.ohlcv || [];
-  let pts = 0;
-  let confidence = 'high';
+  if (bars.length < 10) return { score: 0, confidence: 'low', volDroughtRatio: 1, accDistScore: 0, upDownVolRatio: 1, obvSlopeNormalized: 0, supportVolumeRatio: 1 };
 
-  // Volume drought (6 pts)
-  const droughtRatio = d.avgVol3mo > 0 ? +(d.avgVol10d / d.avgVol3mo).toFixed(2) : 1;
-  if (droughtRatio < 0.7) pts += 6;
-  else if (droughtRatio < 0.85) pts += 3;
+  const confidence = bars.length >= 20 ? 'high' : 'medium';
+  let score = 0;
 
-  // Accumulation days in last 10 sessions (5 pts)
-  const recent10 = bars.slice(-10);
-  const avgVol = d.avgVol3mo || 0;
-  let accumDays = 0;
-  for (const b of recent10) {
-    if (b.close > b.open && b.volume > avgVol) accumDays++;
-  }
-  if (accumDays >= 3) pts += 5;
-  else if (accumDays >= 2) pts += 3;
+  // 1. Volume drought (0-5 pts)
+  const avg10d = (d.avgVol10d || bars.slice(-10).reduce((s, b) => s + b.volume, 0) / 10);
+  const avg3mo = (d.avgVol3mo || bars.reduce((s, b) => s + b.volume, 0) / bars.length);
+  const volDroughtRatio = avg3mo > 0 ? Math.round((avg10d / avg3mo) * 100) / 100 : 1;
+  if (volDroughtRatio < 0.7) score += 5;
+  else if (volDroughtRatio < 0.85) score += 3;
 
-  // Up-volume vs down-volume ratio over 20 sessions (5 pts)
+  // 2. Accumulation/Distribution score (0-5 pts)
+  const { accDistScore } = calcAccumulationScore(bars);
+  if (accDistScore >= 2.0) score += 5;
+  else if (accDistScore >= 1.3) score += 3;
+
+  // 3. Up/down volume ratio (0-3 pts)
   const recent20 = bars.slice(-20);
-  let upVol = 0;
-  let downVol = 0;
+  let upVol = 0, downVol = 0;
   for (const b of recent20) {
     if (b.close > b.open) upVol += b.volume;
     else downVol += b.volume;
   }
-  const udRatio = downVol > 0 ? +(upVol / downVol).toFixed(2) : 0;
-  if (udRatio > 1.5) pts += 5;
-  else if (udRatio > 1.2) pts += 3;
+  const upDownVolRatio = downVol > 0 ? Math.round((upVol / downVol) * 100) / 100 : upVol > 0 ? 3 : 1;
+  if (upDownVolRatio > 1.5) score += 3;
+  else if (upDownVolRatio > 1.2) score += 2;
 
-  // Volume increases on higher lows (4 pts)
-  // Find last 3 swing lows, check if volume increases at each
-  let volOnHigherLows = false;
-  if (bars.length >= 20) {
-    const swingLows = [];
-    for (let i = 2; i < bars.length - 2; i++) {
-      if (bars[i].low < bars[i - 1].low && bars[i].low < bars[i - 2].low &&
-          bars[i].low < bars[i + 1].low && bars[i].low < bars[i + 2].low) {
-        swingLows.push({ price: bars[i].low, vol: bars[i].volume });
-      }
+  // 4. Volume on higher lows (0-3 pts)
+  const swingLows = [];
+  for (let i = 2; i < bars.length - 2; i++) {
+    if (bars[i].low < bars[i-1].low && bars[i].low < bars[i-2].low &&
+        bars[i].low < bars[i+1].low && bars[i].low < bars[i+2].low) {
+      swingLows.push({ idx: i, low: bars[i].low, vol: bars[i].volume });
     }
-    const lastThree = swingLows.slice(-3);
-    if (lastThree.length >= 2) {
-      const pricesRising = lastThree.every((sl, i) => i === 0 || sl.price > lastThree[i - 1].price);
-      const volRising = lastThree.every((sl, i) => i === 0 || sl.vol > lastThree[i - 1].vol);
-      if (pricesRising && volRising) {
-        volOnHigherLows = true;
-        pts += 4;
-      }
+  }
+  if (swingLows.length >= 2) {
+    const last2 = swingLows.slice(-2);
+    if (last2[1].low > last2[0].low && last2[1].vol > last2[0].vol) score += 3;
+  }
+
+  // 5. OBV trend slope (0-2 pts)
+  const { obvSlopeNormalized } = calcOBVTrendSlope(bars);
+  if (obvSlopeNormalized > 0.5) score += 2;
+  else if (obvSlopeNormalized > 0.1) score += 1;
+
+  // 6. Volume clustering at support (0-2 pts)
+  const { supportVolumeRatio } = calcVolumeClustering(bars);
+  if (supportVolumeRatio > 1.3) score += 2;
+  else if (supportVolumeRatio > 1.1) score += 1;
+
+  return {
+    score,
+    confidence,
+    volDroughtRatio,
+    accDistScore,
+    upDownVolRatio,
+    obvSlopeNormalized,
+    supportVolumeRatio
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Resistance helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Multi-window resistance detection.
+ * Finds the highest close across 20/40/60-day windows, clusters nearby levels,
+ * and counts how many times price touched that zone.
+ *
+ * @param {Array<{close:number}>} bars
+ * @param {number[]} windows
+ * @returns {{ resistancePrice: number, resistanceStrength: number, resistanceTouches: number }}
+ */
+export function calcResistanceLevel(bars, windows = [20, 40, 60]) {
+  if (bars.length < 20) return { resistancePrice: 0, resistanceStrength: 0, resistanceTouches: 0 };
+
+  const levels = [];
+  for (const w of windows) {
+    const slice = bars.slice(-Math.min(w, bars.length));
+    const highClose = Math.max(...slice.map(b => b.close));
+    levels.push(highClose);
+  }
+
+  const primary = levels[0];
+  let strength = 1;
+  for (let i = 1; i < levels.length; i++) {
+    if (Math.abs(levels[i] - primary) / primary <= 0.015) {
+      strength++;
     }
   }
 
-  if (bars.length < 20) confidence = 'medium';
-  if (bars.length < 10) confidence = 'low';
+  const clustered = levels.filter(l => Math.abs(l - primary) / primary <= 0.015);
+  const resistancePrice = Math.round((clustered.reduce((s, v) => s + v, 0) / clustered.length) * 100) / 100;
 
-  return {
-    score: pts,
-    confidence,
-    volDroughtRatio: droughtRatio,
-    accumulationDays: accumDays,
-    upDownVolRatio: udRatio,
-    volOnHigherLows,
-  };
+  const lookback = bars.slice(-Math.min(60, bars.length));
+  const resistanceTouches = lookback.filter(b => Math.abs(b.close - resistancePrice) / resistancePrice <= 0.015).length;
+
+  return { resistancePrice, resistanceStrength: Math.min(strength, 3), resistanceTouches };
+}
+
+/**
+ * Detect whether a large gap (>5%) formed near the resistance price.
+ *
+ * @param {Array<{open:number, close:number}>} bars
+ * @param {number} resistancePrice
+ * @returns {{ gapFormedResistance: boolean }}
+ */
+export function detectGapNearResistance(bars, resistancePrice) {
+  if (bars.length < 2 || resistancePrice <= 0) return { gapFormedResistance: false };
+
+  const recent = bars.slice(-20);
+  for (let i = 1; i < recent.length; i++) {
+    const gapPct = Math.abs(recent[i].open - recent[i - 1].close) / recent[i - 1].close * 100;
+    const nearResistance = Math.abs(recent[i].close - resistancePrice) / resistancePrice <= 0.03;
+    if (gapPct > 5 && nearResistance) {
+      return { gapFormedResistance: true };
+    }
+  }
+  return { gapFormedResistance: false };
 }
 
 // ---------------------------------------------------------------------------
@@ -546,68 +604,92 @@ export function scoreVolumeSignature(d) {
 // ---------------------------------------------------------------------------
 
 /**
- * @param {{ price: number, ma50: number, ohlcv: Array<{high:number, low:number, close:number}> }} d
- * @returns {{ score: number, confidence: 'high'|'medium'|'low', distFromResistance: number, resistanceTouches: number, closePosAvg: number, extendedAbove50ma: boolean }}
+ * @param {{ price: number, ma50: number, ohlcv: Array<{high:number, low:number, close:number, open:number}> }} d
+ * @returns {{ score: number, confidence: 'high'|'medium'|'low', distFromResistance: number, resistanceTouches: number, resistanceStrength: number, resistancePrice: number, closePosAvg: number, extendedAbove50ma: boolean, gapFormedResistance: boolean }}
  */
 export function scorePivotStructure(d) {
   const bars = d.ohlcv || [];
-  let pts = 0;
-  let confidence = 'high';
+  if (bars.length < 20) return { score: 0, confidence: 'low', distFromResistance: 100, resistanceTouches: 0, resistanceStrength: 0, extendedAbove50ma: false, gapFormedResistance: false, resistancePrice: 0, closePosAvg: 0 };
 
-  if (bars.length < 20) {
-    return { score: 0, confidence: 'low', distFromResistance: 99, resistanceTouches: 0, closePosAvg: 0, extendedAbove50ma: false };
-  }
+  const confidence = bars.length >= 40 ? 'high' : 'medium';
+  let score = 0;
 
-  const recent20 = bars.slice(-20);
-  const resistance = Math.max(...recent20.map((b) => b.high));
+  // Multi-window resistance detection
+  const res = calcResistanceLevel(bars);
+  const { resistancePrice, resistanceTouches } = res;
+  let { resistanceStrength } = res;
 
-  // Distance from resistance (6 pts)
-  const distPct = resistance > 0 ? +((resistance - d.price) / resistance * 100).toFixed(1) : 99;
-  if (distPct <= 3) pts += 6;
-  else if (distPct <= 5) pts += 4;
-  else if (distPct <= 8) pts += 2;
+  // Gap-formed resistance check
+  const { gapFormedResistance } = detectGapNearResistance(bars, resistancePrice);
+  if (gapFormedResistance) resistanceStrength = Math.min(resistanceStrength, 1);
 
-  // Resistance tested at least twice (4 pts)
-  const touchZone = resistance * 0.99;
-  let touches = 0;
-  for (const b of recent20) {
-    if (b.high >= touchZone) touches++;
-  }
-  if (touches >= 2) pts += 4;
+  // 1. Distance from confirmed resistance (0-6 pts)
+  const distFromResistance = resistancePrice > 0
+    ? Math.round(Math.abs(d.price - resistancePrice) / resistancePrice * 100 * 10) / 10
+    : 100;
+  if (distFromResistance <= 3) score += 6;
+  else if (distFromResistance <= 5) score += 4;
+  else if (distFromResistance <= 8) score += 2;
 
-  // Tight closes near highs of range (3 pts)
-  const recent5 = bars.slice(-5);
-  const closePosAvg = recent5.reduce((sum, b) => {
+  // 2. Resistance strength (0-4 pts)
+  if (resistanceStrength >= 3) score += 4;
+  else if (resistanceStrength >= 2) score += 3;
+  else if (resistanceStrength >= 1) score += 1;
+
+  // 3. Tight closes near highs (0-3 pts)
+  const last5 = bars.slice(-5);
+  const closePositions = last5.map(b => {
     const range = b.high - b.low;
-    return sum + (range > 0.01 ? (b.close - b.low) / range : 0.5);
-  }, 0) / recent5.length;
+    return range > 0 ? (b.close - b.low) / range : 0.5;
+  });
+  const closePosAvg = closePositions.reduce((s, v) => s + v, 0) / closePositions.length;
+  if (closePosAvg > 0.7) score += 3;
 
-  if (closePosAvg > 0.7) pts += 3;
-
-  // Higher lows structure (2 pts)
+  // 4. Higher swing lows (0-2 pts)
   const swingLows = [];
   for (let i = 2; i < bars.length - 2; i++) {
-    if (bars[i].low < bars[i - 1].low && bars[i].low < bars[i - 2].low &&
-        bars[i].low < bars[i + 1].low && bars[i].low < bars[i + 2].low) {
+    if (bars[i].low < bars[i-1].low && bars[i].low < bars[i-2].low &&
+        bars[i].low < bars[i+1].low && bars[i].low < bars[i+2].low) {
       swingLows.push(bars[i].low);
     }
   }
-  const lastThreeLows = swingLows.slice(-3);
-  if (lastThreeLows.length >= 2 && lastThreeLows.every((l, i) => i === 0 || l > lastThreeLows[i - 1])) {
-    pts += 2;
+  const last3Lows = swingLows.slice(-3);
+  if (last3Lows.length >= 3 && last3Lows[2] > last3Lows[1] && last3Lows[1] > last3Lows[0]) score += 2;
+
+  // --- Penalties (stacking, floor at 0) ---
+  const extendedAbove50ma = d.ma50 > 0 && ((d.price - d.ma50) / d.ma50 * 100) > 10;
+  if (extendedAbove50ma) score -= 5;
+
+  // Recent gap > 8% in last 10 bars
+  const last10 = bars.slice(-10);
+  let hasLargeGap = false;
+  for (let i = 1; i < last10.length; i++) {
+    if (Math.abs(last10[i].open - last10[i-1].close) / last10[i-1].close * 100 > 8) {
+      hasLargeGap = true;
+      break;
+    }
+  }
+  if (hasLargeGap) score -= 3;
+
+  // ATR expanding rapidly
+  if (bars.length >= 20) {
+    const currentATR = calcATR(bars.slice(-5), 5);
+    const avgATR = calcATR(bars.slice(-20), 20);
+    if (avgATR > 0 && currentATR > avgATR * 1.5) score -= 2;
   }
 
-  // Penalty: extended > 10% above 50-day MA
-  const extendedAbove50ma = d.ma50 > 0 && ((d.price - d.ma50) / d.ma50 * 100) > 10;
-  if (extendedAbove50ma) pts = Math.max(pts - 5, 0);
+  score = Math.max(0, score);
 
   return {
-    score: pts,
-    confidence: bars.length < 40 ? 'medium' : confidence,
-    distFromResistance: distPct,
-    resistanceTouches: touches,
-    closePosAvg: +closePosAvg.toFixed(2),
+    score,
+    confidence,
+    distFromResistance,
+    resistanceTouches,
+    resistanceStrength,
+    resistancePrice,
+    closePosAvg: Math.round(closePosAvg * 100) / 100,
     extendedAbove50ma,
+    gapFormedResistance
   };
 }
 
@@ -615,53 +697,136 @@ export function scorePivotStructure(d) {
 // 5. Catalyst Awareness (0-15 pts)
 // ---------------------------------------------------------------------------
 
+const SECTOR_ETF_MAP = {
+  XLK: 'Technology', XLF: 'Financial Services', XLV: 'Healthcare',
+  XLE: 'Energy', XLI: 'Industrials', XLY: 'Consumer Cyclical',
+  XLP: 'Consumer Defensive', XLU: 'Utilities', XLB: 'Basic Materials',
+  XLRE: 'Real Estate', XLC: 'Communication Services'
+};
+
+const CATALYST_PATTERNS = {
+  earnings_catalyst: [
+    /upgrade/i, /beat/i, /raised guidance/i, /above estimates/i,
+    /price target raised/i, /revenue growth/i
+  ],
+  merger_catalyst: [
+    /merger/i, /acquisition/i, /buyout/i, /spin-off/i,
+    /activist/i, /strategic review/i
+  ],
+  product_catalyst: [
+    /FDA approval/i, /phase 3/i, /\blaunch\b/i, /patent/i,
+    /contract win/i, /new product/i
+  ]
+};
+
 /**
- * @param {{ earningsTimestamp: number|null, news: Array<{title:string}>, sectorRank: number, shortPercentOfFloat: number|null }} d
- * @returns {{ score: number, confidence: 'high'|'medium'|'low', earningsDaysOut: number|null, sectorMomentumRank: number, shortFloat: number|null }}
+ * Rank sectors 1-N by 20-day return using sector ETF bar data.
+ * @param {Record<string, Array<{close: number}>>} sectorETFData — keyed by ETF ticker (e.g. XLK)
+ * @returns {Record<string, number>} — sector name → rank (1 = strongest)
  */
-export function scoreCatalystAwareness(d) {
-  let pts = 0;
+export function calcSectorMomentumRank(sectorETFData) {
+  const returns = [];
+  for (const [etf, bars] of Object.entries(sectorETFData)) {
+    if (bars.length < 20) continue;
+    const ret = (bars[bars.length - 1].close - bars[bars.length - 21].close) / bars[bars.length - 21].close;
+    const sector = SECTOR_ETF_MAP[etf] || etf;
+    returns.push({ sector, ret });
+  }
+
+  returns.sort((a, b) => b.ret - a.ret);
+
+  const ranks = {};
+  returns.forEach((item, idx) => {
+    ranks[item.sector] = idx + 1;
+  });
+
+  return ranks;
+}
+
+/**
+ * Match news headlines against categorized catalyst patterns.
+ * Deduplicates by catalyst type — returns at most one entry per type.
+ * @param {Array<{title: string, description?: string}>} news
+ * @returns {Array<{catalystType: string, confidence: string, headline: string}>}
+ */
+export function matchCatalystKeywords(news) {
+  if (!news || news.length === 0) return [];
+
+  const found = new Map();
+
+  for (const item of news) {
+    const title = item.title || '';
+    const description = item.description || '';
+    const text = `${title} ${description}`;
+
+    for (const [type, patterns] of Object.entries(CATALYST_PATTERNS)) {
+      if (found.has(type)) continue;
+      for (const pattern of patterns) {
+        if (pattern.test(text)) {
+          const confidence = pattern.test(title) ? 'strong' : 'weak';
+          found.set(type, { catalystType: type, confidence, headline: title });
+          break;
+        }
+      }
+    }
+  }
+
+  return Array.from(found.values());
+}
+
+/**
+ * @param {{ earningsTimestamp: number|null, news: Array<{title:string}>, shortPercentOfFloat: number|null }} d
+ * @param {{ sectorRanks?: Record<string, number>, candidateSector?: string }} context
+ * @returns {{ score: number, confidence: 'high'|'medium'|'low', earningsDaysOut: number|null, sectorMomentumRank: number, shortFloat: number|null, catalystTag: string, catalysts: Array }}
+ */
+export function scoreCatalystAwareness(d, context = {}) {
+  let score = 0;
   let confidence = 'high';
+
+  // 1. Earnings timing (0-4 pts)
   let earningsDaysOut = null;
-
-  // Earnings within 30-45 days (5 pts)
   if (d.earningsTimestamp) {
-    const now = Date.now() / 1000;
-    const daysOut = Math.round((d.earningsTimestamp - now) / 86400);
-    earningsDaysOut = daysOut;
-    if (daysOut >= 30 && daysOut <= 45) pts += 5;
-    else if (daysOut > 0 && daysOut < 30) pts += 2;
+    earningsDaysOut = Math.round((d.earningsTimestamp - Date.now()) / 86_400_000);
+    if (earningsDaysOut >= 30 && earningsDaysOut <= 45) score += 4;
+    else if (earningsDaysOut > 0 && earningsDaysOut < 30) score += 2;
   } else {
-    confidence = 'medium'; // no earnings date available
+    confidence = 'medium';
   }
 
-  // Analyst upgrades or estimate revisions (3 pts)
-  const upgradeKeywords = ['upgrade', 'buy rating', 'price target raised', 'guidance', 'estimate'];
-  const newsText = (d.news || []).map((n) => n.title.toLowerCase()).join(' ');
-  if (upgradeKeywords.some((kw) => newsText.includes(kw))) {
-    pts += 3;
-  }
+  // 2. Categorized catalyst match (0-3 pts)
+  const catalysts = matchCatalystKeywords(d.news || []);
+  if (catalysts.some(c => c.confidence === 'strong')) score += 3;
+  else if (catalysts.length > 0) score += 2;
 
-  // Sector momentum tailwind (4 pts)
-  const rank = d.sectorRank ?? 99;
-  if (rank <= 3) pts += 4;
-  else if (rank <= 5) pts += 2;
+  // Catalyst tag for output
+  const catalystTag = catalysts.some(c => c.confidence === 'strong') || (earningsDaysOut && earningsDaysOut > 0 && earningsDaysOut <= 45)
+    ? 'catalyst_present'
+    : catalysts.length > 0 || (d.shortPercentOfFloat && d.shortPercentOfFloat > 10)
+      ? 'catalyst_weak'
+      : 'catalyst_unknown';
 
-  // Elevated short interest (3 pts)
-  const sf = d.shortPercentOfFloat;
-  if (sf != null) {
-    if (sf > 15) pts += 3;
-    else if (sf > 10) pts += 2;
-  } else {
-    if (confidence === 'high') confidence = 'medium'; // missing data
+  // 3. Sector rank (0-4 pts)
+  let sectorMomentumRank = 6; // default fallback
+  if (context.sectorRanks && context.candidateSector) {
+    sectorMomentumRank = context.sectorRanks[context.candidateSector] || 6;
   }
+  if (sectorMomentumRank <= 3) score += 4;
+  else if (sectorMomentumRank <= 5) score += 2;
+
+  // 4. Short interest (0-2 pts)
+  const shortFloat = d.shortPercentOfFloat || 0;
+  if (shortFloat > 15) score += 2;
+  else if (shortFloat > 10) score += 1;
+  if (!d.shortPercentOfFloat) confidence = 'medium';
 
   return {
-    score: pts,
+    score,
     confidence,
     earningsDaysOut,
-    sectorMomentumRank: rank,
-    shortFloat: d.shortPercentOfFloat ?? null,
+    sectorMomentumRank,
+    shortFloat,
+    catalystTag,
+    catalysts
   };
 }
 
@@ -764,4 +929,64 @@ export function generatePlay(symbol, classification, details, regime) {
   }
 
   return `${symbol}: Below threshold — no active play.`;
+}
+
+// ── Probability scoring layer ─────────────────────────────────────────
+
+export const REGIME_MULTIPLIERS = { constructive: 1.0, cautious: 0.85, defensive: 0.70 };
+const REGIME_ALIGNMENT = { constructive: 1.0, cautious: 0.5, defensive: 0.0 };
+
+/**
+ * Compute weighted probability score (0-100) from category signals.
+ * @param {Object} signals - { trendHealth, contraction, volumeSignature, pivotProximity, catalystAwareness }
+ * @param {Object} context - { regime: { regime: 'constructive'|'cautious'|'defensive' } }
+ * @returns {{ probability_score, setup_quality, trade_readiness, regime_multiplier, factor_breakdown }}
+ */
+export function computeProbabilityScore(signals, context = {}) {
+  const regimeName = (context.regime && context.regime.regime) || 'constructive';
+
+  // Normalize each category to 0-1
+  const contractionNorm = (signals.contraction?.score || 0) / 40;
+  const rsNorm = (signals.trendHealth?.rsSubtotal || 0) / 9;
+  const volumeNorm = (signals.volumeSignature?.score || 0) / 20;
+  const trendNorm = (signals.trendHealth?.trendSubtotal || 0) / 21;
+  const resistanceNorm = (signals.pivotProximity?.score || 0) / 15;
+  const catalystNorm = (signals.catalystAwareness?.score || 0) / 15;
+  const regimeAlignment = REGIME_ALIGNMENT[regimeName] || 1.0;
+
+  // Weighted raw probability
+  const rawProb =
+    (contractionNorm * 0.25) +
+    (rsNorm * 0.20) +
+    (volumeNorm * 0.15) +
+    (trendNorm * 0.15) +
+    (resistanceNorm * 0.10) +
+    (catalystNorm * 0.10) +
+    (regimeAlignment * 0.05);
+
+  // Apply regime multiplier
+  const regime_multiplier = REGIME_MULTIPLIERS[regimeName] || 1.0;
+  const probability_score = Math.min(100, Math.round(rawProb * 100 * regime_multiplier));
+
+  // Setup quality tier
+  let setup_quality;
+  if (probability_score >= 80) setup_quality = 'ELITE';
+  else if (probability_score >= 65) setup_quality = 'HIGH';
+  else if (probability_score >= 50) setup_quality = 'MODERATE';
+  else setup_quality = 'LOW';
+
+  // Trade readiness (basic — caller refines with classification + risk)
+  const trade_readiness = probability_score >= 65;
+
+  const factor_breakdown = {
+    volatility_contraction: Math.round(contractionNorm * 1000) / 1000,
+    relative_strength_trend: Math.round(rsNorm * 1000) / 1000,
+    volume_dry_up: Math.round(volumeNorm * 1000) / 1000,
+    trend_quality: Math.round(trendNorm * 1000) / 1000,
+    distance_to_resistance: Math.round(resistanceNorm * 1000) / 1000,
+    catalyst_presence: Math.round(catalystNorm * 1000) / 1000,
+    market_regime_alignment: regimeAlignment
+  };
+
+  return { probability_score, setup_quality, trade_readiness, regime_multiplier, factor_breakdown };
 }

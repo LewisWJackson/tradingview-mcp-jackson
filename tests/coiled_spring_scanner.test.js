@@ -24,6 +24,11 @@ import {
   calcAccumulationScore,
   calcOBVTrendSlope,
   calcVolumeClustering,
+  calcResistanceLevel,
+  detectGapNearResistance,
+  calcSectorMomentumRank,
+  matchCatalystKeywords,
+  computeProbabilityScore,
 } from '../scripts/scanner/scoring_v2.js';
 
 import {
@@ -33,10 +38,12 @@ import {
   ILLIQUID,
   FAKE_COMPRESSION,
   BOUNDARY_CANDIDATE,
+  GAP_NEAR_RESISTANCE,
   SPY_BARS,
   QQQ_BARS,
   OUTPERFORMER,
   UNDERPERFORMER,
+  SECTOR_ETFS,
   makeBars,
 } from '../scripts/scanner/test_fixtures/fixtures.js';
 
@@ -191,6 +198,19 @@ describe('scoreVolumeSignature', () => {
     const { confidence } = scoreVolumeSignature({ avgVol10d: 1000000, avgVol3mo: 1500000, ohlcv: makeBars(5) });
     assert.equal(confidence, 'low');
   });
+
+  it('returns accDistScore instead of accumulationDays', () => {
+    const result = scoreVolumeSignature(VALID_COIL);
+    assert.ok(typeof result.accDistScore === 'number');
+    assert.ok(result.accDistScore >= 0);
+    assert.strictEqual(result.accumulationDays, undefined, 'accumulationDays should no longer exist');
+  });
+
+  it('returns obvSlopeNormalized and supportVolumeRatio fields', () => {
+    const result = scoreVolumeSignature(VALID_COIL);
+    assert.ok(typeof result.obvSlopeNormalized === 'number');
+    assert.ok(typeof result.supportVolumeRatio === 'number');
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -218,22 +238,51 @@ describe('scorePivotStructure', () => {
     assert.equal(result.score, 0);
     assert.equal(result.confidence, 'low');
   });
+
+  it('returns new fields: resistanceStrength, resistancePrice, gapFormedResistance', () => {
+    const result = scorePivotStructure(VALID_COIL);
+    assert.ok(typeof result.resistanceStrength === 'number');
+    assert.ok(typeof result.resistancePrice === 'number');
+    assert.ok(typeof result.gapFormedResistance === 'boolean');
+  });
+});
+
+// scorePivotStructure enhanced (multi-window resistance + penalties)
+// ---------------------------------------------------------------------------
+describe('scorePivotStructure (enhanced)', () => {
+  it('returns resistanceStrength from multi-window detection', () => {
+    const result = scorePivotStructure(VALID_COIL);
+    assert.ok(typeof result.resistanceStrength === 'number');
+    assert.ok(result.resistanceStrength >= 1 && result.resistanceStrength <= 3);
+  });
+
+  it('penalizes recent large gap', () => {
+    const result = scorePivotStructure(GAP_NEAR_RESISTANCE);
+    assert.ok(result.gapFormedResistance === true || result.score < 10);
+  });
+
+  it('caps resistanceStrength to 1 when gap formed resistance', () => {
+    const result = scorePivotStructure(GAP_NEAR_RESISTANCE);
+    if (result.gapFormedResistance) {
+      assert.ok(result.resistanceStrength <= 1);
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------
-// scoreCatalystAwareness (0-15 pts)
+// scoreCatalystAwareness (0-13 pts)
 // ---------------------------------------------------------------------------
 describe('scoreCatalystAwareness', () => {
-  it('awards 5 pts for earnings 30-45 days out', () => {
+  it('awards 4 pts for earnings 30-45 days out', () => {
     const { score, earningsDaysOut } = scoreCatalystAwareness(VALID_COIL);
     assert.ok(earningsDaysOut >= 30 && earningsDaysOut <= 45, `expected 30-45d out, got ${earningsDaysOut}`);
-    assert.ok(score >= 5, `expected >= 5 pts, got ${score}`);
+    assert.ok(score >= 4, `expected >= 4 pts, got ${score}`);
   });
 
   it('awards 2 pts for earnings < 30 days', () => {
     const close = {
       ...VALID_COIL,
-      earningsTimestamp: Math.floor(Date.now() / 1000) + 15 * 86400,
+      earningsTimestamp: Date.now() + 15 * 86_400_000,
     };
     const { score } = scoreCatalystAwareness(close);
     assert.ok(score >= 2, 'should get at least 2 pts for close earnings');
@@ -244,10 +293,38 @@ describe('scoreCatalystAwareness', () => {
     assert.equal(confidence, 'medium');
   });
 
-  it('detects upgrade keywords in news', () => {
+  it('detects upgrade keywords in news via matchCatalystKeywords', () => {
     const { score: withUpgrade } = scoreCatalystAwareness(VALID_COIL);
     const { score: withoutUpgrade } = scoreCatalystAwareness({ ...VALID_COIL, news: [] });
     assert.ok(withUpgrade > withoutUpgrade, 'upgrade news should add points');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// scoreCatalystAwareness (enhanced)
+// ---------------------------------------------------------------------------
+describe('scoreCatalystAwareness (enhanced)', () => {
+  it('returns catalystTag field', () => {
+    const result = scoreCatalystAwareness(OUTPERFORMER);
+    assert.ok(['catalyst_present', 'catalyst_weak', 'catalyst_unknown'].includes(result.catalystTag));
+  });
+
+  it('uses real sector rank from context', () => {
+    const sectorRanks = { Technology: 2, Healthcare: 8 };
+    const result = scoreCatalystAwareness(OUTPERFORMER, { sectorRanks, candidateSector: 'Technology' });
+    assert.strictEqual(result.sectorMomentumRank, 2);
+    assert.ok(result.score >= 4, `expected >= 4 for rank 2, got ${result.score}`);
+  });
+
+  it('falls back to rank 6 when no context', () => {
+    const result = scoreCatalystAwareness(VALID_COIL);
+    assert.strictEqual(result.sectorMomentumRank, 6);
+  });
+
+  it('tags catalyst_present for strong keyword match', () => {
+    const d = { ...OUTPERFORMER, news: [{ title: 'Price target raised to $200' }], earningsTimestamp: null };
+    const result = scoreCatalystAwareness(d);
+    assert.strictEqual(result.catalystTag, 'catalyst_present');
   });
 });
 
@@ -547,5 +624,187 @@ describe('calcVolumeClustering', () => {
     const flatBars = makeBars(63, { basePrice: 50, trend: 'flat', volatility: 'normal', volumeBase: 1_000_000, volumeTrend: 'flat' });
     const result = calcVolumeClustering(flatBars);
     assert.ok(result.supportVolumeRatio < 2, `expected < 2, got ${result.supportVolumeRatio}`);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// calcResistanceLevel
+// ---------------------------------------------------------------------------
+describe('calcResistanceLevel', () => {
+  it('returns strength between 1 and 3', () => {
+    const result = calcResistanceLevel(VALID_COIL.ohlcv);
+    assert.ok(result.resistanceStrength >= 1 && result.resistanceStrength <= 3);
+    assert.ok(typeof result.resistancePrice === 'number');
+    assert.ok(result.resistancePrice > 0);
+  });
+
+  it('returns resistanceTouches count', () => {
+    const result = calcResistanceLevel(VALID_COIL.ohlcv);
+    assert.ok(typeof result.resistanceTouches === 'number');
+    assert.ok(result.resistanceTouches >= 0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// detectGapNearResistance
+// ---------------------------------------------------------------------------
+describe('detectGapNearResistance', () => {
+  it('detects large gap near resistance', () => {
+    const { resistancePrice } = calcResistanceLevel(GAP_NEAR_RESISTANCE.ohlcv);
+    const result = detectGapNearResistance(GAP_NEAR_RESISTANCE.ohlcv, resistancePrice);
+    assert.strictEqual(result.gapFormedResistance, true);
+  });
+
+  it('returns false when no gap near resistance', () => {
+    const { resistancePrice } = calcResistanceLevel(VALID_COIL.ohlcv);
+    const result = detectGapNearResistance(VALID_COIL.ohlcv, resistancePrice);
+    assert.strictEqual(result.gapFormedResistance, false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// calcSectorMomentumRank
+// ---------------------------------------------------------------------------
+describe('calcSectorMomentumRank', () => {
+  it('returns rank 1-11 for each sector', () => {
+    const ranks = calcSectorMomentumRank(SECTOR_ETFS);
+    assert.ok(typeof ranks === 'object');
+    const techRank = ranks['Technology'];
+    assert.ok(techRank >= 1 && techRank <= 11, `Technology rank: ${techRank}`);
+  });
+
+  it('strongest sector gets rank 1', () => {
+    const ranks = calcSectorMomentumRank(SECTOR_ETFS);
+    const allRanks = Object.values(ranks);
+    assert.ok(allRanks.includes(1));
+    assert.ok(allRanks.includes(11));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// matchCatalystKeywords
+// ---------------------------------------------------------------------------
+describe('matchCatalystKeywords', () => {
+  it('categorizes earnings catalyst', () => {
+    const news = [{ title: 'Analyst price target raised to $150' }];
+    const result = matchCatalystKeywords(news);
+    assert.ok(result.length > 0);
+    assert.strictEqual(result[0].catalystType, 'earnings_catalyst');
+  });
+
+  it('categorizes merger catalyst', () => {
+    const news = [{ title: 'Company announces merger with rival' }];
+    const result = matchCatalystKeywords(news);
+    assert.ok(result.length > 0);
+    assert.strictEqual(result[0].catalystType, 'merger_catalyst');
+  });
+
+  it('categorizes product catalyst', () => {
+    const news = [{ title: 'FDA approval granted for new drug' }];
+    const result = matchCatalystKeywords(news);
+    assert.ok(result.length > 0);
+    assert.strictEqual(result[0].catalystType, 'product_catalyst');
+  });
+
+  it('deduplicates same catalyst type', () => {
+    const news = [
+      { title: 'Price target raised by Goldman' },
+      { title: 'Price target raised by Morgan Stanley' }
+    ];
+    const result = matchCatalystKeywords(news);
+    assert.strictEqual(result.length, 1);
+  });
+
+  it('returns empty array for clean news', () => {
+    const news = [{ title: 'Company releases quarterly report' }];
+    const result = matchCatalystKeywords(news);
+    assert.strictEqual(result.length, 0);
+  });
+});
+
+// ── computeProbabilityScore ───────────────────────────────────────────
+describe('computeProbabilityScore', () => {
+  it('returns probability_score between 0 and 100', () => {
+    const signals = {
+      trendHealth: { score: 24, rsSubtotal: 7, trendSubtotal: 17 },
+      contraction: { score: 35 },
+      volumeSignature: { score: 16 },
+      pivotProximity: { score: 12 },
+      catalystAwareness: { score: 5 }
+    };
+    const context = { regime: { regime: 'constructive' } };
+    const result = computeProbabilityScore(signals, context);
+    assert.ok(result.probability_score >= 0 && result.probability_score <= 100);
+  });
+
+  it('returns 100 for perfect scores in constructive regime', () => {
+    const signals = {
+      trendHealth: { score: 30, rsSubtotal: 9, trendSubtotal: 21 },
+      contraction: { score: 40 },
+      volumeSignature: { score: 20 },
+      pivotProximity: { score: 15 },
+      catalystAwareness: { score: 15 }
+    };
+    const context = { regime: { regime: 'constructive' } };
+    const result = computeProbabilityScore(signals, context);
+    assert.strictEqual(result.probability_score, 100);
+  });
+
+  it('applies regime multiplier for cautious', () => {
+    const signals = {
+      trendHealth: { score: 30, rsSubtotal: 9, trendSubtotal: 21 },
+      contraction: { score: 40 },
+      volumeSignature: { score: 20 },
+      pivotProximity: { score: 15 },
+      catalystAwareness: { score: 15 }
+    };
+    const constructive = computeProbabilityScore(signals, { regime: { regime: 'constructive' } });
+    const cautious = computeProbabilityScore(signals, { regime: { regime: 'cautious' } });
+    assert.ok(cautious.probability_score < constructive.probability_score);
+    assert.strictEqual(cautious.regime_multiplier, 0.85);
+  });
+
+  it('applies regime multiplier for defensive', () => {
+    const signals = {
+      trendHealth: { score: 30, rsSubtotal: 9, trendSubtotal: 21 },
+      contraction: { score: 40 },
+      volumeSignature: { score: 20 },
+      pivotProximity: { score: 15 },
+      catalystAwareness: { score: 15 }
+    };
+    const result = computeProbabilityScore(signals, { regime: { regime: 'defensive' } });
+    assert.strictEqual(result.regime_multiplier, 0.70);
+    assert.ok(result.probability_score <= 70);
+  });
+
+  it('returns setup_quality tier', () => {
+    const signals = {
+      trendHealth: { score: 24, rsSubtotal: 7, trendSubtotal: 17 },
+      contraction: { score: 35 },
+      volumeSignature: { score: 16 },
+      pivotProximity: { score: 12 },
+      catalystAwareness: { score: 5 }
+    };
+    const result = computeProbabilityScore(signals, { regime: { regime: 'constructive' } });
+    assert.ok(['ELITE', 'HIGH', 'MODERATE', 'LOW'].includes(result.setup_quality));
+  });
+
+  it('returns factor_breakdown with 7 factors', () => {
+    const signals = {
+      trendHealth: { score: 20, rsSubtotal: 5, trendSubtotal: 15 },
+      contraction: { score: 30 },
+      volumeSignature: { score: 10 },
+      pivotProximity: { score: 8 },
+      catalystAwareness: { score: 6 }
+    };
+    const result = computeProbabilityScore(signals, { regime: { regime: 'constructive' } });
+    assert.ok(typeof result.factor_breakdown === 'object');
+    assert.ok('volatility_contraction' in result.factor_breakdown);
+    assert.ok('relative_strength_trend' in result.factor_breakdown);
+    assert.ok('volume_dry_up' in result.factor_breakdown);
+    assert.ok('trend_quality' in result.factor_breakdown);
+    assert.ok('distance_to_resistance' in result.factor_breakdown);
+    assert.ok('catalyst_presence' in result.factor_breakdown);
+    assert.ok('market_regime_alignment' in result.factor_breakdown);
   });
 });
