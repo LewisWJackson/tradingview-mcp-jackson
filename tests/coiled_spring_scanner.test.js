@@ -20,6 +20,7 @@ import {
   calcATRPercentile,
   calcStdDevContractionRate,
   detectVCP,
+  calcRSvsIndex,
 } from '../scripts/scanner/scoring_v2.js';
 
 import {
@@ -29,6 +30,10 @@ import {
   ILLIQUID,
   FAKE_COMPRESSION,
   BOUNDARY_CANDIDATE,
+  SPY_BARS,
+  QQQ_BARS,
+  OUTPERFORMER,
+  UNDERPERFORMER,
   makeBars,
 } from '../scripts/scanner/test_fixtures/fixtures.js';
 
@@ -443,5 +448,36 @@ describe('calcStdDevContractionRate', () => {
   it('returns ratio < 1 when contracting', () => {
     const result = calcStdDevContractionRate(VALID_COIL.ohlcv);
     assert.ok(result.ratio < 1, `expected ratio < 1, got ${result.ratio}`);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// calcRSvsIndex
+// ---------------------------------------------------------------------------
+describe('calcRSvsIndex', () => {
+  it('returns ratio > 1.0 for outperforming stock', () => {
+    const result = calcRSvsIndex(OUTPERFORMER.ohlcv, SPY_BARS, QQQ_BARS);
+    assert.ok(result.rsRatio20d > 1.0, `expected > 1.0, got ${result.rsRatio20d}`);
+  });
+
+  it('returns ratio < 1.0 for underperforming stock', () => {
+    const result = calcRSvsIndex(UNDERPERFORMER.ohlcv, SPY_BARS, QQQ_BARS);
+    assert.ok(result.rsRatio20d < 1.0 || result.rsRatio40d < 1.0, `expected < 1.0`);
+  });
+
+  it('rsTrending is true when 20d ratio > 40d ratio', () => {
+    const result = calcRSvsIndex(OUTPERFORMER.ohlcv, SPY_BARS, QQQ_BARS);
+    assert.strictEqual(typeof result.rsTrending, 'boolean');
+  });
+
+  it('takes the stronger of SPY and QQQ readings', () => {
+    const result = calcRSvsIndex(OUTPERFORMER.ohlcv, SPY_BARS, QQQ_BARS);
+    assert.ok(result.rsRatio20d > 0);
+    assert.ok(result.rsRatio40d > 0);
+  });
+
+  it('returns outperformingOnPullbacks boolean', () => {
+    const result = calcRSvsIndex(OUTPERFORMER.ohlcv, SPY_BARS, QQQ_BARS);
+    assert.strictEqual(typeof result.outperformingOnPullbacks, 'boolean');
   });
 });

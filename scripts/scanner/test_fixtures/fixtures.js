@@ -5,14 +5,14 @@
  */
 
 // Generate N days of OHLCV bars with configurable behavior
-function makeBars(count, { basePrice = 50, trend = 'flat', volatility = 'normal', volumeBase = 1000000, volumeTrend = 'flat' } = {}) {
+function makeBars(count, { basePrice = 50, trend = 'flat', volatility = 'normal', volumeBase = 1000000, volumeTrend = 'flat', trendStrength = 1.0 } = {}) {
   const bars = [];
   let price = basePrice;
   for (let i = 0; i < count; i++) {
     const dayFactor = i / count;
     // Price trend
-    if (trend === 'up') price += basePrice * 0.003;
-    else if (trend === 'down') price -= basePrice * 0.003;
+    if (trend === 'up') price += basePrice * 0.003 * trendStrength;
+    else if (trend === 'down') price -= basePrice * 0.003 * trendStrength;
 
     // Volatility
     let rangePct = 0.02; // 2% normal range
@@ -178,7 +178,8 @@ const OUTPERFORMER = {
     trend: 'up',
     volatility: 'contracting',
     volumeBase: 1_500_000,
-    volumeTrend: 'drying'
+    volumeTrend: 'drying',
+    trendStrength: 2.0
   }),
   earningsTimestamp: Date.now() + (35 * 86_400_000),
   news: [{ title: 'Price target raised to $110' }],
