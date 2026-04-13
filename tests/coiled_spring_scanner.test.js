@@ -117,6 +117,31 @@ describe('scoreContractionQuality', () => {
 });
 
 // ---------------------------------------------------------------------------
+// multi-factor contraction gate
+// ---------------------------------------------------------------------------
+describe('multi-factor contraction gate', () => {
+  it('caps score at 15 when fewer than 3 signals confirm', () => {
+    const result = scoreContractionQuality(FAKE_COMPRESSION);
+    assert.ok(result.score <= 15, `expected <= 15, got ${result.score}`);
+    assert.ok(typeof result.confirmingSignals === 'number');
+  });
+
+  it('allows full score when 3+ signals confirm', () => {
+    const result = scoreContractionQuality(VALID_COIL);
+    assert.ok(typeof result.confirmingSignals === 'number');
+    if (result.confirmingSignals >= 3) {
+      assert.ok(result.score > 15, `3+ signals but score only ${result.score}`);
+    }
+  });
+
+  it('returns atrPercentile in contraction result', () => {
+    const result = scoreContractionQuality(VALID_COIL);
+    assert.ok(typeof result.atrPercentile === 'number');
+    assert.ok(result.atrPercentile >= 0 && result.atrPercentile <= 100);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // scoreVolumeSignature (0-20 pts)
 // ---------------------------------------------------------------------------
 describe('scoreVolumeSignature', () => {

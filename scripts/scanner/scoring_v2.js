@@ -212,62 +212,84 @@ export function detectVCP(bars) {
 
 /**
  * @param {{ ohlcv: Array<{open:number, high:number, low:number, close:number, volume:number}> }} d
- * @returns {{ score: number, confidence: 'high'|'medium'|'low', bbWidthPctile: number, atrRatio: number, vcpContractions: number, vcpDepths: number[], dailyRangePct: number }}
+ * @returns {{ score: number, confidence: 'high'|'medium'|'low', bbWidthPctile: number, atrRatio: number, vcpContractions: number, vcpDepths: number[], dailyRangePct: number, atrPercentile: number, confirmingSignals: number, vcpQuality: number }}
  */
 export function scoreContractionQuality(d) {
   const bars = d.ohlcv || [];
-  let pts = 0;
-  let confidence = 'high';
+  if (bars.length < 20) return { score: 0, confidence: 'low', bbWidthPctile: 0, atrRatio: 1, vcpContractions: 0, vcpDepths: [], dailyRangePct: 0, atrPercentile: 50, confirmingSignals: 0, vcpQuality: 0 };
 
-  if (bars.length < 20) {
-    return { score: 0, confidence: 'low', bbWidthPctile: 0, atrRatio: 1, vcpContractions: 0, vcpDepths: [], dailyRangePct: 99 };
-  }
+  let score = 0;
+  const confidence = bars.length >= 40 ? 'high' : 'medium';
 
-  // BB Width percentile (12 pts)
-  // Compare current BB width to range over all available bars
-  const currentBBW = calcBBWidth(bars.slice(-20), 20);
-  const allBBWs = [];
+  // 1. BB Width Percentile (0-10 pts)
+  const bbw = calcBBWidth(bars, 20);
+  const bbWindows = [];
   for (let i = 20; i <= bars.length; i++) {
-    allBBWs.push(calcBBWidth(bars.slice(i - 20, i), 20));
+    bbWindows.push(calcBBWidth(bars.slice(i - 20, i), 20));
   }
-  allBBWs.sort((a, b) => a - b);
-  const bbRank = allBBWs.findIndex((w) => w >= currentBBW);
-  const bbWidthPctile = allBBWs.length > 0 ? +(bbRank / allBBWs.length * 100).toFixed(1) : 50;
+  const bbBelow = bbWindows.filter(w => w < bbw).length;
+  const bbWidthPctile = bbWindows.length > 0 ? Math.round((bbBelow / bbWindows.length) * 100) : 50;
+  let bbPts = 0;
+  if (bbWidthPctile <= 20) bbPts = 10;
+  else if (bbWidthPctile <= 30) bbPts = 6;
 
-  if (bbWidthPctile <= 20) pts += 12;
-  else if (bbWidthPctile <= 30) pts += 7;
+  // 2. ATR Ratio fast/slow (0-8 pts)
+  const atrFast = calcATR(bars.slice(-5), 5);
+  const atrSlow = calcATR(bars.slice(-20), 20);
+  const atrRatio = atrSlow > 0 ? Math.round((atrFast / atrSlow) * 100) / 100 : 1;
+  let atrRatioPts = 0;
+  if (atrRatio < 0.5) atrRatioPts = 8;
+  else if (atrRatio < 0.7) atrRatioPts = 5;
 
-  // ATR contraction ratio (10 pts)
-  const atrFast = calcATR(bars, 5);
-  const atrSlow = calcATR(bars, 20);
-  const atrRatio = atrSlow > 0 ? +(atrFast / atrSlow).toFixed(2) : 1;
-
-  if (atrRatio < 0.5) pts += 10;
-  else if (atrRatio < 0.7) pts += 6;
-
-  // VCP tightening (10 pts)
+  // 3. VCP Tightening (0-10 pts)
   const vcp = detectVCP(bars);
-  if (vcp.contractions >= 3) pts += 10;
-  else if (vcp.contractions >= 2) pts += 6;
+  let vcpPts = 0;
+  if (vcp.contractions >= 3) vcpPts = 10;
+  else if (vcp.contractions >= 2) vcpPts = 6;
 
-  if (bars.length < 40) confidence = 'medium'; // less data for VCP detection
+  // 4. Tight Daily Range (0-6 pts)
+  const last5 = bars.slice(-5);
+  const avgRange = last5.reduce((s, b) => s + (b.high - b.low) / b.close * 100, 0) / last5.length;
+  const dailyRangePct = Math.round(avgRange * 100) / 100;
+  let rangePts = 0;
+  if (dailyRangePct < 3) rangePts = 6;
+  else if (dailyRangePct < 5) rangePts = 3;
 
-  // Tight daily range (8 pts)
-  const recent5 = bars.slice(-5);
-  const avgRange = recent5.reduce((sum, b) => sum + (b.high - b.low) / b.close * 100, 0) / recent5.length;
-  const dailyRangePct = +avgRange.toFixed(2);
+  // 5. ATR Percentile vs 1yr (0-6 pts)
+  const { atrPercentile } = calcATRPercentile(bars);
+  let atrPctilePts = 0;
+  if (atrPercentile <= 15) atrPctilePts = 6;
+  else if (atrPercentile <= 25) atrPctilePts = 4;
 
-  if (dailyRangePct < 3) pts += 8;
-  else if (dailyRangePct < 5) pts += 4;
+  // 6. StdDev Contraction (gate only, no points)
+  const { isContracting } = calcStdDevContractionRate(bars);
+
+  // --- Multi-factor confirmation gate ---
+  let confirmingSignals = 0;
+  if (atrPercentile <= 25) confirmingSignals++;
+  if (bbWidthPctile <= 30) confirmingSignals++;
+  if (atrRatio < 0.7) confirmingSignals++;
+  if (isContracting) confirmingSignals++;
+  if (vcp.contractions >= 2) confirmingSignals++;
+
+  score = bbPts + atrRatioPts + vcpPts + rangePts + atrPctilePts;
+
+  // Cap at 15 if fewer than 3 signals confirm
+  if (confirmingSignals < 3) {
+    score = Math.min(score, 15);
+  }
 
   return {
-    score: pts,
+    score,
     confidence,
     bbWidthPctile,
     atrRatio,
     vcpContractions: vcp.contractions,
     vcpDepths: vcp.depths,
+    vcpQuality: vcp.vcpQuality,
     dailyRangePct,
+    atrPercentile,
+    confirmingSignals
   };
 }
 
