@@ -29,6 +29,9 @@ import {
   calcSectorMomentumRank,
   matchCatalystKeywords,
   computeProbabilityScore,
+  calcRiskCategory,
+  calcEntryTrigger,
+  generateNotes,
 } from '../scripts/scanner/scoring_v2.js';
 
 import {
@@ -376,47 +379,97 @@ describe('computeCompositeScore', () => {
 describe('classifyCandidate', () => {
   it('classifies coiled spring correctly', () => {
     const cls = classifyCandidate({
-      score: 90,
+      score: 90, price: 50, avgVol10d: 500_000,
       signals: { trendHealth: 25, contraction: 35, volumeSignature: 15, pivotProximity: 10, catalystAwareness: 5 },
-      distFromResistance: 3,
+      details: { distFromResistance: 3, extendedAbove50ma: false },
     });
     assert.equal(cls, 'coiled_spring');
   });
 
   it('classifies building base for score 60-84', () => {
     const cls = classifyCandidate({
-      score: 70,
+      score: 70, price: 50, avgVol10d: 500_000,
       signals: { trendHealth: 20, contraction: 20, volumeSignature: 10, pivotProximity: 10, catalystAwareness: 10 },
-      distFromResistance: 12,
+      details: { distFromResistance: 12, extendedAbove50ma: false },
     });
     assert.equal(cls, 'building_base');
   });
 
   it('classifies catalyst loaded', () => {
     const cls = classifyCandidate({
-      score: 75,
+      score: 75, price: 50, avgVol10d: 500_000,
       signals: { trendHealth: 25, contraction: 15, volumeSignature: 10, pivotProximity: 12, catalystAwareness: 13 },
-      distFromResistance: 10,
+      details: { distFromResistance: 10, extendedAbove50ma: false },
     });
     assert.equal(cls, 'catalyst_loaded');
   });
 
   it('returns below_threshold for low scores', () => {
     const cls = classifyCandidate({
-      score: 40,
+      score: 40, price: 50, avgVol10d: 500_000,
       signals: { trendHealth: 10, contraction: 10, volumeSignature: 5, pivotProximity: 10, catalystAwareness: 5 },
-      distFromResistance: 15,
+      details: { distFromResistance: 15, extendedAbove50ma: false },
     });
     assert.equal(cls, 'below_threshold');
   });
 
   it('requires contraction >= 30 for coiled spring', () => {
     const cls = classifyCandidate({
-      score: 90,
+      score: 90, price: 50, avgVol10d: 500_000,
       signals: { trendHealth: 25, contraction: 25, volumeSignature: 15, pivotProximity: 15, catalystAwareness: 10 },
-      distFromResistance: 3,
+      details: { distFromResistance: 3, extendedAbove50ma: false },
     });
     assert.notEqual(cls, 'coiled_spring', 'contraction 25 < 30 threshold');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// classifyCandidate (v3 enhanced — DISQUALIFIED + EXTENDED)
+// ---------------------------------------------------------------------------
+describe('classifyCandidate (v3 enhanced)', () => {
+  it('returns disqualified for low price', () => {
+    const result = classifyCandidate({
+      score: 90, price: 3, avgVol10d: 500_000,
+      signals: { trendHealth: 25, contraction: 35, volumeSignature: 15, pivotProximity: 10, catalystAwareness: 5 },
+      details: { distFromResistance: 3, extendedAbove50ma: false }
+    });
+    assert.strictEqual(result, 'disqualified');
+  });
+
+  it('returns disqualified for low volume', () => {
+    const result = classifyCandidate({
+      score: 90, price: 50, avgVol10d: 100_000,
+      signals: { trendHealth: 25, contraction: 35, volumeSignature: 15, pivotProximity: 10, catalystAwareness: 5 },
+      details: { distFromResistance: 3, extendedAbove50ma: false }
+    });
+    assert.strictEqual(result, 'disqualified');
+  });
+
+  it('returns extended for > 15% above 50 MA', () => {
+    const result = classifyCandidate({
+      score: 90, price: 120, avgVol10d: 1_000_000,
+      signals: { trendHealth: 25, contraction: 35, volumeSignature: 15, pivotProximity: 10, catalystAwareness: 5 },
+      details: { distFromResistance: 3, extendedAbove50ma: true, extensionPct: 18, hasLargeGap: false, atrExpanding: false }
+    });
+    assert.strictEqual(result, 'extended');
+  });
+
+  it('returns extended for recent large gap', () => {
+    const result = classifyCandidate({
+      score: 90, price: 50, avgVol10d: 1_000_000,
+      signals: { trendHealth: 25, contraction: 35, volumeSignature: 15, pivotProximity: 10, catalystAwareness: 5 },
+      details: { distFromResistance: 3, extendedAbove50ma: false, extensionPct: 5, hasLargeGap: true, atrExpanding: false }
+    });
+    assert.strictEqual(result, 'extended');
+  });
+
+  it('disqualified overrides extended', () => {
+    const result = classifyCandidate({
+      score: 90, price: 3, avgVol10d: 100_000,
+      signals: { trendHealth: 25, contraction: 35, volumeSignature: 15, pivotProximity: 10, catalystAwareness: 5 },
+      details: { distFromResistance: 3, extendedAbove50ma: true, extensionPct: 20, hasLargeGap: true, atrExpanding: true }
+    });
+    assert.strictEqual(result, 'disqualified');
   });
 });
 
@@ -806,5 +859,76 @@ describe('computeProbabilityScore', () => {
     assert.ok('distance_to_resistance' in result.factor_breakdown);
     assert.ok('catalyst_presence' in result.factor_breakdown);
     assert.ok('market_regime_alignment' in result.factor_breakdown);
+  });
+});
+
+describe('calcRiskCategory', () => {
+  it('returns tight_vcp for coiled spring with 3+ VCP contractions', () => {
+    const result = calcRiskCategory('coiled_spring', { vcpContractions: 3, atrPercentile: 30 });
+    assert.strictEqual(result.risk_category, 'tight_vcp');
+    assert.deepStrictEqual(result.suggested_stop_percent, [3, 5]);
+  });
+
+  it('returns standard_coil for coiled spring with fewer VCP contractions', () => {
+    const result = calcRiskCategory('coiled_spring', { vcpContractions: 1, atrPercentile: 30 });
+    assert.strictEqual(result.risk_category, 'standard_coil');
+    assert.deepStrictEqual(result.suggested_stop_percent, [5, 7]);
+  });
+
+  it('returns catalyst_play for catalyst_loaded', () => {
+    const result = calcRiskCategory('catalyst_loaded', { vcpContractions: 0, atrPercentile: 30 });
+    assert.strictEqual(result.risk_category, 'catalyst_play');
+  });
+
+  it('returns base_watch for building_base', () => {
+    const result = calcRiskCategory('building_base', { vcpContractions: 0, atrPercentile: 30 });
+    assert.strictEqual(result.risk_category, 'base_watch');
+  });
+
+  it('adds 2% to stop range for high ATR percentile', () => {
+    const result = calcRiskCategory('coiled_spring', { vcpContractions: 3, atrPercentile: 80 });
+    assert.deepStrictEqual(result.suggested_stop_percent, [5, 7]);
+  });
+});
+
+describe('calcEntryTrigger', () => {
+  it('returns break above resistance for coiled_spring', () => {
+    const result = calcEntryTrigger('coiled_spring', { resistancePrice: 167.50, ma50: 160 });
+    assert.ok(result.entry_trigger.includes('break above'));
+    assert.ok(result.entry_trigger.includes('167.5'));
+  });
+
+  it('returns CSP option for catalyst_loaded', () => {
+    const result = calcEntryTrigger('catalyst_loaded', { resistancePrice: 100, ma50: 95 });
+    assert.ok(result.entry_trigger.includes('CSP'));
+  });
+
+  it('returns watchlist for building_base', () => {
+    const result = calcEntryTrigger('building_base', { resistancePrice: 55, ma50: 50 });
+    assert.ok(result.entry_trigger.includes('watchlist'));
+  });
+
+  it('returns no entry for extended', () => {
+    const result = calcEntryTrigger('extended', { resistancePrice: 120, ma50: 100 });
+    assert.strictEqual(result.entry_trigger, 'no entry');
+  });
+});
+
+describe('generateNotes', () => {
+  it('returns a non-empty string', () => {
+    const signals = {
+      contraction: { vcpContractions: 3, atrPercentile: 10 },
+      catalystAwareness: { catalystTag: 'catalyst_present', catalysts: [{ catalystType: 'merger_catalyst' }] }
+    };
+    const details = { sectorMomentumRank: 2, earningsDaysOut: 35 };
+    const result = generateNotes(signals, details);
+    assert.ok(typeof result === 'string');
+    assert.ok(result.length > 0);
+  });
+
+  it('mentions VCP when contractions >= 3', () => {
+    const signals = { contraction: { vcpContractions: 3, atrPercentile: 20 }, catalystAwareness: { catalystTag: 'catalyst_unknown', catalysts: [] } };
+    const result = generateNotes(signals, {});
+    assert.ok(result.toLowerCase().includes('vcp'));
   });
 });

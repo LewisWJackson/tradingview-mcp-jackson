@@ -877,20 +877,32 @@ export function computeCompositeScore(cats, context = {}) {
  * @returns {string} 'coiled_spring' | 'building_base' | 'catalyst_loaded' | 'below_threshold'
  */
 export function classifyCandidate(candidate) {
-  const { score, signals } = candidate;
+  const { score, signals, details } = candidate;
+  const price = candidate.price || 0;
+  const avgVol10d = candidate.avgVol10d || 0;
 
-  // Coiled Spring: score >= 85, contraction >= 30, volume >= 10, pivot distance <= 8%
-  if (score >= 85 && signals.contraction >= 30 && signals.volumeSignature >= 10 && candidate.distFromResistance <= 8) {
+  // Priority 1: DISQUALIFIED
+  if (price < 5 || avgVol10d < 200_000 || score < 30) return 'disqualified';
+
+  // Priority 2: EXTENDED
+  const extensionPct = details?.extensionPct || (details?.extendedAbove50ma ? 16 : 0);
+  if (extensionPct > 15 || details?.hasLargeGap || details?.atrExpanding) return 'extended';
+
+  // Priority 3: COILED_SPRING
+  if (score >= 85 &&
+      (signals?.contraction || 0) >= 30 &&
+      (signals?.volumeSignature || 0) >= 10 &&
+      (details?.distFromResistance || 100) <= 8) {
     return 'coiled_spring';
   }
 
-  // Catalyst Loaded: catalyst >= 12, trend >= 20
-  if (signals.catalystAwareness >= 12 && signals.trendHealth >= 20) {
+  // Priority 4: CATALYST_LOADED
+  if ((signals?.catalystAwareness || 0) >= 12 && (signals?.trendHealth || 0) >= 20) {
     return 'catalyst_loaded';
   }
 
-  // Building Base: score 60-84, trend >= 15
-  if (score >= 60 && signals.trendHealth >= 15) {
+  // Priority 5: BUILDING_BASE
+  if (score >= 60 && (signals?.trendHealth || 0) >= 15) {
     return 'building_base';
   }
 
@@ -989,4 +1001,80 @@ export function computeProbabilityScore(signals, context = {}) {
   };
 
   return { probability_score, setup_quality, trade_readiness, regime_multiplier, factor_breakdown };
+}
+
+/**
+ * Determine risk category and suggested stop-loss range based on classification.
+ * High-ATR stocks get wider stops (+2% each side).
+ */
+export function calcRiskCategory(classification, details) {
+  let risk_category, suggested_stop_percent;
+
+  if (classification === 'coiled_spring' && (details.vcpContractions || 0) >= 3) {
+    risk_category = 'tight_vcp';
+    suggested_stop_percent = [3, 5];
+  } else if (classification === 'coiled_spring') {
+    risk_category = 'standard_coil';
+    suggested_stop_percent = [5, 7];
+  } else if (classification === 'catalyst_loaded') {
+    risk_category = 'catalyst_play';
+    suggested_stop_percent = [5, 8];
+  } else if (classification === 'building_base') {
+    risk_category = 'base_watch';
+    suggested_stop_percent = [7, 10];
+  } else {
+    risk_category = 'no_trade';
+    suggested_stop_percent = [0, 0];
+  }
+
+  if ((details.atrPercentile || 0) > 75) {
+    suggested_stop_percent = [suggested_stop_percent[0] + 2, suggested_stop_percent[1] + 2];
+  }
+
+  return { risk_category, suggested_stop_percent };
+}
+
+/**
+ * Generate a human-readable entry trigger string based on classification.
+ */
+export function calcEntryTrigger(classification, details) {
+  const resistance = details.resistancePrice || 0;
+  const ma50 = details.ma50 || 0;
+
+  switch (classification) {
+    case 'coiled_spring':
+      return { entry_trigger: `break above ${resistance}` };
+    case 'catalyst_loaded':
+      return { entry_trigger: `break above ${resistance} or sell CSP at ${ma50}` };
+    case 'building_base':
+      return { entry_trigger: `watchlist — alert at ${resistance}` };
+    default:
+      return { entry_trigger: 'no entry' };
+  }
+}
+
+/**
+ * Auto-generate human-readable notes from signals and details.
+ */
+export function generateNotes(signals, details) {
+  const notes = [];
+
+  const contraction = signals.contraction || {};
+  if ((contraction.vcpContractions || 0) >= 3) notes.push(`${contraction.vcpContractions}-stage VCP`);
+  else if ((contraction.vcpContractions || 0) >= 2) notes.push('emerging VCP');
+  if ((contraction.atrPercentile || 50) <= 15) notes.push('extreme contraction');
+
+  if ((details.sectorMomentumRank || 6) <= 3) notes.push(`sector rank #${details.sectorMomentumRank}`);
+
+  const catalyst = signals.catalystAwareness || {};
+  if (catalyst.catalystTag === 'catalyst_present') {
+    const types = (catalyst.catalysts || []).map(c => c.catalystType.replace('_catalyst', '')).join(', ');
+    if (types) notes.push(`${types} catalyst present`);
+  }
+
+  if (details.earningsDaysOut && details.earningsDaysOut > 0 && details.earningsDaysOut <= 45) {
+    notes.push(`earnings in ${details.earningsDaysOut} days`);
+  }
+
+  return notes.join(', ') || 'standard setup';
 }
