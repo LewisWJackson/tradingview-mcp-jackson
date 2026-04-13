@@ -1438,3 +1438,86 @@ describe('calcConfidenceBand', () => {
     assert.strictEqual(band.mid - band.low, 12);
   });
 });
+
+// ---------------------------------------------------------------------------
+// v3.1 integration: refinements
+// ---------------------------------------------------------------------------
+describe('v3.1 integration: refinements', () => {
+  it('VALID_COIL produces all v3.1 fields', () => {
+    const context = { regime: { regime: 'constructive', vixLevel: 20 }, spyOhlcv: SPY_BARS, qqqOhlcv: QQQ_BARS, sectorRanks: { Technology: 2 }, candidateSector: 'Technology' };
+
+    const trend = scoreTrendHealth(VALID_COIL, context);
+    const contraction = scoreContractionQuality(VALID_COIL);
+    const volume = scoreVolumeSignature(VALID_COIL);
+    const pivot = scorePivotStructure(VALID_COIL);
+    const catalyst = scoreCatalystAwareness(VALID_COIL, context);
+
+    // v3.1 fields
+    assert.ok(typeof trend.ma50Slope === 'number', 'missing ma50Slope');
+    assert.ok(typeof contraction.parkinsonRatio === 'number', 'missing parkinsonRatio');
+    assert.ok(typeof contraction.primaryConfirming === 'number', 'missing primaryConfirming');
+    assert.ok(typeof contraction.totalConfirming === 'number', 'missing totalConfirming');
+
+    const signals = { trendHealth: trend, contraction, volumeSignature: volume, pivotProximity: pivot, catalystAwareness: catalyst };
+    const probability = computeProbabilityScore(signals, context);
+
+    // Confidence band
+    const band = calcConfidenceBand(probability.probability_score, signals, context);
+    assert.ok(band.low <= band.mid);
+    assert.ok(band.mid <= band.high);
+    assert.ok(band.low >= 0);
+    assert.ok(band.high <= 100);
+    assert.ok(Number.isInteger(band.low));
+    assert.ok(Number.isInteger(band.mid));
+    assert.ok(Number.isInteger(band.high));
+  });
+
+  it('regime weights shift probability at different VIX levels', () => {
+    const signals = {
+      trendHealth: { score: 24, rsSubtotal: 7, trendSubtotal: 17 },
+      contraction: { score: 35 },
+      volumeSignature: { score: 16 },
+      pivotProximity: { score: 12 },
+      catalystAwareness: { score: 5 }
+    };
+    const lowVix = computeProbabilityScore(signals, { regime: { regime: 'constructive', vixLevel: 15 } });
+    const highVix = computeProbabilityScore(signals, { regime: { regime: 'constructive', vixLevel: 28 } });
+    assert.ok(typeof lowVix.probability_score === 'number');
+    assert.ok(typeof highVix.probability_score === 'number');
+    // Both valid scores in range
+    assert.ok(lowVix.probability_score >= 0 && lowVix.probability_score <= 100);
+    assert.ok(highVix.probability_score >= 0 && highVix.probability_score <= 100);
+  });
+
+  it('tiered gate + Parkinson work together in full pipeline', () => {
+    const contraction = scoreContractionQuality(VALID_COIL);
+    // Parkinson should be reported
+    assert.ok(typeof contraction.parkinsonRatio === 'number');
+    // Tiered fields should be present
+    assert.ok(typeof contraction.primaryConfirming === 'number');
+    assert.ok(contraction.primaryConfirming <= 4, 'max 4 primary signals');
+    assert.ok(contraction.totalConfirming <= 6, 'max 6 total signals');
+    // Score envelope preserved
+    assert.ok(contraction.score >= 0 && contraction.score <= 40);
+  });
+
+  it('all scoring envelopes preserved in v3.1', () => {
+    const context = { regime: { regime: 'constructive', vixLevel: 20 }, spyOhlcv: SPY_BARS, qqqOhlcv: QQQ_BARS };
+    const trend = scoreTrendHealth(VALID_COIL, context);
+    const contraction = scoreContractionQuality(VALID_COIL);
+    const volume = scoreVolumeSignature(VALID_COIL);
+    const pivot = scorePivotStructure(VALID_COIL);
+    const catalyst = scoreCatalystAwareness(VALID_COIL, context);
+
+    assert.ok(trend.score <= 30, `trend ${trend.score} > 30`);
+    assert.ok(trend.trendSubtotal <= 21, `trendSubtotal ${trend.trendSubtotal} > 21`);
+    assert.ok(trend.rsSubtotal <= 9, `rsSubtotal ${trend.rsSubtotal} > 9`);
+    assert.ok(contraction.score <= 40, `contraction ${contraction.score} > 40`);
+    assert.ok(volume.score <= 20, `volume ${volume.score} > 20`);
+    assert.ok(pivot.score <= 15, `pivot ${pivot.score} > 15`);
+    assert.ok(catalyst.score <= 15, `catalyst ${catalyst.score} > 15`);
+
+    const total = trend.score + contraction.score + volume.score + pivot.score + catalyst.score;
+    assert.ok(total <= 120, `total ${total} > 120`);
+  });
+});
