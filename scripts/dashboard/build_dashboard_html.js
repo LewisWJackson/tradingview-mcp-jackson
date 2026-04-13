@@ -1823,8 +1823,9 @@ function buildAlertBanner() {
 
   // Coiled Springs high-score alerts
   for (const c of (coiledSpringResults?.results || [])) {
-    if (c.score >= 75) {
-      alerts.push({ urgency: 'green', icon: '🌀', text: `${esc(c.symbol)} ${c.score}/120 — ${esc(c.play).slice(0, 70)}` });
+    if ((c.probability_score || c.score) >= 65) {
+      const band = c.confidence_band ? `${c.confidence_band.low}-${c.confidence_band.mid}-${c.confidence_band.high}%` : `${c.probability_score || c.score}`;
+      alerts.push({ urgency: 'green', icon: '🌀', text: `${esc(c.symbol)} ${band} — ${esc(c.play).slice(0, 70)}` });
     }
   }
 
@@ -1858,21 +1859,36 @@ function renderCoiledSpringCard(c) {
     coiled_spring: { label: 'COILED SPRING', bg: 'rgba(46,204,113,0.2)', color: '#2ecc71' },
     building_base: { label: 'BUILDING BASE', bg: 'rgba(241,196,15,0.2)', color: '#f1c40f' },
     catalyst_loaded: { label: 'CATALYST LOADED', bg: 'rgba(59,130,246,0.2)', color: '#3b82f6' },
+    extended: { label: 'EXTENDED', bg: 'rgba(231,76,60,0.2)', color: '#e74c3c' },
+    disqualified: { label: 'DISQUALIFIED', bg: 'rgba(107,114,128,0.2)', color: '#6b7280' },
   };
-  const cls = classMap[c.classification] || classMap.building_base;
+  const cls = classMap[c.setup_type || c.classification] || classMap.building_base;
 
-  // Score color (0-120 scale)
+  // Score color — use probability_score (0-100) if available, else composite (0-120)
+  const prob = c.probability_score || c.score;
+  const isProb = !!c.probability_score;
   let scoreColor = '#e74c3c';
-  if (c.score >= 90) scoreColor = '#2ecc71';
-  else if (c.score >= 70) scoreColor = '#f1c40f';
-  else if (c.score >= 50) scoreColor = '#e67e22';
+  if (isProb) {
+    if (prob >= 80) scoreColor = '#2ecc71';
+    else if (prob >= 65) scoreColor = '#f1c40f';
+    else if (prob >= 50) scoreColor = '#e67e22';
+  } else {
+    if (prob >= 90) scoreColor = '#2ecc71';
+    else if (prob >= 70) scoreColor = '#f1c40f';
+    else if (prob >= 50) scoreColor = '#e67e22';
+  }
+
+  // Setup quality badge color
+  const qualityColorMap = { ELITE: '#2ecc71', HIGH: '#f1c40f', MODERATE: '#e67e22', LOW: '#e74c3c' };
+  const qualityColor = qualityColorMap[c.setup_quality] || '#6b7280';
 
   // Confidence border
   let borderStyle = '1px solid var(--border)';
   let dimOverlay = '';
-  if (c.scoreConfidence === 'high') borderStyle = '2px solid #2ecc71';
-  else if (c.scoreConfidence === 'medium') borderStyle = '2px dashed #f1c40f';
-  else if (c.scoreConfidence === 'low') {
+  const conf = c.composite_confidence || c.scoreConfidence;
+  if (conf === 'high') borderStyle = '2px solid #2ecc71';
+  else if (conf === 'medium') borderStyle = '2px dashed #f1c40f';
+  else if (conf === 'low') {
     borderStyle = '1px solid var(--border)';
     dimOverlay = 'opacity:0.7;';
   }
@@ -1915,12 +1931,22 @@ function renderCoiledSpringCard(c) {
 
   // Key metrics
   const d = c.details || {};
+  // v3.1 metrics: entry trigger, risk category, stop range
+  const entryHtml = c.entry_trigger ? `<div style="font-size:11px;color:var(--text-dim);margin-bottom:4px;">📍 ${esc(c.entry_trigger)}${c.suggested_stop_percent ? ` &nbsp;|&nbsp; Stop: ${c.suggested_stop_percent[0]}–${c.suggested_stop_percent[1]}%` : ''}</div>` : '';
+
+  // v3.1 catalyst tag
+  const catTagMap = { catalyst_present: { icon: '🟢', text: 'Catalyst' }, catalyst_weak: { icon: '🟡', text: 'Weak catalyst' }, catalyst_unknown: { icon: '⚪', text: 'No catalyst' } };
+  const catTag = catTagMap[c.catalyst_tag] || null;
+  const catTagHtml = catTag ? `<span style="font-size:10px;margin-left:6px;">${catTag.icon} ${catTag.text}</span>` : '';
+
   const metricsHtml = `<div class="exp-metrics">
     Dist res: ${d.distFromResistance != null ? d.distFromResistance.toFixed(1) + '%' : '—'} &nbsp;|&nbsp;
     ATR: ${d.atrRatio != null ? d.atrRatio.toFixed(2) : '—'} &nbsp;|&nbsp;
     VCP: ${d.vcpContractions != null ? d.vcpContractions + 'x' : '—'} &nbsp;|&nbsp;
     VolDrought: ${d.volDroughtRatio != null ? d.volDroughtRatio.toFixed(2) : '—'} &nbsp;|&nbsp;
-    Accum: ${d.accumulationDays != null ? d.accumulationDays + 'd' : '—'}
+    AccDist: ${d.accDistScore != null ? d.accDistScore.toFixed(2) : (d.accumulationDays != null ? d.accumulationDays + 'd' : '—')}
+    ${d.parkinsonRatio != null ? `&nbsp;|&nbsp; PV: ${d.parkinsonRatio.toFixed(3)}` : ''}
+    ${catTagHtml}
   </div>`;
 
   // News (top 2)
@@ -1933,7 +1959,7 @@ function renderCoiledSpringCard(c) {
   // Confidence label for low
   const confLabel = c.scoreConfidence === 'low' ? '<div style="font-size:10px;color:var(--text-dim);text-align:center;margin-top:2px;">limited data</div>' : '';
 
-  return `<div class="exp-card" data-classification="${esc(c.classification)}" style="border:${borderStyle};${dimOverlay}">
+  return `<div class="exp-card" data-classification="${esc(c.setup_type || c.classification)}" style="border:${borderStyle};${dimOverlay}">
     <div class="exp-card-header">
       <div>
         <span style="font-size:18px;font-weight:700;">${esc(c.symbol)}</span>
@@ -1946,8 +1972,10 @@ function renderCoiledSpringCard(c) {
           <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:4px;background:${cls.bg};color:${cls.color};">${cls.label}</span>
         </div>
       </div>
-      <div>
-        <div class="exp-score" style="background:${scoreColor};">${c.score}</div>
+      <div style="text-align:center;">
+        <div class="exp-score" style="background:${scoreColor};">${isProb ? prob + '%' : prob}</div>
+        ${c.confidence_band ? `<div style="font-size:10px;color:var(--text-dim);margin-top:2px;">${c.confidence_band.low}–${c.confidence_band.high}%</div>` : ''}
+        ${c.setup_quality ? `<div style="font-size:10px;font-weight:700;color:${qualityColor};margin-top:2px;">${c.setup_quality}</div>` : ''}
         ${confLabel}
       </div>
     </div>
@@ -1955,6 +1983,8 @@ function renderCoiledSpringCard(c) {
     ${riskHtml}
     ${redFlagsHtml}
     ${c.play ? `<div class="exp-play">${esc(c.play)}</div>` : ''}
+    ${entryHtml}
+    ${c.notes ? `<div style="font-size:11px;color:var(--text-dim);margin-bottom:4px;font-style:italic;">${esc(c.notes)}</div>` : ''}
     ${metricsHtml}
     ${newsHtml}
   </div>`;
@@ -1981,9 +2011,15 @@ function buildCoiledSpringHtml() {
     ${regime.text}
   </div>`;
 
+  const benchmarks = r.benchmarks || {};
+  const benchStr = benchmarks.spy20dReturn != null ? `SPY 20d: ${(benchmarks.spy20dReturn * 100).toFixed(1)}%` : '';
+  const benchStr2 = benchmarks.qqq20dReturn != null ? `QQQ 20d: ${(benchmarks.qqq20dReturn * 100).toFixed(1)}%` : '';
+  const regimeMult = r.regimeMultiplier != null ? `Multiplier: ${r.regimeMultiplier}x` : '';
+
   const meta = `<div style="color:var(--text-dim);font-size:12px;margin-bottom:16px;">
     Scanned: ${r.scanDate || '—'} &nbsp;|&nbsp;
     Universe: ${r.universe || '—'} → Stage 1: ${r.stage1Passed || '—'} → Qualified: ${r.results.length}
+    ${benchStr ? `&nbsp;|&nbsp; ${benchStr}` : ''}${benchStr2 ? ` &nbsp;|&nbsp; ${benchStr2}` : ''}${regimeMult ? ` &nbsp;|&nbsp; ${regimeMult}` : ''}
   </div>`;
   const filters = `<div style="margin-bottom:16px;display:flex;gap:6px;flex-wrap:wrap;">
     <button class="exp-filter active" data-filter="all">All</button>
