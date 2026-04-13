@@ -48,6 +48,52 @@ const topN = topArg ? parseInt(topArg.split('=')[1], 10) || 15 : 15;
 // Main
 // ---------------------------------------------------------------------------
 
+/**
+ * Weighted multi-factor ranking.
+ * @param {Array} results - Scored candidate results
+ * @returns {Array} - Same array with .rank field set, sorted by weighted rank
+ */
+export function weightedRank(results) {
+  if (results.length === 0) return results;
+
+  const factors = [
+    { key: 'probability', weight: 0.40, extract: r => r.probability_score || 0 },
+    { key: 'contraction', weight: 0.25, extract: r => r.signals?.contraction || r.details?.contraction || 0 },
+    { key: 'institutional', weight: 0.20, extract: r => (r.details?.accDistScore || 0) + (r.details?.obvSlopeNormalized || 0) },
+    { key: 'resistance', weight: 0.15, extract: r => {
+      const strength = r.details?.resistanceStrength || r.resistance_strength || 0;
+      const dist = r.details?.distFromResistance || r.distance_to_resistance || 100;
+      return dist > 0 ? strength / dist : 0;
+    }}
+  ];
+
+  // Rank per factor (higher value = better = rank 1)
+  for (const factor of factors) {
+    const sorted = [...results].sort((a, b) => factor.extract(b) - factor.extract(a));
+    sorted.forEach((item, idx) => {
+      if (!item._factorRanks) item._factorRanks = {};
+      item._factorRanks[factor.key] = idx + 1;
+    });
+  }
+
+  // Weighted average rank
+  for (const r of results) {
+    r._weightedRank = factors.reduce((sum, f) => sum + (r._factorRanks[f.key] * f.weight), 0);
+  }
+
+  // Sort by weighted rank (lower = better), break ties by probability
+  results.sort((a, b) => a._weightedRank - b._weightedRank || (b.probability_score || 0) - (a.probability_score || 0));
+
+  // Assign final rank and clean up temp fields
+  results.forEach((r, idx) => {
+    r.rank = idx + 1;
+    delete r._factorRanks;
+    delete r._weightedRank;
+  });
+
+  return results;
+}
+
 async function main() {
   console.log('=== Coiled Spring Scanner v3 ===\n');
 
@@ -206,11 +252,9 @@ async function main() {
     });
   }
 
-  // 5. Sort by probability_score, take top N
-  scored.sort((a, b) => b.probability_score - a.probability_score);
+  // 5. Weighted multi-factor ranking, take top N
+  weightedRank(scored);
   const results = scored.slice(0, topN);
-  // Assign temporary ranks
-  results.forEach((r, i) => { r.rank = i + 1; });
 
   const regimeMultiplier = REGIME_MULTIPLIERS[marketRegime.regime] || 1.0;
 
@@ -248,7 +292,11 @@ async function main() {
   console.log(`\nOutput: ${outFile}`);
 }
 
-main().catch((err) => {
-  console.error('Scanner failed:', err);
-  process.exit(1);
-});
+// Only run main() when executed directly, not when imported for testing
+const isMainModule = process.argv[1] && fileURLToPath(import.meta.url).endsWith(process.argv[1].replace(/\\/g, '/').split('/').pop());
+if (isMainModule) {
+  main().catch((err) => {
+    console.error('Scanner failed:', err);
+    process.exit(1);
+  });
+}
