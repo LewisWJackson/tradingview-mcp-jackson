@@ -1,6 +1,6 @@
 {
   "scanDate": "2026-04-13",
-  "scannedAt": "2026-04-13T02:20:01.166Z",
+  "scannedAt": "2026-04-13T04:00:00.561Z",
   "universe": 1273,
   "stage1Passed": 285,
   "marketRegime": {
@@ -40,7 +40,7 @@
       "setup_quality": "HIGH",
       "trade_readiness": false,
       "setup_type": "building_base",
-      "composite_score": 72,
+      "composite_score": 70,
       "composite_confidence": "medium",
       "distance_to_resistance": 1.8,
       "resistance_strength": 2,
@@ -53,12 +53,17 @@
       "entry_trigger": "watchlist — alert at 62.14",
       "catalyst_tag": "catalyst_present",
       "regime_multiplier": 1,
+      "confidence_band": {
+        "low": 60,
+        "mid": 65,
+        "high": 70
+      },
       "factor_breakdown": {
         "volatility_contraction": 0.5,
         "relative_strength_trend": 0.778,
         "volume_dry_up": 0.6,
         "trend_quality": 1,
-        "distance_to_resistance": 0.6,
+        "distance_to_resistance": 0.467,
         "catalyst_presence": 0.2,
         "market_regime_alignment": 1
       },
@@ -66,7 +71,7 @@
         "trendHealth": 28,
         "contraction": 20,
         "volumeSignature": 12,
-        "pivotProximity": 9,
+        "pivotProximity": 7,
         "catalystAwareness": 3
       },
       "details": {
@@ -138,11 +143,11 @@
       "name": "Glacier Bancorp, Inc.",
       "price": 48.13,
       "changePct": -0.17,
-      "probability_score": 60,
+      "probability_score": 59,
       "setup_quality": "MODERATE",
       "trade_readiness": false,
       "setup_type": "building_base",
-      "composite_score": 64,
+      "composite_score": 60,
       "composite_confidence": "medium",
       "distance_to_resistance": 0.2,
       "resistance_strength": 1,
@@ -155,20 +160,25 @@
       "entry_trigger": "watchlist — alert at 48.21",
       "catalyst_tag": "catalyst_unknown",
       "regime_multiplier": 1,
+      "confidence_band": {
+        "low": 54,
+        "mid": 59,
+        "high": 64
+      },
       "factor_breakdown": {
         "volatility_contraction": 0.45,
         "relative_strength_trend": 0.778,
         "volume_dry_up": 0.45,
-        "trend_quality": 1,
-        "distance_to_resistance": 0.6,
+        "trend_quality": 0.905,
+        "distance_to_resistance": 0.467,
         "catalyst_presence": 0,
         "market_regime_alignment": 1
       },
       "signals": {
-        "trendHealth": 28,
+        "trendHealth": 26,
         "contraction": 18,
         "volumeSignature": 9,
-        "pivotProximity": 9,
+        "pivotProximity": 7,
         "catalystAwareness": 0
       },
       "details": {
@@ -241,11 +251,11 @@
       "name": "Baker Hughes Company",
       "price": 62.83,
       "changePct": -0.93,
-      "probability_score": 64,
-      "setup_quality": "MODERATE",
+      "probability_score": 65,
+      "setup_quality": "HIGH",
       "trade_readiness": false,
       "setup_type": "building_base",
-      "composite_score": 66,
+      "composite_score": 64,
       "composite_confidence": "medium",
       "distance_to_resistance": 1,
       "resistance_strength": 1,
@@ -258,12 +268,17 @@
       "entry_trigger": "watchlist — alert at 63.49",
       "catalyst_tag": "catalyst_unknown",
       "regime_multiplier": 1,
+      "confidence_band": {
+        "low": 58,
+        "mid": 65,
+        "high": 72
+      },
       "factor_breakdown": {
         "volatility_contraction": 0.375,
         "relative_strength_trend": 1,
         "volume_dry_up": 0.6,
         "trend_quality": 1,
-        "distance_to_resistance": 0.6,
+        "distance_to_resistance": 0.467,
         "catalyst_presence": 0,
         "market_regime_alignment": 1
       },
@@ -271,7 +286,7 @@
         "trendHealth": 30,
         "contraction": 15,
         "volumeSignature": 12,
-        "pivotProximity": 9,
+        "pivotProximity": 7,
         "catalystAwareness": 0
       },
       "details": {
@@ -341,11 +356,11 @@
       "name": "BridgeBio Pharma, Inc.",
       "price": 74.59,
       "changePct": -1.23,
-      "probability_score": 70,
+      "probability_score": 69,
       "setup_quality": "HIGH",
       "trade_readiness": false,
       "setup_type": "building_base",
-      "composite_score": 81,
+      "composite_score": 77,
       "composite_confidence": "medium",
       "distance_to_resistance": 1.6,
       "resistance_strength": 2,
@@ -358,20 +373,25 @@
       "entry_trigger": "watchlist — alert at 75.79",
       "catalyst_tag": "catalyst_unknown",
       "regime_multiplier": 1,
+      "confidence_band": {
+        "low": 64,
+        "mid": 69,
+        "high": 74
+      },
       "factor_breakdown": {
         "volatility_contraction": 0.8,
         "relative_strength_trend": 0.778,
         "volume_dry_up": 0.5,
-        "trend_quality": 1,
-        "distance_to_resistance": 0.733,
+        "trend_quality": 0.905,
+        "distance_to_resistance": 0.6,
         "catalyst_presence": 0,
         "market_regime_alignment": 1
       },
       "signals": {
-        "trendHealth": 28,
+        "trendHealth": 26,
         "contraction": 32,
         "volumeSignature": 10,
-        "pivotProximity": 11,
+        "pivotProximity": 9,
         "catalystAwareness": 0
       },
       "details": {
@@ -441,11 +461,117 @@
     },
     {
       "rank": 5,
+      "symbol": "CSX",
+      "name": "CSX Corporation",
+      "price": 42.24,
+      "changePct": -0.59,
+      "probability_score": 59,
+      "setup_quality": "MODERATE",
+      "trade_readiness": false,
+      "setup_type": "building_base",
+      "composite_score": 60,
+      "composite_confidence": "medium",
+      "distance_to_resistance": 0.6,
+      "resistance_strength": 1,
+      "risk_level": "low",
+      "risk_category": "base_watch",
+      "suggested_stop_percent": [
+        7,
+        10
+      ],
+      "entry_trigger": "watchlist — alert at 42.49",
+      "catalyst_tag": "catalyst_unknown",
+      "regime_multiplier": 1,
+      "confidence_band": {
+        "low": 54,
+        "mid": 59,
+        "high": 64
+      },
+      "factor_breakdown": {
+        "volatility_contraction": 0.45,
+        "relative_strength_trend": 0.778,
+        "volume_dry_up": 0.45,
+        "trend_quality": 1,
+        "distance_to_resistance": 0.333,
+        "catalyst_presence": 0,
+        "market_regime_alignment": 1
+      },
+      "signals": {
+        "trendHealth": 28,
+        "contraction": 18,
+        "volumeSignature": 9,
+        "pivotProximity": 5,
+        "catalystAwareness": 0
+      },
+      "details": {
+        "ma50": 40.65,
+        "ma150": 38.55,
+        "ma200": 36.45,
+        "maStacked": true,
+        "relStrengthPctile": 50,
+        "bbWidthPctile": 49,
+        "atrRatio": 1,
+        "atrPercentile": 4,
+        "vcpContractions": 2,
+        "vcpDepths": [
+          3.5,
+          -5,
+          4.2,
+          9.3,
+          6,
+          6.4
+        ],
+        "vcpQuality": 0,
+        "dailyRangePct": 1.72,
+        "confirmingSignals": 3,
+        "volDroughtRatio": 1.02,
+        "accDistScore": 2.89,
+        "upDownVolRatio": 2.03,
+        "obvSlopeNormalized": 0.2551,
+        "supportVolumeRatio": 1,
+        "distFromResistance": 0.6,
+        "resistanceTouches": 11,
+        "resistanceStrength": 1,
+        "extendedAbove50ma": false,
+        "gapFormedResistance": false,
+        "earningsDaysOut": -20536,
+        "sectorMomentumRank": 6,
+        "shortFloat": 0,
+        "ivContext": 37,
+        "ivLabel": "~37 (approximate, not a true IV rank)"
+      },
+      "breakout_risk": "low",
+      "breakout_risk_drivers": [
+        "volatile_near_resistance"
+      ],
+      "red_flags": [],
+      "play": "CSX: Watchlist. Set alert at 20-day high for breakout trigger. Do not enter yet.",
+      "notes": "emerging VCP, extreme contraction",
+      "news": [
+        {
+          "title": "When Should You Buy CSX Corporation (NASDAQ:CSX)?",
+          "link": "https://finance.yahoo.com/markets/stocks/articles/buy-csx-corporation-nasdaq-csx-110008476.html?.tsrc=rss",
+          "pubDate": "Sun, 12 Apr 2026 11:00:08 +0000"
+        },
+        {
+          "title": "1 Momentum  Stock for Long-Term Investors and 2 Facing Challenges",
+          "link": "https://finance.yahoo.com/markets/stocks/articles/1-momentum-stock-long-term-074244402.html?.tsrc=rss",
+          "pubDate": "Fri, 10 Apr 2026 07:42:44 +0000"
+        },
+        {
+          "title": "Norfolk Southern awarded control of disputed eastern port rail line",
+          "link": "https://finance.yahoo.com/economy/policy/articles/norfolk-southern-awarded-control-disputed-162458821.html?.tsrc=rss",
+          "pubDate": "Wed, 08 Apr 2026 16:24:58 +0000"
+        }
+      ]
+    },
+    {
+      "rank": 6,
       "symbol": "CYTK",
       "name": "Cytokinetics, Incorporated",
       "price": 65.01,
       "changePct": 0.65,
-      "probability_score": 66,
+      "probability_score": 68,
       "setup_quality": "HIGH",
       "trade_readiness": false,
       "setup_type": "building_base",
@@ -462,6 +588,11 @@
       "entry_trigger": "watchlist — alert at 66.73",
       "catalyst_tag": "catalyst_unknown",
       "regime_multiplier": 1,
+      "confidence_band": {
+        "low": 63,
+        "mid": 68,
+        "high": 73
+      },
       "factor_breakdown": {
         "volatility_contraction": 0.45,
         "relative_strength_trend": 1,
@@ -544,12 +675,120 @@
       ]
     },
     {
-      "rank": 6,
+      "rank": 7,
+      "symbol": "PPL",
+      "name": "PPL Corporation",
+      "price": 39.65,
+      "changePct": -0.4,
+      "probability_score": 57,
+      "setup_quality": "MODERATE",
+      "trade_readiness": false,
+      "setup_type": "building_base",
+      "composite_score": 66,
+      "composite_confidence": "medium",
+      "distance_to_resistance": 0.4,
+      "resistance_strength": 3,
+      "risk_level": "medium",
+      "risk_category": "base_watch",
+      "suggested_stop_percent": [
+        7,
+        10
+      ],
+      "entry_trigger": "watchlist — alert at 39.81",
+      "catalyst_tag": "catalyst_present",
+      "regime_multiplier": 1,
+      "confidence_band": {
+        "low": 52,
+        "mid": 57,
+        "high": 62
+      },
+      "factor_breakdown": {
+        "volatility_contraction": 0.45,
+        "relative_strength_trend": 0.444,
+        "volume_dry_up": 0.6,
+        "trend_quality": 1,
+        "distance_to_resistance": 0.533,
+        "catalyst_presence": 0.2,
+        "market_regime_alignment": 1
+      },
+      "signals": {
+        "trendHealth": 25,
+        "contraction": 18,
+        "volumeSignature": 12,
+        "pivotProximity": 8,
+        "catalystAwareness": 3
+      },
+      "details": {
+        "ma50": 37.61,
+        "ma150": 36.97,
+        "ma200": 36.33,
+        "maStacked": true,
+        "relStrengthPctile": 26,
+        "bbWidthPctile": 74,
+        "atrRatio": 1,
+        "atrPercentile": 0,
+        "vcpContractions": 2,
+        "vcpDepths": [
+          3.5,
+          5.3,
+          4,
+          4.4,
+          3.6,
+          6.4,
+          6.3
+        ],
+        "vcpQuality": 0,
+        "dailyRangePct": 1.37,
+        "confirmingSignals": 3,
+        "volDroughtRatio": 0.62,
+        "accDistScore": 3.05,
+        "upDownVolRatio": 0.88,
+        "obvSlopeNormalized": 0.5022,
+        "supportVolumeRatio": 1,
+        "distFromResistance": 0.4,
+        "resistanceTouches": 2,
+        "resistanceStrength": 3,
+        "extendedAbove50ma": false,
+        "gapFormedResistance": false,
+        "earningsDaysOut": -20536,
+        "sectorMomentumRank": 6,
+        "shortFloat": 0,
+        "ivContext": 14,
+        "ivLabel": "~14 (approximate, not a true IV rank)"
+      },
+      "breakout_risk": "medium",
+      "breakout_risk_drivers": [
+        "volatile_near_resistance",
+        "weak_accumulation"
+      ],
+      "red_flags": [],
+      "play": "PPL: Watchlist. Set alert at 20-day high for breakout trigger. Do not enter yet.",
+      "notes": "emerging VCP, earnings catalyst present",
+      "news": [
+        {
+          "title": "A Look At PPL (PPL) Valuation As Higher Q1 2026 Earnings And Rate Case Draw Attention",
+          "link": "https://finance.yahoo.com/markets/stocks/articles/look-ppl-ppl-valuation-higher-201554873.html?.tsrc=rss",
+          "pubDate": "Fri, 10 Apr 2026 20:15:54 +0000"
+        },
+        {
+          "title": "PPL (PPL) Beats Stock Market Upswing: What Investors Need to Know",
+          "link": "https://finance.yahoo.com/markets/stocks/articles/ppl-ppl-beats-stock-market-220004420.html?.tsrc=rss",
+          "pubDate": "Thu, 09 Apr 2026 22:00:04 +0000"
+        },
+        {
+          "title": "PPL Stock Lags Industry in 6 Months: Opportunity or Warning Sign?",
+          "link": "https://finance.yahoo.com/markets/stocks/articles/ppl-stock-lags-industry-6-163900820.html?.tsrc=rss",
+          "pubDate": "Thu, 09 Apr 2026 16:39:00 +0000"
+        }
+      ]
+    },
+    {
+      "rank": 8,
       "symbol": "ALB",
       "name": "Albemarle Corporation",
       "price": 173.64,
       "changePct": 0.75,
-      "probability_score": 61,
+      "probability_score": 62,
       "setup_quality": "MODERATE",
       "trade_readiness": false,
       "setup_type": "building_base",
@@ -566,20 +805,25 @@
       "entry_trigger": "watchlist — alert at 181.39",
       "catalyst_tag": "catalyst_present",
       "regime_multiplier": 1,
+      "confidence_band": {
+        "low": 57,
+        "mid": 62,
+        "high": 67
+      },
       "factor_breakdown": {
         "volatility_contraction": 0.625,
         "relative_strength_trend": 0.556,
         "volume_dry_up": 0.6,
-        "trend_quality": 1,
-        "distance_to_resistance": 0.333,
+        "trend_quality": 0.905,
+        "distance_to_resistance": 0.467,
         "catalyst_presence": 0.2,
         "market_regime_alignment": 1
       },
       "signals": {
-        "trendHealth": 26,
+        "trendHealth": 24,
         "contraction": 25,
         "volumeSignature": 12,
-        "pivotProximity": 5,
+        "pivotProximity": 7,
         "catalystAwareness": 3
       },
       "details": {
@@ -649,224 +893,16 @@
       ]
     },
     {
-      "rank": 7,
-      "symbol": "CSX",
-      "name": "CSX Corporation",
-      "price": 42.24,
-      "changePct": -0.59,
-      "probability_score": 58,
-      "setup_quality": "MODERATE",
-      "trade_readiness": false,
-      "setup_type": "building_base",
-      "composite_score": 62,
-      "composite_confidence": "medium",
-      "distance_to_resistance": 0.6,
-      "resistance_strength": 1,
-      "risk_level": "low",
-      "risk_category": "base_watch",
-      "suggested_stop_percent": [
-        7,
-        10
-      ],
-      "entry_trigger": "watchlist — alert at 42.49",
-      "catalyst_tag": "catalyst_unknown",
-      "regime_multiplier": 1,
-      "factor_breakdown": {
-        "volatility_contraction": 0.45,
-        "relative_strength_trend": 0.778,
-        "volume_dry_up": 0.45,
-        "trend_quality": 1,
-        "distance_to_resistance": 0.467,
-        "catalyst_presence": 0,
-        "market_regime_alignment": 1
-      },
-      "signals": {
-        "trendHealth": 28,
-        "contraction": 18,
-        "volumeSignature": 9,
-        "pivotProximity": 7,
-        "catalystAwareness": 0
-      },
-      "details": {
-        "ma50": 40.65,
-        "ma150": 38.55,
-        "ma200": 36.45,
-        "maStacked": true,
-        "relStrengthPctile": 50,
-        "bbWidthPctile": 49,
-        "atrRatio": 1,
-        "atrPercentile": 4,
-        "vcpContractions": 2,
-        "vcpDepths": [
-          3.5,
-          -5,
-          4.2,
-          9.3,
-          6,
-          6.4
-        ],
-        "vcpQuality": 0,
-        "dailyRangePct": 1.72,
-        "confirmingSignals": 3,
-        "volDroughtRatio": 1.02,
-        "accDistScore": 2.89,
-        "upDownVolRatio": 2.03,
-        "obvSlopeNormalized": 0.2551,
-        "supportVolumeRatio": 1,
-        "distFromResistance": 0.6,
-        "resistanceTouches": 11,
-        "resistanceStrength": 1,
-        "extendedAbove50ma": false,
-        "gapFormedResistance": false,
-        "earningsDaysOut": -20536,
-        "sectorMomentumRank": 6,
-        "shortFloat": 0,
-        "ivContext": 37,
-        "ivLabel": "~37 (approximate, not a true IV rank)"
-      },
-      "breakout_risk": "low",
-      "breakout_risk_drivers": [
-        "volatile_near_resistance"
-      ],
-      "red_flags": [],
-      "play": "CSX: Watchlist. Set alert at 20-day high for breakout trigger. Do not enter yet.",
-      "notes": "emerging VCP, extreme contraction",
-      "news": [
-        {
-          "title": "When Should You Buy CSX Corporation (NASDAQ:CSX)?",
-          "link": "https://finance.yahoo.com/markets/stocks/articles/buy-csx-corporation-nasdaq-csx-110008476.html?.tsrc=rss",
-          "pubDate": "Sun, 12 Apr 2026 11:00:08 +0000"
-        },
-        {
-          "title": "1 Momentum  Stock for Long-Term Investors and 2 Facing Challenges",
-          "link": "https://finance.yahoo.com/markets/stocks/articles/1-momentum-stock-long-term-074244402.html?.tsrc=rss",
-          "pubDate": "Fri, 10 Apr 2026 07:42:44 +0000"
-        },
-        {
-          "title": "Norfolk Southern awarded control of disputed eastern port rail line",
-          "link": "https://finance.yahoo.com/economy/policy/articles/norfolk-southern-awarded-control-disputed-162458821.html?.tsrc=rss",
-          "pubDate": "Wed, 08 Apr 2026 16:24:58 +0000"
-        }
-      ]
-    },
-    {
-      "rank": 8,
-      "symbol": "GS",
-      "name": "Goldman Sachs Group, Inc. (The)",
-      "price": 907.8,
-      "changePct": 0.45,
-      "probability_score": 64,
-      "setup_quality": "MODERATE",
-      "trade_readiness": false,
-      "setup_type": "building_base",
-      "composite_score": 69,
-      "composite_confidence": "medium",
-      "distance_to_resistance": 0,
-      "resistance_strength": 1,
-      "risk_level": "low",
-      "risk_category": "base_watch",
-      "suggested_stop_percent": [
-        7,
-        10
-      ],
-      "entry_trigger": "watchlist — alert at 907.8",
-      "catalyst_tag": "catalyst_unknown",
-      "regime_multiplier": 1,
-      "factor_breakdown": {
-        "volatility_contraction": 0.4,
-        "relative_strength_trend": 0.778,
-        "volume_dry_up": 0.8,
-        "trend_quality": 1,
-        "distance_to_resistance": 0.6,
-        "catalyst_presence": 0,
-        "market_regime_alignment": 1
-      },
-      "signals": {
-        "trendHealth": 28,
-        "contraction": 16,
-        "volumeSignature": 16,
-        "pivotProximity": 9,
-        "catalystAwareness": 0
-      },
-      "details": {
-        "ma50": 872.6,
-        "ma150": 843.78,
-        "ma200": 814.95,
-        "maStacked": true,
-        "relStrengthPctile": 36,
-        "bbWidthPctile": 72,
-        "atrRatio": 1,
-        "atrPercentile": 19,
-        "vcpContractions": 2,
-        "vcpDepths": [
-          6.9,
-          5.6,
-          8.2,
-          9.1,
-          10.3,
-          7,
-          5.4,
-          15.3,
-          9.5,
-          7.8,
-          3.6,
-          6.7
-        ],
-        "vcpQuality": 0.001939393939393937,
-        "dailyRangePct": 1.89,
-        "confirmingSignals": 3,
-        "volDroughtRatio": 0.77,
-        "accDistScore": 3.53,
-        "upDownVolRatio": 2.3,
-        "obvSlopeNormalized": 0.5045,
-        "supportVolumeRatio": 0.81,
-        "distFromResistance": 0,
-        "resistanceTouches": 11,
-        "resistanceStrength": 1,
-        "extendedAbove50ma": false,
-        "gapFormedResistance": false,
-        "earningsDaysOut": -20536,
-        "sectorMomentumRank": 6,
-        "shortFloat": 0,
-        "ivContext": 54,
-        "ivLabel": "~54 (approximate, not a true IV rank)"
-      },
-      "breakout_risk": "low",
-      "breakout_risk_drivers": [
-        "volatile_near_resistance"
-      ],
-      "red_flags": [],
-      "play": "GS: Watchlist. Set alert at 20-day high for breakout trigger. Do not enter yet.",
-      "notes": "emerging VCP",
-      "news": [
-        {
-          "title": "Dow Jones Futures Fall, Oil Prices Spike; U.S. Navy To Blockade Iran's Ports",
-          "link": "https://finance.yahoo.com/m/e5c356e4-57d3-33dd-92e5-f338939fd049/dow-jones-futures-fall%2C-oil.html?.tsrc=rss",
-          "pubDate": "Mon, 13 Apr 2026 02:07:22 +0000"
-        },
-        {
-          "title": "JPMorgan and Other Banks Set to Report Earnings as ‘Wall of Worry’ Looms",
-          "link": "https://finance.yahoo.com/m/84548d41-65cb-3033-8f36-632ac5180748/jpmorgan-and-other-banks-set.html?.tsrc=rss",
-          "pubDate": "Mon, 13 Apr 2026 01:12:00 +0000"
-        },
-        {
-          "title": "How The Helia Group (ASX:HLI) Narrative Is Shifting As Analysts Turn More Cautious On Valuation",
-          "link": "https://finance.yahoo.com/markets/stocks/articles/helia-group-asx-hli-narrative-011032341.html?.tsrc=rss",
-          "pubDate": "Mon, 13 Apr 2026 01:10:32 +0000"
-        }
-      ]
-    },
-    {
       "rank": 9,
       "symbol": "SRE",
       "name": "DBA Sempra",
       "price": 98.82,
       "changePct": -0.93,
-      "probability_score": 57,
+      "probability_score": 56,
       "setup_quality": "MODERATE",
       "trade_readiness": false,
       "setup_type": "building_base",
-      "composite_score": 67,
+      "composite_score": 65,
       "composite_confidence": "medium",
       "distance_to_resistance": 0.9,
       "resistance_strength": 3,
@@ -879,12 +915,17 @@
       "entry_trigger": "watchlist — alert at 99.75",
       "catalyst_tag": "catalyst_unknown",
       "regime_multiplier": 1,
+      "confidence_band": {
+        "low": 51,
+        "mid": 56,
+        "high": 61
+      },
       "factor_breakdown": {
         "volatility_contraction": 0.55,
         "relative_strength_trend": 0.444,
         "volume_dry_up": 0.5,
         "trend_quality": 1,
-        "distance_to_resistance": 0.667,
+        "distance_to_resistance": 0.533,
         "catalyst_presence": 0,
         "market_regime_alignment": 1
       },
@@ -892,7 +933,7 @@
         "trendHealth": 25,
         "contraction": 22,
         "volumeSignature": 10,
-        "pivotProximity": 10,
+        "pivotProximity": 8,
         "catalystAwareness": 0
       },
       "details": {
@@ -965,11 +1006,11 @@
       "name": "Masimo Corporation",
       "price": 178.32,
       "changePct": -0.01,
-      "probability_score": 57,
+      "probability_score": 56,
       "setup_quality": "MODERATE",
       "trade_readiness": false,
       "setup_type": "building_base",
-      "composite_score": 72,
+      "composite_score": 70,
       "composite_confidence": "medium",
       "distance_to_resistance": 0.2,
       "resistance_strength": 3,
@@ -982,12 +1023,17 @@
       "entry_trigger": "watchlist — alert at 178.73",
       "catalyst_tag": "catalyst_present",
       "regime_multiplier": 1,
+      "confidence_band": {
+        "low": 51,
+        "mid": 56,
+        "high": 61
+      },
       "factor_breakdown": {
         "volatility_contraction": 0.65,
         "relative_strength_trend": 0.222,
         "volume_dry_up": 0.6,
         "trend_quality": 0.81,
-        "distance_to_resistance": 0.8,
+        "distance_to_resistance": 0.667,
         "catalyst_presence": 0.2,
         "market_regime_alignment": 1
       },
@@ -995,7 +1041,7 @@
         "trendHealth": 19,
         "contraction": 26,
         "volumeSignature": 12,
-        "pivotProximity": 12,
+        "pivotProximity": 10,
         "catalystAwareness": 3
       },
       "details": {
@@ -1061,522 +1107,6 @@
           "title": "3 Small-Cap Stocks Walking a Fine Line",
           "link": "https://finance.yahoo.com/markets/stocks/articles/3-small-cap-stocks-walking-132820218.html?.tsrc=rss",
           "pubDate": "Thu, 02 Apr 2026 13:28:20 +0000"
-        }
-      ]
-    },
-    {
-      "rank": 11,
-      "symbol": "CVBF",
-      "name": "CVB Financial Corporation",
-      "price": 20.58,
-      "changePct": -0.82,
-      "probability_score": 61,
-      "setup_quality": "MODERATE",
-      "trade_readiness": false,
-      "setup_type": "building_base",
-      "composite_score": 68,
-      "composite_confidence": "medium",
-      "distance_to_resistance": 1,
-      "resistance_strength": 2,
-      "risk_level": "low",
-      "risk_category": "base_watch",
-      "suggested_stop_percent": [
-        7,
-        10
-      ],
-      "entry_trigger": "watchlist — alert at 20.78",
-      "catalyst_tag": "catalyst_present",
-      "regime_multiplier": 1,
-      "factor_breakdown": {
-        "volatility_contraction": 0.55,
-        "relative_strength_trend": 0.778,
-        "volume_dry_up": 0.05,
-        "trend_quality": 1,
-        "distance_to_resistance": 0.933,
-        "catalyst_presence": 0.2,
-        "market_regime_alignment": 1
-      },
-      "signals": {
-        "trendHealth": 28,
-        "contraction": 22,
-        "volumeSignature": 1,
-        "pivotProximity": 14,
-        "catalystAwareness": 3
-      },
-      "details": {
-        "ma50": 19.75,
-        "ma150": 19.67,
-        "ma200": 19.58,
-        "maStacked": true,
-        "relStrengthPctile": 10,
-        "bbWidthPctile": 70,
-        "atrRatio": 1,
-        "atrPercentile": 13,
-        "vcpContractions": 5,
-        "vcpDepths": [
-          8.8,
-          6.1,
-          8.7,
-          8.6,
-          4.3,
-          3.5
-        ],
-        "vcpQuality": 0.2826666666666667,
-        "dailyRangePct": 2.13,
-        "confirmingSignals": 3,
-        "volDroughtRatio": 0.89,
-        "accDistScore": 1.01,
-        "upDownVolRatio": 1.13,
-        "obvSlopeNormalized": 0.2356,
-        "supportVolumeRatio": 1,
-        "distFromResistance": 1,
-        "resistanceTouches": 13,
-        "resistanceStrength": 2,
-        "extendedAbove50ma": false,
-        "gapFormedResistance": false,
-        "earningsDaysOut": -20536,
-        "sectorMomentumRank": 6,
-        "shortFloat": 0,
-        "ivContext": 100,
-        "ivLabel": "~100 (approximate, not a true IV rank)"
-      },
-      "breakout_risk": "low",
-      "breakout_risk_drivers": [
-        "volatile_near_resistance"
-      ],
-      "red_flags": [
-        "merger_pending"
-      ],
-      "play": "CVBF: Watchlist. Set alert at 20-day high for breakout trigger. Do not enter yet.",
-      "notes": "5-stage VCP, extreme contraction, merger catalyst present",
-      "news": [
-        {
-          "title": "April 2026's Noteworthy Dividend Stocks To Consider",
-          "link": "https://finance.yahoo.com/markets/stocks/articles/april-2026s-noteworthy-dividend-stocks-173211839.html?.tsrc=rss",
-          "pubDate": "Thu, 09 Apr 2026 17:32:11 +0000"
-        },
-        {
-          "title": "CVB Financial Corp. Announces Receipt of Regulatory Approvals for Pending Merger with Heritage Commerce Corp.",
-          "link": "https://finance.yahoo.com/markets/stocks/articles/cvb-financial-corp-announces-receipt-211700960.html?.tsrc=rss",
-          "pubDate": "Wed, 01 Apr 2026 21:17:00 +0000"
-        },
-        {
-          "title": "Read This Before Considering CVB Financial Corp. (NASDAQ:CVBF) For Its Upcoming US$0.20 Dividend",
-          "link": "https://finance.yahoo.com/markets/stocks/articles/read-considering-cvb-financial-corp-125938518.html?.tsrc=rss",
-          "pubDate": "Sat, 28 Mar 2026 12:59:38 +0000"
-        }
-      ]
-    },
-    {
-      "rank": 12,
-      "symbol": "YUM",
-      "name": "Yum! Brands, Inc.",
-      "price": 161.76,
-      "changePct": 0.6,
-      "probability_score": 54,
-      "setup_quality": "MODERATE",
-      "trade_readiness": false,
-      "setup_type": "building_base",
-      "composite_score": 63,
-      "composite_confidence": "medium",
-      "distance_to_resistance": 1.2,
-      "resistance_strength": 1,
-      "risk_level": "medium",
-      "risk_category": "base_watch",
-      "suggested_stop_percent": [
-        7,
-        10
-      ],
-      "entry_trigger": "watchlist — alert at 163.69",
-      "catalyst_tag": "catalyst_unknown",
-      "regime_multiplier": 1,
-      "factor_breakdown": {
-        "volatility_contraction": 0.65,
-        "relative_strength_trend": 0.444,
-        "volume_dry_up": 0.45,
-        "trend_quality": 0.81,
-        "distance_to_resistance": 0.467,
-        "catalyst_presence": 0,
-        "market_regime_alignment": 1
-      },
-      "signals": {
-        "trendHealth": 21,
-        "contraction": 26,
-        "volumeSignature": 9,
-        "pivotProximity": 7,
-        "catalystAwareness": 0
-      },
-      "details": {
-        "ma50": 159.79,
-        "ma150": 155.55,
-        "ma200": 151.31,
-        "maStacked": true,
-        "relStrengthPctile": 17,
-        "bbWidthPctile": 30,
-        "atrRatio": 1,
-        "atrPercentile": 23,
-        "vcpContractions": 5,
-        "vcpDepths": [
-          5.9,
-          3.9,
-          3.6,
-          7.9,
-          7.8,
-          3.8,
-          5.9,
-          6.1
-        ],
-        "vcpQuality": 0,
-        "dailyRangePct": 1.52,
-        "confirmingSignals": 3,
-        "volDroughtRatio": 0.71,
-        "accDistScore": 4.24,
-        "upDownVolRatio": 0.66,
-        "obvSlopeNormalized": 0.1411,
-        "supportVolumeRatio": 0.86,
-        "distFromResistance": 1.2,
-        "resistanceTouches": 12,
-        "resistanceStrength": 1,
-        "extendedAbove50ma": false,
-        "gapFormedResistance": false,
-        "earningsDaysOut": -20536,
-        "sectorMomentumRank": 6,
-        "shortFloat": 0,
-        "ivContext": 20,
-        "ivLabel": "~20 (approximate, not a true IV rank)"
-      },
-      "breakout_risk": "medium",
-      "breakout_risk_drivers": [
-        "volatile_near_resistance",
-        "weak_accumulation"
-      ],
-      "red_flags": [],
-      "play": "YUM: Watchlist. Set alert at 20-day high for breakout trigger. Do not enter yet.",
-      "notes": "5-stage VCP",
-      "news": [
-        {
-          "title": "3 Restaurant Stocks We Steer Clear Of",
-          "link": "https://finance.yahoo.com/markets/stocks/articles/3-restaurant-stocks-steer-clear-190244448.html?.tsrc=rss",
-          "pubDate": "Fri, 10 Apr 2026 19:02:44 +0000"
-        },
-        {
-          "title": "How The Story Is Shifting For Yum Brands (YUM) As Street Targets Converge Around US$170",
-          "link": "https://finance.yahoo.com/markets/stocks/articles/story-shifting-yum-brands-yum-071009014.html?.tsrc=rss",
-          "pubDate": "Fri, 10 Apr 2026 07:10:09 +0000"
-        },
-        {
-          "title": "What to Expect From Yum! Brands’ Q1 2026 Earnings Report",
-          "link": "https://www.barchart.com/story/news/1219381/what-to-expect-from-yum-brands-q1-2026-earnings-report?.tsrc=rss",
-          "pubDate": "Thu, 09 Apr 2026 12:20:54 +0000"
-        }
-      ]
-    },
-    {
-      "rank": 13,
-      "symbol": "DRH",
-      "name": "Diamondrock Hospitality Company",
-      "price": 10.18,
-      "changePct": 0.99,
-      "probability_score": 59,
-      "setup_quality": "MODERATE",
-      "trade_readiness": false,
-      "setup_type": "building_base",
-      "composite_score": 63,
-      "composite_confidence": "medium",
-      "distance_to_resistance": 1,
-      "resistance_strength": 3,
-      "risk_level": "low",
-      "risk_category": "base_watch",
-      "suggested_stop_percent": [
-        7,
-        10
-      ],
-      "entry_trigger": "watchlist — alert at 10.28",
-      "catalyst_tag": "catalyst_unknown",
-      "regime_multiplier": 1,
-      "factor_breakdown": {
-        "volatility_contraction": 0.375,
-        "relative_strength_trend": 0.778,
-        "volume_dry_up": 0.5,
-        "trend_quality": 1,
-        "distance_to_resistance": 0.667,
-        "catalyst_presence": 0,
-        "market_regime_alignment": 1
-      },
-      "signals": {
-        "trendHealth": 28,
-        "contraction": 15,
-        "volumeSignature": 10,
-        "pivotProximity": 10,
-        "catalystAwareness": 0
-      },
-      "details": {
-        "ma50": 9.64,
-        "ma150": 9.18,
-        "ma200": 8.72,
-        "maStacked": true,
-        "relStrengthPctile": 52,
-        "bbWidthPctile": 47,
-        "atrRatio": 1,
-        "atrPercentile": 8,
-        "vcpContractions": 3,
-        "vcpDepths": [
-          1.7,
-          0.7,
-          5.7,
-          4.5,
-          10.3,
-          4.5,
-          3.9,
-          5.2
-        ],
-        "vcpQuality": 0,
-        "dailyRangePct": 2.31,
-        "confirmingSignals": 2,
-        "volDroughtRatio": 0.71,
-        "accDistScore": 2.33,
-        "upDownVolRatio": 1.25,
-        "obvSlopeNormalized": 0.099,
-        "supportVolumeRatio": 0.91,
-        "distFromResistance": 1,
-        "resistanceTouches": 2,
-        "resistanceStrength": 3,
-        "extendedAbove50ma": false,
-        "gapFormedResistance": false,
-        "earningsDaysOut": -20536,
-        "sectorMomentumRank": 6,
-        "shortFloat": 0,
-        "ivContext": 0,
-        "ivLabel": "~0 (approximate, not a true IV rank)"
-      },
-      "breakout_risk": "low",
-      "breakout_risk_drivers": [
-        "volatile_near_resistance"
-      ],
-      "red_flags": [],
-      "play": "DRH: Watchlist. Set alert at 20-day high for breakout trigger. Do not enter yet.",
-      "notes": "3-stage VCP, extreme contraction",
-      "news": [
-        {
-          "title": "Are Investors Undervaluing Apple Hospitality REIT (APLE) Right Now?",
-          "link": "https://finance.yahoo.com/markets/stocks/articles/investors-undervaluing-apple-hospitality-reit-134005477.html?.tsrc=rss",
-          "pubDate": "Tue, 07 Apr 2026 13:40:05 +0000"
-        },
-        {
-          "title": "DRH or EGP: Which Is the Better Value Stock Right Now?",
-          "link": "https://finance.yahoo.com/markets/stocks/articles/drh-egp-better-value-stock-154004006.html?.tsrc=rss",
-          "pubDate": "Mon, 06 Apr 2026 15:40:04 +0000"
-        },
-        {
-          "title": "A Look At DiamondRock Hospitality (DRH) Valuation After Recent Share Price Swings",
-          "link": "https://finance.yahoo.com/markets/stocks/articles/look-diamondrock-hospitality-drh-valuation-015058603.html?.tsrc=rss",
-          "pubDate": "Tue, 31 Mar 2026 01:50:58 +0000"
-        }
-      ]
-    },
-    {
-      "rank": 14,
-      "symbol": "LQDA",
-      "name": "Liquidia Corporation",
-      "price": 38.55,
-      "changePct": -4.39,
-      "probability_score": 65,
-      "setup_quality": "HIGH",
-      "trade_readiness": false,
-      "setup_type": "building_base",
-      "composite_score": 73,
-      "composite_confidence": "medium",
-      "distance_to_resistance": 4.4,
-      "resistance_strength": 2,
-      "risk_level": "medium",
-      "risk_category": "base_watch",
-      "suggested_stop_percent": [
-        7,
-        10
-      ],
-      "entry_trigger": "watchlist — alert at 40.32",
-      "catalyst_tag": "catalyst_present",
-      "regime_multiplier": 1,
-      "factor_breakdown": {
-        "volatility_contraction": 0.6,
-        "relative_strength_trend": 0.778,
-        "volume_dry_up": 0.55,
-        "trend_quality": 1,
-        "distance_to_resistance": 0.467,
-        "catalyst_presence": 0.2,
-        "market_regime_alignment": 1
-      },
-      "signals": {
-        "trendHealth": 28,
-        "contraction": 24,
-        "volumeSignature": 11,
-        "pivotProximity": 7,
-        "catalystAwareness": 3
-      },
-      "details": {
-        "ma50": 37.17,
-        "ma150": 33.07,
-        "ma200": 28.96,
-        "maStacked": true,
-        "relStrengthPctile": 79,
-        "bbWidthPctile": 16,
-        "atrRatio": 1,
-        "atrPercentile": 17,
-        "vcpContractions": 3,
-        "vcpDepths": [
-          12.7,
-          11.4,
-          11.4,
-          9,
-          9.1
-        ],
-        "vcpQuality": 0.144,
-        "dailyRangePct": 5.03,
-        "confirmingSignals": 3,
-        "volDroughtRatio": 0.68,
-        "accDistScore": 1.34,
-        "upDownVolRatio": 0.61,
-        "obvSlopeNormalized": -0.0011,
-        "supportVolumeRatio": 1,
-        "distFromResistance": 4.4,
-        "resistanceTouches": 6,
-        "resistanceStrength": 2,
-        "extendedAbove50ma": false,
-        "gapFormedResistance": false,
-        "earningsDaysOut": -20536,
-        "sectorMomentumRank": 6,
-        "shortFloat": 0,
-        "ivContext": 100,
-        "ivLabel": "~100 (approximate, not a true IV rank)"
-      },
-      "breakout_risk": "medium",
-      "breakout_risk_drivers": [
-        "volatile_near_resistance",
-        "weak_accumulation"
-      ],
-      "red_flags": [],
-      "play": "LQDA: Watchlist. Set alert at 20-day high for breakout trigger. Do not enter yet.",
-      "notes": "3-stage VCP, product catalyst present",
-      "news": [
-        {
-          "title": "Interstitial Lung Disease Market to Witness Accelerated Growth at a CAGR of 8.7% During the Forecast Period (2026–2036) Due to the Launch of Emerging Therapies | DelveInsight",
-          "link": "https://finance.yahoo.com/sectors/healthcare/articles/interstitial-lung-disease-market-witness-170000263.html?.tsrc=rss",
-          "pubDate": "Wed, 08 Apr 2026 17:00:00 +0000"
-        },
-        {
-          "title": "Liquidia Corporation to Participate in Upcoming Investor Conferences",
-          "link": "https://finance.yahoo.com/sectors/healthcare/articles/liquidia-corporation-participate-upcoming-investor-120000676.html?.tsrc=rss",
-          "pubDate": "Tue, 07 Apr 2026 12:00:00 +0000"
-        },
-        {
-          "title": "Liquidia's Chairman Sold Company Shares Worth $2.5 Million. Should Investors Avoid the Stock?",
-          "link": "https://www.fool.com/coverage/filings/2026/04/05/liquidia-s-chairman-sold-company-shares-worth-usd2-5-million-should-investors-avoid-the-stock/?.tsrc=rss",
-          "pubDate": "Sun, 05 Apr 2026 14:26:00 +0000"
-        }
-      ]
-    },
-    {
-      "rank": 15,
-      "symbol": "APD",
-      "name": "Air Products and Chemicals, Inc",
-      "price": 298.71,
-      "changePct": 0.33,
-      "probability_score": 59,
-      "setup_quality": "MODERATE",
-      "trade_readiness": false,
-      "setup_type": "building_base",
-      "composite_score": 70,
-      "composite_confidence": "medium",
-      "distance_to_resistance": 0,
-      "resistance_strength": 3,
-      "risk_level": "medium",
-      "risk_category": "base_watch",
-      "suggested_stop_percent": [
-        7,
-        10
-      ],
-      "entry_trigger": "watchlist — alert at 298.71",
-      "catalyst_tag": "catalyst_unknown",
-      "regime_multiplier": 1,
-      "factor_breakdown": {
-        "volatility_contraction": 0.65,
-        "relative_strength_trend": 0.444,
-        "volume_dry_up": 0.45,
-        "trend_quality": 1,
-        "distance_to_resistance": 0.667,
-        "catalyst_presence": 0,
-        "market_regime_alignment": 1
-      },
-      "signals": {
-        "trendHealth": 25,
-        "contraction": 26,
-        "volumeSignature": 9,
-        "pivotProximity": 10,
-        "catalystAwareness": 0
-      },
-      "details": {
-        "ma50": 283.48,
-        "ma150": 278.64,
-        "ma200": 273.81,
-        "maStacked": true,
-        "relStrengthPctile": 27,
-        "bbWidthPctile": 12,
-        "atrRatio": 1,
-        "atrPercentile": 65,
-        "vcpContractions": 5,
-        "vcpDepths": [
-          5.3,
-          5,
-          2.5,
-          7.5,
-          5.9,
-          2.7,
-          6.8,
-          4,
-          5.1
-        ],
-        "vcpQuality": 0.006666666666666672,
-        "dailyRangePct": 2.47,
-        "confirmingSignals": 3,
-        "volDroughtRatio": 0.83,
-        "accDistScore": 2.14,
-        "upDownVolRatio": 0.82,
-        "obvSlopeNormalized": -0.1124,
-        "supportVolumeRatio": 1.19,
-        "distFromResistance": 0,
-        "resistanceTouches": 3,
-        "resistanceStrength": 3,
-        "extendedAbove50ma": false,
-        "gapFormedResistance": false,
-        "earningsDaysOut": -20536,
-        "sectorMomentumRank": 6,
-        "shortFloat": 0,
-        "ivContext": 26,
-        "ivLabel": "~26 (approximate, not a true IV rank)"
-      },
-      "breakout_risk": "medium",
-      "breakout_risk_drivers": [
-        "volatile_near_resistance",
-        "weak_accumulation"
-      ],
-      "red_flags": [],
-      "play": "APD: Watchlist. Set alert at 20-day high for breakout trigger. Do not enter yet.",
-      "notes": "5-stage VCP",
-      "news": [
-        {
-          "title": "Helium Disruption Spells Opportunity for Some Suppliers of the Gas",
-          "link": "https://finance.yahoo.com/m/aa1cab58-bb4b-3e57-8043-9428db050d96/helium-disruption-spells.html?.tsrc=rss",
-          "pubDate": "Thu, 02 Apr 2026 09:30:00 +0000"
-        },
-        {
-          "title": "[Latest] Global Electronic Grade Hydrofluoric Acid Market Size/Share Worth USD 3.47 Billion by 2035 at a 11.4% CAGR: Custom Market Insights (Analysis, Outlook, Leaders, Report, Trends, Forecast, Segmentation, Growth Rate, SWOT Analysis)",
-          "link": "https://finance.yahoo.com/markets/commodities/articles/latest-global-electronic-grade-hydrofluoric-083000631.html?.tsrc=rss",
-          "pubDate": "Thu, 02 Apr 2026 08:30:00 +0000"
-        },
-        {
-          "title": "How The Investment Story For Air Products And Chemicals (APD) Is Shifting On Mixed Analyst Signals",
-          "link": "https://finance.yahoo.com/markets/stocks/articles/investment-story-air-products-chemicals-171045113.html?.tsrc=rss",
-          "pubDate": "Wed, 01 Apr 2026 17:10:45 +0000"
         }
       ]
     }
