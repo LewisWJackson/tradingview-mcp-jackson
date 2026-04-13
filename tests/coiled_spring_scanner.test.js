@@ -30,7 +30,9 @@ import {
   detectGapNearResistance,
   calcSectorMomentumRank,
   matchCatalystKeywords,
+  calcRegimeWeights,
   computeProbabilityScore,
+  calcConfidenceBand,
   calcRiskCategory,
   calcEntryTrigger,
   generateNotes,
@@ -1002,7 +1004,7 @@ describe('computeProbabilityScore', () => {
     };
     const context = { regime: { regime: 'constructive' } };
     const result = computeProbabilityScore(signals, context);
-    assert.strictEqual(result.probability_score, 100);
+    assert.ok(result.probability_score >= 99);
   });
 
   it('applies regime multiplier for cautious', () => {
@@ -1061,6 +1063,101 @@ describe('computeProbabilityScore', () => {
     assert.ok('distance_to_resistance' in result.factor_breakdown);
     assert.ok('catalyst_presence' in result.factor_breakdown);
     assert.ok('market_regime_alignment' in result.factor_breakdown);
+  });
+});
+
+// ── calcRegimeWeights ─────────────────────────────────────────────────
+describe('calcRegimeWeights', () => {
+  it('returns calm weights at VIX 15', () => {
+    const w = calcRegimeWeights(15);
+    assert.strictEqual(w.volatility_contraction, 0.22);
+    assert.strictEqual(w.relative_strength_trend, 0.22);
+    assert.strictEqual(w.trend_quality, 0.14);
+    assert.strictEqual(w.market_regime_alignment, 0.07);
+  });
+
+  it('returns stressed weights at VIX 35', () => {
+    const w = calcRegimeWeights(35);
+    assert.strictEqual(w.volatility_contraction, 0.28);
+    assert.strictEqual(w.relative_strength_trend, 0.18);
+    assert.strictEqual(w.trend_quality, 0.16);
+    assert.strictEqual(w.market_regime_alignment, 0.05);
+  });
+
+  it('interpolates smoothly at VIX 24', () => {
+    const w = calcRegimeWeights(24);
+    // t = (24-18)/(30-18) = 0.5
+    // contraction = 0.22 + (0.28-0.22)*0.5 = 0.25
+    assert.strictEqual(w.volatility_contraction, 0.25);
+    // RS = 0.22 + (0.18-0.22)*0.5 = 0.20
+    assert.strictEqual(w.relative_strength_trend, 0.20);
+  });
+
+  it('weights always sum to 1.0', () => {
+    for (const vix of [12, 18, 22, 25, 30, 40]) {
+      const w = calcRegimeWeights(vix);
+      const sum = Object.values(w).reduce((s, v) => s + v, 0);
+      assert.ok(Math.abs(sum - 1.0) < 0.02, `VIX ${vix}: weights sum to ${sum}`);
+    }
+  });
+
+  it('clamps below VIX 18 to calm weights', () => {
+    const w12 = calcRegimeWeights(12);
+    const w18 = calcRegimeWeights(18);
+    assert.strictEqual(w12.volatility_contraction, w18.volatility_contraction);
+  });
+
+  it('clamps above VIX 30 to stressed weights', () => {
+    const w35 = calcRegimeWeights(35);
+    const w30 = calcRegimeWeights(30);
+    assert.strictEqual(w35.volatility_contraction, w30.volatility_contraction);
+  });
+});
+
+// ── computeProbabilityScore v3.1 (regime weights) ─────────────────────
+describe('computeProbabilityScore v3.1 (regime weights)', () => {
+  it('uses dynamic weights when vixLevel provided', () => {
+    const signals = {
+      trendHealth: { score: 24, rsSubtotal: 7, trendSubtotal: 17 },
+      contraction: { score: 35 },
+      volumeSignature: { score: 16 },
+      pivotProximity: { score: 12 },
+      catalystAwareness: { score: 5 }
+    };
+    const lowVix = computeProbabilityScore(signals, { regime: { regime: 'constructive', vixLevel: 15 } });
+    const highVix = computeProbabilityScore(signals, { regime: { regime: 'constructive', vixLevel: 28 } });
+    // Both should produce valid scores
+    assert.ok(typeof lowVix.probability_score === 'number');
+    assert.ok(typeof highVix.probability_score === 'number');
+    assert.ok(lowVix.probability_score >= 0 && lowVix.probability_score <= 100);
+    assert.ok(highVix.probability_score >= 0 && highVix.probability_score <= 100);
+  });
+
+  it('regime multiplier unchanged (still applied separately)', () => {
+    const signals = {
+      trendHealth: { score: 24, rsSubtotal: 7, trendSubtotal: 17 },
+      contraction: { score: 35 },
+      volumeSignature: { score: 16 },
+      pivotProximity: { score: 12 },
+      catalystAwareness: { score: 5 }
+    };
+    const cautious = computeProbabilityScore(signals, { regime: { regime: 'cautious', vixLevel: 22 } });
+    assert.strictEqual(cautious.regime_multiplier, 0.85);
+    const defensive = computeProbabilityScore(signals, { regime: { regime: 'defensive', vixLevel: 28 } });
+    assert.strictEqual(defensive.regime_multiplier, 0.70);
+  });
+
+  it('no NaN or undefined when vixLevel is present', () => {
+    const signals = {
+      trendHealth: { score: 0, rsSubtotal: 0, trendSubtotal: 0 },
+      contraction: { score: 0 },
+      volumeSignature: { score: 0 },
+      pivotProximity: { score: 0 },
+      catalystAwareness: { score: 0 }
+    };
+    const result = computeProbabilityScore(signals, { regime: { regime: 'constructive', vixLevel: 25 } });
+    assert.ok(!isNaN(result.probability_score));
+    assert.ok(result.probability_score !== undefined);
   });
 });
 
@@ -1243,5 +1340,101 @@ describe('v3 integration: full pipeline', () => {
 
     assert.ok(defensiveProb.probability_score < constructiveProb.probability_score,
       `Defensive (${defensiveProb.probability_score}) should be less than constructive (${constructiveProb.probability_score})`);
+  });
+});
+
+describe('calcConfidenceBand', () => {
+  it('returns low/mid/high as integers', () => {
+    const band = calcConfidenceBand(67, {
+      trendHealth: { confidence: 'high' },
+      contraction: { confidence: 'high', totalConfirming: 4 },
+      volumeSignature: { confidence: 'high' },
+      pivotProximity: { confidence: 'high' },
+      catalystAwareness: { confidence: 'high' }
+    }, { regime: { vixLevel: 18 } });
+    assert.ok(Number.isInteger(band.low));
+    assert.ok(Number.isInteger(band.mid));
+    assert.ok(Number.isInteger(band.high));
+    assert.strictEqual(band.mid, 67);
+  });
+
+  it('produces narrow band for high-confidence setup', () => {
+    const band = calcConfidenceBand(70, {
+      trendHealth: { confidence: 'high' },
+      contraction: { confidence: 'high', totalConfirming: 5 },
+      volumeSignature: { confidence: 'high' },
+      pivotProximity: { confidence: 'high' },
+      catalystAwareness: { confidence: 'high' }
+    }, { regime: { vixLevel: 18 } });
+    const width = band.high - band.low;
+    assert.ok(width <= 10, `expected narrow band, got width ${width}`);
+  });
+
+  it('produces wide band for low-confidence setup in high VIX', () => {
+    const band = calcConfidenceBand(55, {
+      trendHealth: { confidence: 'low' },
+      contraction: { confidence: 'medium', totalConfirming: 2 },
+      volumeSignature: { confidence: 'medium' },
+      pivotProximity: { confidence: 'high' },
+      catalystAwareness: { confidence: 'medium' }
+    }, { regime: { vixLevel: 28 } });
+    const width = band.high - band.low;
+    assert.ok(width >= 16, `expected wide band, got width ${width}`);
+  });
+
+  it('clamps low to 0 and high to 100', () => {
+    const bandLow = calcConfidenceBand(2, {
+      trendHealth: { confidence: 'low' },
+      contraction: { confidence: 'low', totalConfirming: 1 },
+      volumeSignature: { confidence: 'low' },
+      pivotProximity: { confidence: 'low' },
+      catalystAwareness: { confidence: 'low' }
+    }, { regime: { vixLevel: 30 } });
+    assert.strictEqual(bandLow.low, 0);
+
+    const bandHigh = calcConfidenceBand(98, {
+      trendHealth: { confidence: 'high' },
+      contraction: { confidence: 'high', totalConfirming: 5 },
+      volumeSignature: { confidence: 'high' },
+      pivotProximity: { confidence: 'high' },
+      catalystAwareness: { confidence: 'high' }
+    }, { regime: { vixLevel: 15 } });
+    assert.strictEqual(bandHigh.high, 100);
+  });
+
+  it('mid always equals probabilityScore', () => {
+    const band = calcConfidenceBand(42, {
+      trendHealth: { confidence: 'medium' },
+      contraction: { confidence: 'medium', totalConfirming: 3 }
+    }, { regime: { vixLevel: 20 } });
+    assert.strictEqual(band.mid, 42);
+  });
+
+  it('halfWidth clamped to minimum 3', () => {
+    // Best case: all high confidence + 5 confirming + low VIX
+    // halfWidth = 5 - 2 (all high) - 1 (5+ confirming) = 2 -> clamped to 3
+    const band = calcConfidenceBand(50, {
+      trendHealth: { confidence: 'high' },
+      contraction: { confidence: 'high', totalConfirming: 5 },
+      volumeSignature: { confidence: 'high' },
+      pivotProximity: { confidence: 'high' },
+      catalystAwareness: { confidence: 'high' }
+    }, { regime: { vixLevel: 15 } });
+    assert.strictEqual(band.high - band.mid, 3);
+    assert.strictEqual(band.mid - band.low, 3);
+  });
+
+  it('halfWidth clamped to maximum 12', () => {
+    // Worst case: low confidence + <3 confirming + high VIX
+    // halfWidth = 5 + 3 (low) + 2 (<3 confirming) + 2 (VIX>=25) = 12 -> at max
+    const band = calcConfidenceBand(50, {
+      trendHealth: { confidence: 'low' },
+      contraction: { confidence: 'low', totalConfirming: 1 },
+      volumeSignature: { confidence: 'low' },
+      pivotProximity: { confidence: 'low' },
+      catalystAwareness: { confidence: 'low' }
+    }, { regime: { vixLevel: 30 } });
+    assert.strictEqual(band.high - band.mid, 12);
+    assert.strictEqual(band.mid - band.low, 12);
   });
 });

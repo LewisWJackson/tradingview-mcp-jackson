@@ -1022,14 +1022,51 @@ export function generatePlay(symbol, classification, details, regime) {
 export const REGIME_MULTIPLIERS = { constructive: 1.0, cautious: 0.85, defensive: 0.70 };
 const REGIME_ALIGNMENT = { constructive: 1.0, cautious: 0.5, defensive: 0.0 };
 
+const CALM_WEIGHTS = {
+  volatility_contraction: 0.22,
+  relative_strength_trend: 0.22,
+  volume_dry_up: 0.15,
+  trend_quality: 0.14,
+  distance_to_resistance: 0.10,
+  catalyst_presence: 0.10,
+  market_regime_alignment: 0.07
+};
+
+const STRESSED_WEIGHTS = {
+  volatility_contraction: 0.28,
+  relative_strength_trend: 0.18,
+  volume_dry_up: 0.15,
+  trend_quality: 0.16,
+  distance_to_resistance: 0.10,
+  catalyst_presence: 0.08,
+  market_regime_alignment: 0.05
+};
+
+/**
+ * Compute regime-adaptive factor weights via linear interpolation on VIX.
+ * @param {number} vixLevel - Current VIX value
+ * @returns {Object} - Factor weights summing to 1.0
+ */
+export function calcRegimeWeights(vixLevel) {
+  const t = Math.max(0, Math.min(1, (vixLevel - 18) / (30 - 18)));
+
+  const weights = {};
+  for (const key of Object.keys(CALM_WEIGHTS)) {
+    weights[key] = Math.round((CALM_WEIGHTS[key] + (STRESSED_WEIGHTS[key] - CALM_WEIGHTS[key]) * t) * 100) / 100;
+  }
+
+  return weights;
+}
+
 /**
  * Compute weighted probability score (0-100) from category signals.
  * @param {Object} signals - { trendHealth, contraction, volumeSignature, pivotProximity, catalystAwareness }
- * @param {Object} context - { regime: { regime: 'constructive'|'cautious'|'defensive' } }
+ * @param {Object} context - { regime: { regime: 'constructive'|'cautious'|'defensive', vixLevel: number } }
  * @returns {{ probability_score, setup_quality, trade_readiness, regime_multiplier, factor_breakdown }}
  */
 export function computeProbabilityScore(signals, context = {}) {
   const regimeName = (context.regime && context.regime.regime) || 'constructive';
+  const vixLevel = (context.regime && context.regime.vixLevel) || 20;
 
   // Normalize each category to 0-1
   const contractionNorm = (signals.contraction?.score || 0) / 40;
@@ -1040,15 +1077,18 @@ export function computeProbabilityScore(signals, context = {}) {
   const catalystNorm = (signals.catalystAwareness?.score || 0) / 15;
   const regimeAlignment = REGIME_ALIGNMENT[regimeName] || 1.0;
 
+  // Dynamic weights based on VIX
+  const w = calcRegimeWeights(vixLevel);
+
   // Weighted raw probability
   const rawProb =
-    (contractionNorm * 0.25) +
-    (rsNorm * 0.20) +
-    (volumeNorm * 0.15) +
-    (trendNorm * 0.15) +
-    (resistanceNorm * 0.10) +
-    (catalystNorm * 0.10) +
-    (regimeAlignment * 0.05);
+    (contractionNorm * w.volatility_contraction) +
+    (rsNorm * w.relative_strength_trend) +
+    (volumeNorm * w.volume_dry_up) +
+    (trendNorm * w.trend_quality) +
+    (resistanceNorm * w.distance_to_resistance) +
+    (catalystNorm * w.catalyst_presence) +
+    (regimeAlignment * w.market_regime_alignment);
 
   // Apply regime multiplier
   const regime_multiplier = REGIME_MULTIPLIERS[regimeName] || 1.0;
@@ -1061,7 +1101,6 @@ export function computeProbabilityScore(signals, context = {}) {
   else if (probability_score >= 50) setup_quality = 'MODERATE';
   else setup_quality = 'LOW';
 
-  // Trade readiness (basic — caller refines with classification + risk)
   const trade_readiness = probability_score >= 65;
 
   const factor_breakdown = {
@@ -1075,6 +1114,66 @@ export function computeProbabilityScore(signals, context = {}) {
   };
 
   return { probability_score, setup_quality, trade_readiness, regime_multiplier, factor_breakdown };
+}
+
+/**
+ * Calculate confidence band around probability score.
+ * Band width adapts based on signal quality and market volatility.
+ * Purely informational — does not affect ranking or classification.
+ * @param {number} probabilityScore - The point estimate (0-100)
+ * @param {Object} signals - Category signal objects with confidence fields
+ * @param {Object} context - { regime: { vixLevel } }
+ * @returns {{ low: number, mid: number, high: number }}
+ */
+export function calcConfidenceBand(probabilityScore, signals, context = {}) {
+  let halfWidth = 5;
+
+  // Collect confidence levels from all categories
+  const categories = [
+    signals.trendHealth,
+    signals.contraction,
+    signals.volumeSignature,
+    signals.pivotProximity,
+    signals.catalystAwareness
+  ].filter(Boolean);
+
+  const confidences = categories.map(c => c.confidence || 'medium');
+
+  // All high confidence: narrow band
+  if (confidences.length > 0 && confidences.every(c => c === 'high')) {
+    halfWidth -= 2;
+  }
+
+  // Any low confidence: widen band
+  if (confidences.some(c => c === 'low')) {
+    halfWidth += 3;
+  }
+
+  // Few confirming signals: widen
+  const confirmingSignals = signals.contraction?.totalConfirming || signals.contraction?.confirmingSignals || 0;
+  if (confirmingSignals < 3) {
+    halfWidth += 2;
+  }
+
+  // High confirming signals: narrow slightly
+  if (confirmingSignals >= 5) {
+    halfWidth -= 1;
+  }
+
+  // Elevated VIX: widen
+  const vixLevel = (context.regime && context.regime.vixLevel) || 20;
+  if (vixLevel >= 25) {
+    halfWidth += 2;
+  }
+
+  // Clamp half-width to [3, 12]
+  halfWidth = Math.max(3, Math.min(12, halfWidth));
+
+  return {
+    low: Math.max(0, Math.round(probabilityScore - halfWidth)),
+    mid: Math.round(probabilityScore),
+    high: Math.min(100, Math.round(probabilityScore + halfWidth))
+  };
 }
 
 /**
