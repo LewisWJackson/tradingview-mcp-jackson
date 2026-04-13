@@ -1,0 +1,118 @@
+// ═══════════════════════════════════════════════════════════════════════════
+//  Opening Range Breakout — NQ / ES
+//  Lines extend right + price pinned to right-hand price axis via trackprice
+// ═══════════════════════════════════════════════════════════════════════════
+//@version=6
+indicator("ORB Levels — NQ / ES", overlay=true, max_labels_count=50)
+
+// ─── Inputs ──────────────────────────────────────────────────────────────────
+i_orMin  = input.int  (5,    "OR Window (minutes)",  minval=1,   maxval=60,  group="Opening Range")
+i_levels = input.int  (5,    "Levels Each Side",     minval=1,   maxval=10,  group="Levels")
+i_bps    = input.float(65.0, "Basis Points / Level", minval=0.1,             group="Levels")
+i_shade  = input.bool (true, "Shade OR Formation",                           group="Style")
+i_lbls   = input.bool (true, "Show bp Labels on Lines",                      group="Style")
+
+c_orh   = #00c853   // ORH  — green
+c_orl   = #f44336   // ORL  — red
+c_up    = #26c6da   // Levels above — cyan
+c_dn    = #ffa726   // Levels below — amber
+c_shade = color.new(#ffeb3b, 90)
+
+// ─── RTH Detection (09:30–16:00 ET) ──────────────────────────────────────────
+in_rth    = not na(time(timeframe.period, "0930-1600", "America/New_York"))
+rth_start = in_rth and not in_rth[1]
+
+// ─── Opening Range State ──────────────────────────────────────────────────────
+var float orh    = na
+var float orl    = na
+var int   n_bars = 0
+var bool  locked = false
+
+if rth_start
+    orh    := high
+    orl    := low
+    n_bars := 1
+    locked := false
+else if in_rth and not locked
+    n_bars += 1
+    orh    := math.max(orh, high)
+    orl    := math.min(orl, low)
+    if n_bars >= i_orMin
+        locked := true
+
+// Shade during OR formation
+bgcolor(i_shade and in_rth and not locked ? c_shade : na, title="OR Formation")
+
+// ─── Level Helpers ────────────────────────────────────────────────────────────
+// Each level compounds from the previous price:
+//   Above: ORH × (1 + bps/10000)^i   e.g. ORH×1.0065, then Level1×1.0065, etc.
+//   Below: ORL × (1 - bps/10000)^i   e.g. ORL×0.9935, then Level1×0.9935, etc.
+u(i) => locked and i <= i_levels ? orh * math.pow(1.0 + i_bps / 10000.0, i) : na
+d(i) => locked and i <= i_levels ? orl * math.pow(1.0 - i_bps / 10000.0, i) : na
+
+// ─── Plots — lines on chart + price pinned to right axis ─────────────────────
+// trackprice=true  → dotted line extends to price axis + shows price label
+plot(locked ? orh : na, "ORH",  c_orh, 2, trackprice=true)
+plot(locked ? orl : na, "ORL",  c_orl, 2, trackprice=true)
+
+// Levels above ORH (all 10 declared; na when beyond i_levels)
+plot(u(1),  "+1×bp", color.new(c_up,0), 1, trackprice=true)
+plot(u(2),  "+2×bp", color.new(c_up,0), 1, trackprice=true)
+plot(u(3),  "+3×bp", color.new(c_up,0), 1, trackprice=true)
+plot(u(4),  "+4×bp", color.new(c_up,0), 1, trackprice=true)
+plot(u(5),  "+5×bp", color.new(c_up,0), 1, trackprice=true)
+plot(u(6),  "+6×bp", color.new(c_up,0), 1, trackprice=true)
+plot(u(7),  "+7×bp", color.new(c_up,0), 1, trackprice=true)
+plot(u(8),  "+8×bp", color.new(c_up,0), 1, trackprice=true)
+plot(u(9),  "+9×bp", color.new(c_up,0), 1, trackprice=true)
+plot(u(10), "+10×bp",color.new(c_up,0), 1, trackprice=true)
+
+// Levels below ORL
+plot(d(1),  "-1×bp", color.new(c_dn,0), 1, trackprice=true)
+plot(d(2),  "-2×bp", color.new(c_dn,0), 1, trackprice=true)
+plot(d(3),  "-3×bp", color.new(c_dn,0), 1, trackprice=true)
+plot(d(4),  "-4×bp", color.new(c_dn,0), 1, trackprice=true)
+plot(d(5),  "-5×bp", color.new(c_dn,0), 1, trackprice=true)
+plot(d(6),  "-6×bp", color.new(c_dn,0), 1, trackprice=true)
+plot(d(7),  "-7×bp", color.new(c_dn,0), 1, trackprice=true)
+plot(d(8),  "-8×bp", color.new(c_dn,0), 1, trackprice=true)
+plot(d(9),  "-9×bp", color.new(c_dn,0), 1, trackprice=true)
+plot(d(10), "-10×bp",color.new(c_dn,0), 1, trackprice=true)
+
+// ─── Floating bp Labels — updated every bar to stay at right edge ─────────────
+var label[] all_labels = array.new_label()
+
+if locked and i_lbls and (barstate.islast or barstate.isrealtime)
+    // Clear previous labels
+    for lb in all_labels
+        label.delete(lb)
+    array.clear(all_labels)
+
+    lx = bar_index + 8   // position just past the last bar
+
+    // ORH / ORL labels
+    array.push(all_labels, label.new(lx, orh,
+         "ORH  " + str.tostring(orh, "#.00"),
+         color=color.new(#00c853,10), textcolor=color.white,
+         style=label.style_label_left, size=size.small))
+
+    array.push(all_labels, label.new(lx, orl,
+         "ORL  " + str.tostring(orl, "#.00"),
+         color=color.new(#f44336,10), textcolor=color.white,
+         style=label.style_label_left, size=size.small))
+
+    // bp level labels above (compounding — each step from previous level price)
+    for i = 1 to i_levels
+        lvl = orh * math.pow(1.0 + i_bps / 10000.0, i)
+        array.push(all_labels, label.new(lx, lvl,
+             "+" + str.tostring(i, "#") + "×" + str.tostring(i_bps, "#") + "bp  " + str.tostring(lvl, "#.00"),
+             color=color.new(#26c6da, 10), textcolor=color.white,
+             style=label.style_label_left, size=size.tiny))
+
+    // bp level labels below (compounding — each step from previous level price)
+    for i = 1 to i_levels
+        lvl = orl * math.pow(1.0 - i_bps / 10000.0, i)
+        array.push(all_labels, label.new(lx, lvl,
+             "-" + str.tostring(i, "#") + "×" + str.tostring(i_bps, "#") + "bp  " + str.tostring(lvl, "#.00"),
+             color=color.new(#ffa726, 10), textcolor=color.white,
+             style=label.style_label_left, size=size.tiny))
