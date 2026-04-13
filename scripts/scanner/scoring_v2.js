@@ -14,13 +14,37 @@
 // ---------------------------------------------------------------------------
 
 /**
+ * 50-day MA slope over a short lookback window.
+ * @param {Array} bars - OHLCV array
+ * @param {number} maPeriod - MA period (default 50)
+ * @param {number} lookback - Slope window (default 5)
+ * @returns {{ ma50Slope: number, ma50SlopePositive: boolean }}
+ */
+export function calc50MASlope(bars, maPeriod = 50, lookback = 5) {
+  if (bars.length < maPeriod + lookback) return { ma50Slope: 0, ma50SlopePositive: false };
+
+  function sma(arr, end, period) {
+    const slice = arr.slice(end - period, end);
+    return slice.reduce((s, b) => s + b.close, 0) / period;
+  }
+
+  const maCurrent = sma(bars, bars.length, maPeriod);
+  const maPast = sma(bars, bars.length - lookback, maPeriod);
+
+  const ma50Slope = maPast > 0 ? Math.round(((maCurrent - maPast) / maPast) * 10000) / 10000 : 0;
+  const ma50SlopePositive = ma50Slope > 0;
+
+  return { ma50Slope, ma50SlopePositive };
+}
+
+/**
  * @param {{ price: number, ma50: number, ma150: number, ma200: number, high52w: number, relStrengthPctile: number, ohlcv: Array<{high:number, low:number}> }} d
  * @param {{ spyOhlcv?: Array, qqqOhlcv?: Array }} context
- * @returns {{ score: number, confidence: 'high'|'medium'|'low', rsSubtotal: number, trendSubtotal: number }}
+ * @returns {{ score: number, confidence: 'high'|'medium'|'low', rsSubtotal: number, trendSubtotal: number, ma50Slope: number }}
  */
 export function scoreTrendHealth(d, context = {}) {
   const bars = d.ohlcv || [];
-  if (bars.length < 5) return { score: 0, confidence: 'low', rsSubtotal: 0, trendSubtotal: 0 };
+  if (bars.length < 5) return { score: 0, confidence: 'low', rsSubtotal: 0, trendSubtotal: 0, ma50Slope: 0 };
 
   const confidence = bars.length >= 20 ? 'high' : 'medium';
   let trendSubtotal = 0;
@@ -33,8 +57,8 @@ export function scoreTrendHealth(d, context = {}) {
   // Price above 50-day MA: 5 pts
   if (d.price > d.ma50) trendSubtotal += 5;
 
-  // Within 25% of 52-week high: 4 pts
-  if (d.high52w > 0 && d.price >= d.high52w * 0.75) trendSubtotal += 4;
+  // Within 25% of 52-week high: 2 pts (reduced from 4 in v3.1)
+  if (d.high52w > 0 && d.price >= d.high52w * 0.75) trendSubtotal += 2;
 
   // Higher highs + higher lows over last 20 days: 4 pts
   const recent = bars.slice(-20);
@@ -47,6 +71,10 @@ export function scoreTrendHealth(d, context = {}) {
     const shLow = Math.min(...secondHalf.map(b => b.low));
     if (shHigh > fhHigh && shLow > fhLow) trendSubtotal += 4;
   }
+
+  // 50 MA slope positive: 2 pts (v3.1)
+  const { ma50Slope, ma50SlopePositive } = calc50MASlope(bars);
+  if (ma50SlopePositive) trendSubtotal += 2;
 
   // --- RS signals (9 pts max) ---
   if (context.spyOhlcv && context.qqqOhlcv) {
@@ -74,7 +102,7 @@ export function scoreTrendHealth(d, context = {}) {
 
   const score = Math.max(0, trendSubtotal + rsSubtotal);
 
-  return { score, confidence, rsSubtotal, trendSubtotal };
+  return { score, confidence, rsSubtotal, trendSubtotal, ma50Slope };
 }
 
 // ---------------------------------------------------------------------------
@@ -667,13 +695,15 @@ export function scorePivotStructure(d) {
   const { gapFormedResistance } = detectGapNearResistance(bars, resistancePrice);
   if (gapFormedResistance) resistanceStrength = Math.min(resistanceStrength, 1);
 
-  // 1. Distance from confirmed resistance (0-6 pts)
+  // 1. Distance from confirmed resistance (max 6 pts, penalty for >12%)
   const distFromResistance = resistancePrice > 0
-    ? Math.round(Math.abs(d.price - resistancePrice) / resistancePrice * 100 * 10) / 10
+    ? Math.round((resistancePrice - d.price) / resistancePrice * 100 * 10) / 10
     : 100;
-  if (distFromResistance <= 3) score += 6;
-  else if (distFromResistance <= 5) score += 4;
-  else if (distFromResistance <= 8) score += 2;
+  if (distFromResistance >= 2 && distFromResistance <= 5) score += 6;       // ideal pre-breakout zone
+  else if (distFromResistance >= 0 && distFromResistance < 2) score += 4;   // too close
+  else if (distFromResistance > 5 && distFromResistance <= 8) score += 4;   // constructive
+  else if (distFromResistance > 8 && distFromResistance <= 12) score += 1;  // far
+  else if (distFromResistance > 12) score -= 2;                             // penalty
 
   // 2. Resistance strength (0-4 pts)
   if (resistanceStrength >= 3) score += 4;
