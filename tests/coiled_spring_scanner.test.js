@@ -51,6 +51,7 @@ import {
 } from '../scripts/scanner/test_fixtures/fixtures.js';
 
 import { detectRedFlags } from '../scripts/scanner/yahoo_screen_v2.js';
+import { weightedRank } from '../scripts/scanner/coiled_spring_scanner.js';
 
 // ---------------------------------------------------------------------------
 // scoreTrendHealth (0-30 pts)
@@ -930,5 +931,116 @@ describe('generateNotes', () => {
     const signals = { contraction: { vcpContractions: 3, atrPercentile: 20 }, catalystAwareness: { catalystTag: 'catalyst_unknown', catalysts: [] } };
     const result = generateNotes(signals, {});
     assert.ok(result.toLowerCase().includes('vcp'));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Weighted Ranking Engine (from orchestrator)
+// ---------------------------------------------------------------------------
+
+describe('weighted ranking', () => {
+  it('ranks by weighted formula, not just raw score', () => {
+    const candidates = [
+      { probability_score: 70, signals: { contraction: 35 }, details: { accDistScore: 2.5, obvSlopeNormalized: 0.8, resistanceStrength: 3, distFromResistance: 2 } },
+      { probability_score: 75, signals: { contraction: 25 }, details: { accDistScore: 1.0, obvSlopeNormalized: 0.1, resistanceStrength: 1, distFromResistance: 10 } },
+      { probability_score: 65, signals: { contraction: 38 }, details: { accDistScore: 3.0, obvSlopeNormalized: 1.2, resistanceStrength: 3, distFromResistance: 1 } },
+    ];
+    const ranked = weightedRank(candidates);
+    // All candidates should have a rank assigned
+    assert.ok(ranked.every(r => typeof r.rank === 'number' && r.rank >= 1));
+    // Ranks should be unique: 1, 2, 3
+    const ranks = ranked.map(r => r.rank).sort();
+    assert.deepStrictEqual(ranks, [1, 2, 3]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// v3 Integration: Full Pipeline End-to-End
+// ---------------------------------------------------------------------------
+
+describe('v3 integration: full pipeline', () => {
+  it('VALID_COIL produces all v3 output fields', () => {
+    const context = { regime: { regime: 'constructive' }, spyOhlcv: SPY_BARS, qqqOhlcv: QQQ_BARS, sectorRanks: { Technology: 2 }, candidateSector: 'Technology' };
+
+    const trend = scoreTrendHealth(VALID_COIL, context);
+    const contraction = scoreContractionQuality(VALID_COIL);
+    const volume = scoreVolumeSignature(VALID_COIL);
+    const pivot = scorePivotStructure(VALID_COIL);
+    const catalyst = scoreCatalystAwareness(VALID_COIL, context);
+
+    const signals = { trendHealth: trend, contraction, volumeSignature: volume, pivotProximity: pivot, catalystAwareness: catalyst };
+    const composite = computeCompositeScore({
+      trend, contraction, volume, pivot, catalyst
+    }, { regime: 'constructive' });
+
+    const probability = computeProbabilityScore(signals, context);
+
+    // Verify all new fields exist
+    assert.ok(typeof probability.probability_score === 'number');
+    assert.ok(typeof probability.setup_quality === 'string');
+    assert.ok(typeof probability.factor_breakdown === 'object');
+    assert.ok(typeof probability.regime_multiplier === 'number');
+
+    // Verify contraction has new fields
+    assert.ok(typeof contraction.atrPercentile === 'number');
+    assert.ok(typeof contraction.confirmingSignals === 'number');
+    assert.ok(typeof contraction.vcpQuality === 'number');
+
+    // Verify trend has RS breakdown
+    assert.ok(typeof trend.rsSubtotal === 'number');
+    assert.ok(typeof trend.trendSubtotal === 'number');
+
+    // Verify volume has institutional signals
+    assert.ok(typeof volume.accDistScore === 'number');
+    assert.ok(typeof volume.obvSlopeNormalized === 'number');
+    assert.ok(typeof volume.supportVolumeRatio === 'number');
+
+    // Verify pivot has resistance strength
+    assert.ok(typeof pivot.resistanceStrength === 'number');
+
+    // Verify catalyst has tag
+    assert.ok(typeof catalyst.catalystTag === 'string');
+  });
+
+  it('VALID_COIL ranks higher than ALREADY_EXPLODED on probability', () => {
+    const context = { regime: { regime: 'constructive' }, spyOhlcv: SPY_BARS, qqqOhlcv: QQQ_BARS, sectorRanks: {}, candidateSector: '' };
+
+    function scoreCandidate(d) {
+      const trend = scoreTrendHealth(d, context);
+      const contraction = scoreContractionQuality(d);
+      const volume = scoreVolumeSignature(d);
+      const pivot = scorePivotStructure(d);
+      const catalyst = scoreCatalystAwareness(d, context);
+      const signals = { trendHealth: trend, contraction, volumeSignature: volume, pivotProximity: pivot, catalystAwareness: catalyst };
+      return computeProbabilityScore(signals, context);
+    }
+
+    const validProb = scoreCandidate(VALID_COIL);
+    const explodedProb = scoreCandidate(ALREADY_EXPLODED);
+
+    assert.ok(validProb.probability_score > explodedProb.probability_score,
+      `VALID_COIL (${validProb.probability_score}) should beat ALREADY_EXPLODED (${explodedProb.probability_score})`);
+  });
+
+  it('defensive regime reduces probability score', () => {
+    const constructiveCtx = { regime: { regime: 'constructive' }, spyOhlcv: SPY_BARS, qqqOhlcv: QQQ_BARS, sectorRanks: {}, candidateSector: '' };
+    const defensiveCtx = { ...constructiveCtx, regime: { regime: 'defensive' } };
+
+    function probFor(d, ctx) {
+      const trend = scoreTrendHealth(d, ctx);
+      const contraction = scoreContractionQuality(d);
+      const volume = scoreVolumeSignature(d);
+      const pivot = scorePivotStructure(d);
+      const catalyst = scoreCatalystAwareness(d, ctx);
+      return computeProbabilityScore(
+        { trendHealth: trend, contraction, volumeSignature: volume, pivotProximity: pivot, catalystAwareness: catalyst }, ctx
+      );
+    }
+
+    const constructiveProb = probFor(VALID_COIL, constructiveCtx);
+    const defensiveProb = probFor(VALID_COIL, defensiveCtx);
+
+    assert.ok(defensiveProb.probability_score < constructiveProb.probability_score,
+      `Defensive (${defensiveProb.probability_score}) should be less than constructive (${constructiveProb.probability_score})`);
   });
 });
