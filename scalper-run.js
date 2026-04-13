@@ -1,124 +1,34 @@
-import { createHmac } from "crypto";
-import https from "https";
 import { existsSync, readFileSync, writeFileSync } from "fs";
+import * as chart from "./src/core/chart.js";
+import * as data from "./src/core/data.js";
 
-// Load .env
-readFileSync(new URL(".env", import.meta.url), "utf8")
-  .split("\n")
-  .forEach((line) => {
-    const [k, ...v] = line.split("=");
-    if (k && !k.startsWith("#") && v.length)
-      process.env[k.trim()] = v.join("=").trim();
-  });
+// ── Config ───────────────────────────────────────────────────────
+const rules = JSON.parse(readFileSync("rules.json", "utf8"));
+const { watchlist, vix_filter, bias_criteria, exit_rules, risk_rules } = rules;
 
-const API_KEY = process.env.BITGET_API_KEY;
-const SECRET_KEY = process.env.BITGET_SECRET_KEY;
-const PASSPHRASE = process.env.BITGET_PASSPHRASE;
+const SCAN_DELAY_MS = 3000;   // wait between symbol switches
+const MIN_MOMENTUM_PCT = 0.10; // minimum candle move % to count as signal
 
-const SYMBOL = "XRPUSDT"; // XRP/USDT spot — low price, above min order size
-const INTERVAL_MS = 10000; // 10 seconds
-const TOTAL_TRADES = 6;
-
-// ── BitGet helpers ──────────────────────────────────────────────
-function sign(ts, method, path, body = "") {
-  return createHmac("sha256", SECRET_KEY)
-    .update(ts + method + path + body)
-    .digest("base64");
+// ── VIX Regime ───────────────────────────────────────────────────
+function getVixRegime(vixLevel) {
+  if (vixLevel > 40) return "extreme";
+  if (vixLevel > 30) return "high";
+  if (vixLevel > 20) return "elevated";
+  return "normal";
 }
 
-function request(method, path, body = null) {
-  return new Promise((resolve, reject) => {
-    const ts = Date.now().toString();
-    const bodyStr = body ? JSON.stringify(body) : "";
-    const sig = sign(ts, method, path, bodyStr);
-    const req = https.request(
-      {
-        hostname: "api.bitget.com",
-        path,
-        method,
-        headers: {
-          "Content-Type": "application/json",
-          "ACCESS-KEY": API_KEY,
-          "ACCESS-SIGN": sig,
-          "ACCESS-TIMESTAMP": ts,
-          "ACCESS-PASSPHRASE": PASSPHRASE,
-          locale: "en-US",
-        },
-      },
-      (res) => {
-        let d = "";
-        res.on("data", (c) => (d += c));
-        res.on("end", () => resolve(JSON.parse(d)));
-      },
-    );
-    req.on("error", reject);
-    if (bodyStr) req.write(bodyStr);
-    req.end();
-  });
+function getSizeMultiplier(regime) {
+  const map = { normal: 1.0, elevated: 0.5, high: 0.25, extreme: 0 };
+  return map[regime] ?? 1.0;
 }
 
-// ── Market data ─────────────────────────────────────────────────
-async function getCandles(symbol, limit = 30) {
-  // 1-minute candles from BitGet
-  const res = await request(
-    "GET",
-    `/api/v2/spot/market/candles?symbol=${symbol}&granularity=1min&limit=${limit}`,
-  );
-  // returns [[ts, open, high, low, close, vol], ...]
-  return (res.data || []).map((c) => ({
-    ts: parseInt(c[0]),
-    open: parseFloat(c[1]),
-    high: parseFloat(c[2]),
-    low: parseFloat(c[3]),
-    close: parseFloat(c[4]),
-    vol: parseFloat(c[5]),
-  }));
+function getStopLossPct(regime) {
+  return regime === "elevated" ? 20 : 15; // widen stop in elevated VIX
 }
 
-async function getPrice(symbol) {
-  const res = await request(
-    "GET",
-    `/api/v2/spot/market/tickers?symbol=${symbol}`,
-  );
-  return parseFloat(res.data?.[0]?.lastPr || 0);
-}
-
-async function getBalances() {
-  const res = await request("GET", "/api/v2/spot/account/assets");
-  const usdt = res.data?.find((a) => a.coin === "USDT");
-  const xrp = res.data?.find((a) => a.coin === "XRP");
-  return {
-    usdt: parseFloat(usdt?.available || 0),
-    xrp: parseFloat(xrp?.available || 0),
-  };
-}
-
-// ── Indicators ──────────────────────────────────────────────────
-function calcEMA(closes, period) {
-  const k = 2 / (period + 1);
-  let ema = closes[0];
-  for (let i = 1; i < closes.length; i++) ema = closes[i] * k + ema * (1 - k);
-  return ema;
-}
-
-function calcRSI(closes, period = 3) {
-  if (closes.length < period + 1) return 50;
-  let gains = 0,
-    losses = 0;
-  for (let i = closes.length - period; i < closes.length; i++) {
-    const diff = closes[i] - closes[i - 1];
-    if (diff > 0) gains += diff;
-    else losses -= diff;
-  }
-  if (losses === 0) return 100;
-  const rs = gains / losses;
-  return 100 - 100 / (1 + rs);
-}
-
+// ── Indicators ───────────────────────────────────────────────────
 function calcVWAP(candles) {
-  // Session VWAP approximation (all candles provided)
-  let cumTPV = 0,
-    cumVol = 0;
+  let cumTPV = 0, cumVol = 0;
   for (const c of candles) {
     const tp = (c.high + c.low + c.close) / 3;
     cumTPV += tp * c.vol;
@@ -127,212 +37,197 @@ function calcVWAP(candles) {
   return cumVol === 0 ? candles[candles.length - 1].close : cumTPV / cumVol;
 }
 
-// ── Signal logic (mirrors Pine Script) ─────────────────────────
+function calcRSI(closes, period = 14) {
+  if (closes.length < period + 1) return 50;
+  let gains = 0, losses = 0;
+  for (let i = closes.length - period; i < closes.length; i++) {
+    const diff = closes[i] - closes[i - 1];
+    if (diff > 0) gains += diff;
+    else losses -= diff;
+  }
+  if (losses === 0) return 100;
+  return 100 - 100 / (1 + gains / losses);
+}
+
+function avgVolume(candles, period = 20) {
+  const slice = candles.slice(-period);
+  return slice.reduce((s, c) => s + c.vol, 0) / slice.length;
+}
+
+// ── Signal Logic (mirrors rules.json bias_criteria) ───────────────
 function getSignal(candles) {
   const closes = candles.map((c) => c.close);
-  const last = closes[closes.length - 1];
+  const last = candles[candles.length - 1];
+  const prev = candles[candles.length - 2];
 
-  const ema8 = calcEMA(closes, 8);
-  const rsi3 = calcRSI(closes, 3);
+  const rsi = calcRSI(closes);
   const vwap = calcVWAP(candles);
-
-  const bullBias = last > vwap && last > ema8;
-  const bearBias = last < vwap && last < ema8;
+  const avgVol = avgVolume(candles);
+  const momentumPct = ((last.close - prev.close) / prev.close) * 100;
+  const aboveVwap = last.close > vwap;
+  const volumeOk = last.vol > avgVol;
 
   let signal = "flat";
-  if (bullBias && rsi3 < 30) signal = "buy";
-  else if (bearBias && rsi3 > 70) signal = "sell";
+  let skipReason = null;
 
-  return { signal, last, ema8, rsi3, vwap };
-}
-
-// ── Order helpers ───────────────────────────────────────────────
-async function placeOrder(side, size) {
-  const body = {
-    symbol: SYMBOL,
-    side,
-    orderType: "market",
-    force: "gtc",
-    size,
-  };
-  return request("POST", "/api/v2/spot/trade/place-order", body);
-}
-
-async function getOrderFill(orderId) {
-  for (let i = 0; i < 5; i++) {
-    await new Promise((r) => setTimeout(r, 1000));
-    const res = await request(
-      "GET",
-      `/api/v2/spot/trade/orderInfo?orderId=${orderId}&symbol=${SYMBOL}`,
-    );
-    const fill = parseFloat(res.data?.baseVolume || 0);
-    if (fill > 0) return fill;
+  // Neutral / skip conditions
+  if (rsi > 65) {
+    skipReason = `RSI ${rsi.toFixed(1)} > 65 (overbought)`;
+  } else if (rsi < 35) {
+    skipReason = `RSI ${rsi.toFixed(1)} < 35 (oversold)`;
+  } else if (Math.abs(momentumPct) < MIN_MOMENTUM_PCT) {
+    skipReason = `Momentum ${momentumPct.toFixed(3)}% < ${MIN_MOMENTUM_PCT}% (chop)`;
+  } else if (Math.abs((last.close - vwap) / vwap * 100) < 0.05) {
+    skipReason = `Price within 0.05% of VWAP (indecision)`;
+  } else if (!volumeOk) {
+    skipReason = `Volume ${last.vol.toFixed(0)} below 20-bar avg ${avgVol.toFixed(0)} (low conviction)`;
+  } else if (momentumPct >= MIN_MOMENTUM_PCT && aboveVwap) {
+    signal = "call"; // bullish — buy CALL
+  } else if (momentumPct <= -MIN_MOMENTUM_PCT && !aboveVwap) {
+    signal = "put";  // bearish — buy PUT
+  } else {
+    skipReason = `VWAP conflict — momentum ${momentumPct > 0 ? "up" : "down"} but price ${aboveVwap ? "above" : "below"} VWAP`;
   }
-  return 0;
+
+  return { signal, skipReason, rsi, vwap, momentumPct, volumeOk, price: last.close };
 }
 
-// BitGet locks newly purchased assets against immediate resale (anti-wash-trading).
-// This retries the sell, parsing the actually-available amount from the error
-// message until the lock lifts or we time out.
-async function placeSellWithRetry(qty, maxRetries = 12, retryDelayMs = 3000) {
-  for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    const size = (Math.floor(qty * 10000) / 10000).toFixed(4);
-    const res = await placeOrder("sell", size);
+// ── Market Hours Check ────────────────────────────────────────────
+function isMarketOpen() {
+  const now = new Date();
+  const est = new Date(now.toLocaleString("en-US", { timeZone: "America/New_York" }));
+  const h = est.getHours(), m = est.getMinutes();
+  const totalMin = h * 60 + m;
+  const openMin = 9 * 60 + 45;   // 9:45 AM (skip first 15 min)
+  const closeMin = 15 * 60 + 30; // 3:30 PM (stop 30 min early)
+  return totalMin >= openMin && totalMin <= closeMin;
+}
 
-    if (res.code === "00000")
-      return { ok: true, res, soldQty: parseFloat(size) };
+// ── Pull data from TradingView ────────────────────────────────────
+async function getSymbolData(symbol) {
+  await chart.setSymbol({ symbol });
+  await new Promise((r) => setTimeout(r, SCAN_DELAY_MS)); // wait for chart to load
 
-    // Parse available qty from lock error: "0.001234XRP can be used at most"
-    const lockMatch = res.msg?.match(/([\d.]+)XRP can be used at most/i);
-    if (lockMatch) {
-      const available = parseFloat(lockMatch[1]);
-      console.log(
-        `  🔒 Lock active — only ${available} XRP tradeable. Retry ${attempt}/${maxRetries} in ${retryDelayMs / 1000}s...`,
-      );
-      await new Promise((r) => setTimeout(r, retryDelayMs));
+  const ohlcv = await data.getOHLCV({ count: 30 });
+  if (!ohlcv.success || !ohlcv.bars?.length) return null;
+
+  return ohlcv.bars.map((b) => ({
+    ts: b.time,
+    open: b.open,
+    high: b.high,
+    low: b.low,
+    close: b.close,
+    vol: b.volume,
+  }));
+}
+
+// ── Main ──────────────────────────────────────────────────────────
+async function main() {
+  console.log(`\n📈 Options Scalper — ${rules.strategy.name}`);
+  console.log(`Watchlist: ${watchlist.join(", ")}\n`);
+
+  // ── Step 1: Check VIX regime ─────────────────────────────────
+  console.log("🔍 Checking VIX...");
+  const vixCandles = await getSymbolData("VIX");
+  const vixLevel = vixCandles ? vixCandles[vixCandles.length - 1].close : 20;
+  const regime = getVixRegime(vixLevel);
+  const sizeMultiplier = getSizeMultiplier(regime);
+  const stopLossPct = getStopLossPct(regime);
+  const regimeInfo = vix_filter.regimes[regime];
+
+  console.log(`VIX: ${vixLevel.toFixed(2)} → Regime: ${regime.toUpperCase()}`);
+  console.log(`Action: ${regimeInfo.action}\n`);
+
+  if (regime === "extreme") {
+    console.log("🚫 VIX above 40 — no trades today. Exiting.\n");
+    process.exit(0);
+  }
+
+  // ── Step 2: Check market hours ────────────────────────────────
+  if (!isMarketOpen()) {
+    console.log("🕐 Outside trading hours (9:45 AM – 3:30 PM EST) — exiting.\n");
+    process.exit(0);
+  }
+
+  // ── Step 3: Scan each symbol ──────────────────────────────────
+  const log = [];
+  const tradableSymbols = regime === "high"
+    ? watchlist.filter((s) => ["AMZN", "MSFT"].includes(s)) // high VIX = only most liquid
+    : watchlist.filter((s) => s !== "VIX");
+
+  console.log(`Scanning ${tradableSymbols.length} symbols (VIX regime: ${regime})...\n`);
+
+  for (const symbol of tradableSymbols) {
+    const ts = new Date().toISOString();
+    console.log(`── ${symbol} ──`);
+
+    const candles = await getSymbolData(symbol);
+    if (!candles || candles.length < 22) {
+      console.log(`  ⚠️  Not enough data — skipping\n`);
       continue;
     }
 
-    // Any other error — don't retry
-    return { ok: false, res, soldQty: 0 };
-  }
-  return {
-    ok: false,
-    res: { msg: "Sell lock never lifted after retries" },
-    soldQty: 0,
-  };
-}
+    const { signal, skipReason, rsi, vwap, momentumPct, price } = getSignal(candles);
 
-// ── Main loop ───────────────────────────────────────────────────
-async function main() {
-  console.log(`\n🤖 BTC Scalper — VWAP + RSI(3) + EMA(8)`);
-  console.log(
-    `Symbol: ${SYMBOL} | ${TOTAL_TRADES} trades × ${INTERVAL_MS / 1000}s\n`,
-  );
+    console.log(`  Price: $${price.toFixed(2)} | RSI: ${rsi.toFixed(1)} | VWAP: $${vwap.toFixed(2)} | Momentum: ${momentumPct.toFixed(3)}%`);
 
-  const log = [];
-  let holding = "usdt";
-  let lastBuyXrpQty = 0;
-
-  for (let i = 1; i <= TOTAL_TRADES; i++) {
-    const ts = new Date().toISOString();
-    const candles = await getCandles(SYMBOL, 30);
-    const { signal, last, ema8, rsi3, vwap } = getSignal(candles);
-    const bals = await getBalances();
-
-    console.log(`[${i}/${TOTAL_TRADES}] ${ts}`);
-    console.log(
-      `  Price: $${last.toFixed(4)} | EMA8: ${ema8.toFixed(4)} | RSI3: ${rsi3.toFixed(1)} | VWAP: ${vwap.toFixed(4)}`,
-    );
-    console.log(
-      `  USDT: $${bals.usdt.toFixed(4)} | XRP: ${bals.xrp.toFixed(4)} | Signal: ${signal.toUpperCase()}`,
-    );
-
-    let side, size, label;
     const entry = {
-      tick: i,
       timestamp: ts,
-      price: last,
-      ema8,
-      rsi3,
-      vwap,
+      symbol,
+      price,
+      rsi: parseFloat(rsi.toFixed(2)),
+      vwap: parseFloat(vwap.toFixed(2)),
+      momentumPct: parseFloat(momentumPct.toFixed(4)),
+      vixLevel: parseFloat(vixLevel.toFixed(2)),
+      vixRegime: regime,
       signal,
-      orderPlaced: false,
+      action: null,
     };
 
-    if (signal === "buy" && holding === "usdt" && bals.usdt >= 1) {
-      side = "buy";
-      size = (bals.usdt * 0.9).toFixed(4);
-      label = `BUY XRP with $${size} USDT`;
-      holding = "xrp";
-    } else if (signal === "sell" && holding === "xrp" && lastBuyXrpQty >= 1) {
-      side = "sell";
-      size = (Math.floor(lastBuyXrpQty * 10000) / 10000).toFixed(4);
-      label = `SELL ${size} XRP → USDT`;
-      holding = "usdt";
+    if (signal === "flat" || skipReason) {
+      console.log(`  ⏭  Skip — ${skipReason}\n`);
+      entry.action = "skip";
+      entry.skipReason = skipReason;
     } else {
-      const reason =
-        signal === "flat"
-          ? "no signal — conditions not met"
-          : `signal=${signal} but holding=${holding} (waiting for right side)`;
-      console.log(`  ⏭  Skip — ${reason}\n`);
-      entry.skipped = true;
-      entry.skipReason = reason;
-      log.push(entry);
-      if (i < TOTAL_TRADES)
-        await new Promise((r) => setTimeout(r, INTERVAL_MS));
-      continue;
-    }
+      const instrument = signal === "call" ? "CALL" : "PUT";
+      const direction = signal === "call" ? "bullish" : "bearish";
 
-    console.log(`  → ${label}`);
-    entry.side = side;
-    entry.size = size;
+      console.log(`  ✅ Signal: ${instrument} (${direction})`);
+      console.log(`  📋 Entry: Buy ATM ${instrument} — nearest expiry`);
+      console.log(`  🎯 Exit: +25% profit target | -${stopLossPct}% stop | 5-min time stop`);
+      console.log(`  📏 Size multiplier: ${sizeMultiplier}x (VIX regime: ${regime})`);
 
-    if (side === "buy") {
-      const res = await placeOrder("buy", size);
-      const ok = res.code === "00000";
-      const orderId = res.data?.orderId;
-      entry.orderId = orderId || res.msg;
-      entry.orderPlaced = ok;
+      // ── BROKER EXECUTION PLACEHOLDER ──────────────────────────
+      // Connect your broker API here (Tradier, Schwab, IBKR, etc.)
+      // Example shape:
+      //   await broker.buyOption({ symbol, type: signal, expiry: "0DTE", strike: "ATM" });
+      // ──────────────────────────────────────────────────────────
 
-      if (ok) {
-        console.log(`  ✅ BUY PLACED — ${orderId}`);
-        lastBuyXrpQty = await getOrderFill(orderId);
-        console.log(
-          `  📦 Filled: ${lastBuyXrpQty.toFixed(4)} XRP — waiting for lock to clear...`,
-        );
-        entry.filledQty = lastBuyXrpQty;
-      } else {
-        console.log(`  ❌ Rejected: ${res.msg}`);
-        holding = "usdt";
-      }
-    } else {
-      // Use retry loop — handles BitGet's anti-wash-trading lock automatically
-      const { ok, res, soldQty } = await placeSellWithRetry(lastBuyXrpQty);
-      entry.orderId = res.data?.orderId || res.msg;
-      entry.orderPlaced = ok;
-
-      if (ok) {
-        console.log(
-          `  ✅ SELL PLACED — ${entry.orderId} (${soldQty.toFixed(4)} XRP)`,
-        );
-        lastBuyXrpQty = 0;
-      } else {
-        console.log(`  ❌ Sell failed: ${res.msg}`);
-        holding = "xrp"; // still holding
-      }
+      entry.action = `buy_${signal}`;
+      entry.instrument = `ATM ${instrument}`;
+      entry.sizeMultiplier = sizeMultiplier;
+      entry.profitTargetPct = 25;
+      entry.stopLossPct = stopLossPct;
+      entry.timeStopMinutes = 5;
+      console.log();
     }
 
     log.push(entry);
-
-    if (i < TOTAL_TRADES) {
-      const waitMs =
-        side === "buy" ? Math.max(INTERVAL_MS - 5000, 4000) : INTERVAL_MS;
-      console.log(`  ⏱  Next in ${waitMs / 1000}s...\n`);
-      await new Promise((r) => setTimeout(r, waitMs));
-    }
   }
 
-  const final = await getBalances();
-  const price = await getPrice(SYMBOL);
-  const totalValue = final.usdt + final.xrp * price;
-  console.log(`\n📊 Final:`);
-  console.log(`  USDT: $${final.usdt.toFixed(4)}`);
-  console.log(
-    `  XRP: ${final.xrp.toFixed(4)} (≈$${(final.xrp * price).toFixed(4)})`,
-  );
-  console.log(`  Total est. value: $${totalValue.toFixed(4)}`);
-
-  const placed = log.filter((e) => e.orderPlaced).length;
-  console.log(`\n✅ Done — ${placed}/${TOTAL_TRADES} orders placed.\n`);
-
+  // ── Step 4: Save log ──────────────────────────────────────────
   const existing = existsSync("safety-check-log.json")
     ? JSON.parse(readFileSync("safety-check-log.json", "utf8"))
     : [];
-  writeFileSync(
-    "safety-check-log.json",
-    JSON.stringify([...existing, ...log], null, 2),
-  );
+  writeFileSync("safety-check-log.json", JSON.stringify([...existing, ...log], null, 2));
+
+  const signals = log.filter((e) => e.action?.startsWith("buy_"));
+  console.log(`\n📊 Scan complete — ${signals.length} signal(s) across ${log.length} symbols.`);
+  if (signals.length) {
+    console.log("Signals:");
+    signals.forEach((e) => console.log(`  ${e.symbol}: ${e.instrument} | RSI ${e.rsi} | Momentum ${e.momentumPct}%`));
+  }
+  console.log();
 }
 
 main().catch((err) => {

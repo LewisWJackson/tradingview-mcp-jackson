@@ -1,65 +1,136 @@
 {
-  "watchlist": ["BTCUSDT"],
+  "watchlist": ["MU", "AMZN", "PLTR", "SOFI", "NFLX", "MSFT", "APP", "AMD", "VIX"],
   "default_timeframe": "1",
+  "asset_type": "equity_options",
 
   "strategy": {
-    "name": "10-Second Momentum Scalper",
+    "name": "1-Minute Options Scalper",
+    "instrument": "0DTE or next-expiry ATM options (CALL for long bias, PUT for short bias)",
     "sources": [
-      "Price momentum — buy if last close > previous close (green candle)",
-      "RSI filter — only trade when RSI is not at an extreme (30–70 range)"
+      "Price momentum — 1-min candle close vs previous close",
+      "RSI filter — only trade between 35–65 (tighter band than crypto)",
+      "VWAP filter — price above VWAP favors CALLs, below favors PUTs",
+      "Volume confirmation — current bar volume must exceed 20-bar average"
     ],
     "primary_timeframes": [
-      "1-minute (signal source)",
-      "10-second execution loop"
+      "1-minute (signal source and execution)",
+      "5-minute (bias/trend context)"
     ]
   },
 
   "indicators": {
-    "rsi_14": "Momentum filter. Only trade when RSI is between 30–70 (avoid extremes).",
-    "price_momentum": "Compare last close vs previous close. Up = long signal. Down = short signal."
+    "rsi_14": "Momentum filter. Only trade when RSI is between 35–65. Tighter than crypto to avoid chop.",
+    "vwap": "Directional bias. Price above VWAP = favor CALLs. Price below VWAP = favor PUTs.",
+    "volume": "Confirmation filter. Only enter if 1-min bar volume is above the 20-bar average.",
+    "price_momentum": "Compare last 1-min close vs previous close. Minimum 0.10% move required (stocks move less than crypto).",
+    "vix": "Volatility regime filter. Check VIX level before every trade. Governs position size and trade permission — see vix_filter."
+  },
+
+  "vix_filter": {
+    "description": "Check CBOE:VIX on TradingView before entering any trade. VIX level determines regime.",
+    "regimes": {
+      "low": {
+        "vix_range": "below 15",
+        "action": "Trade normally — full size, standard rules apply",
+        "note": "Low volatility = smaller option premiums, tighter moves. Scalps may be smaller."
+      },
+      "normal": {
+        "vix_range": "15 to 20",
+        "action": "Trade normally — full size, standard rules apply",
+        "note": "Ideal scalping environment."
+      },
+      "elevated": {
+        "vix_range": "20 to 30",
+        "action": "Reduce position size by 50%. Widen stop loss to -20% on premium.",
+        "note": "More volatile — premiums expand but reversals are faster. Smaller size protects capital."
+      },
+      "high": {
+        "vix_range": "30 to 40",
+        "action": "Max 1 trade at a time. Reduce size to 25% of normal. Only trade AMZN or MSFT (most liquid).",
+        "note": "Market is in stress. Most scalp setups will fail. Be very selective."
+      },
+      "extreme": {
+        "vix_range": "above 40",
+        "action": "STOP TRADING — sit out entirely",
+        "note": "Extreme fear/dislocation. Spreads blow out, fills are unreliable. No edge exists for scalping."
+      }
+    }
+  },
+
+  "market_hours": {
+    "session": "NYSE/NASDAQ — 9:30 AM to 4:00 PM EST",
+    "avoid_open": "Skip first 15 minutes (9:30–9:45 AM) — spreads are wide and price is erratic",
+    "avoid_close": "Stop trading at 3:30 PM — 0DTE theta decay accelerates sharply in final 30 min",
+    "avoid_events": "No trades within 30 minutes of scheduled earnings, FOMC, or CPI announcements"
   },
 
   "bias_criteria": {
-    "bullish": [
-      "Last 1-min candle closed higher than the one before it",
-      "RSI is between 30 and 70"
+    "bullish_call": [
+      "Last 1-min candle closed higher than the one before it by at least 0.10%",
+      "RSI is between 35 and 65",
+      "Price is above VWAP",
+      "Volume is above 20-bar average"
     ],
-    "bearish": [
-      "Last 1-min candle closed lower than the one before it",
-      "RSI is between 30 and 70"
+    "bearish_put": [
+      "Last 1-min candle closed lower than the one before it by at least 0.10%",
+      "RSI is between 35 and 65",
+      "Price is below VWAP",
+      "Volume is above 20-bar average"
     ],
-    "neutral": [
-      "RSI is above 70 (overbought — skip)",
-      "RSI is below 30 (oversold — skip)",
-      "Candle close change is less than 0.05% (chop — skip)"
+    "neutral_skip": [
+      "RSI is above 65 (overbought — skip)",
+      "RSI is below 35 (oversold — skip)",
+      "Candle close change is less than 0.10% (chop — skip)",
+      "Price is within 0.05% of VWAP (indecision — skip)",
+      "Volume is below 20-bar average (low conviction — skip)",
+      "VIX is above 40 (extreme regime — no trades at all)"
     ]
   },
 
   "entry_rules": {
-    "long": [
-      "Last close > previous close by at least 0.05%",
-      "RSI between 30 and 70",
-      "Enter market buy immediately"
+    "call": [
+      "All bullish_call criteria met",
+      "Buy ATM CALL — nearest expiry (0DTE preferred on SPY/QQQ, next weekly on single stocks)",
+      "Strike: at-the-money or one strike in-the-money",
+      "Enter at market on next 1-min candle open"
     ],
-    "short": [
-      "Last close < previous close by at least 0.05%",
-      "RSI between 30 and 70",
-      "Enter market sell immediately"
+    "put": [
+      "All bearish_put criteria met",
+      "Buy ATM PUT — nearest expiry (0DTE preferred on SPY/QQQ, next weekly on single stocks)",
+      "Strike: at-the-money or one strike in-the-money",
+      "Enter at market on next 1-min candle open"
     ]
   },
 
   "exit_rules": [
-    "Exit automatically after 10 seconds (next loop tick closes previous position)",
-    "No manual exit management — pure time-based scalp"
+    "Profit target: exit when option premium gains +25% from entry price",
+    "Stop loss: exit when option premium loses -15% from entry price",
+    "Time stop: exit after 5 minutes regardless of P&L — do not hold a scalp longer than 5 bars",
+    "Hard close: exit ALL positions by 3:30 PM — never hold 0DTE into the final 30 minutes"
   ],
 
   "risk_rules": [
-    "Fixed trade size: 1% of portfolio per trade",
-    "Maximum trade size: $3.00",
-    "Maximum 6 trades per 60-second run",
-    "No stop loss — exit is time-based at next tick",
-    "For demo purposes only — minimum BitGet order size may apply"
+    "Check VIX regime FIRST before placing any trade — see vix_filter for size and permission rules",
+    "Fixed risk per trade: 1% of account per option contract (scale down per vix_filter in elevated+ regimes)",
+    "Maximum premium per trade: $50 normal, $25 when VIX is elevated (20–30), $12 when VIX is high (30–40)",
+    "Maximum 3 open positions at one time (1 max when VIX is high)",
+    "Maximum 10 trades per trading session",
+    "Only trade AMZN or MSFT when VIX is above 30 — tightest spreads under stress",
+    "Do not trade during earnings week on single stocks",
+    "Paper trade first — validate signal accuracy before using real capital"
   ],
 
-  "notes": "Demo strategy for YouTube video. Runs 6 trades over 60 seconds, one every 10 seconds. Signal is simple price momentum on 1-min candles with RSI sanity check."
+  "symbol_guidance": {
+    "MU": "Semiconductor. Earnings-sensitive — check calendar before trading. Good options volume.",
+    "AMZN": "Mega-cap. Tight spreads, reliable liquidity. Strong VWAP respector intraday.",
+    "PLTR": "High retail interest, decent options volume. Can gap — watch size on volatile days.",
+    "SOFI": "Smaller cap — expect wider bid/ask spreads. Use smaller size, confirm volume filter.",
+    "NFLX": "High IV — premiums are expensive. Only enter on very strong momentum signals.",
+    "MSFT": "Mega-cap. Tight spreads, consistent liquidity. Good for cleaner scalp setups.",
+    "APP": "High momentum stock. Fast moves — honor the 5-minute time stop strictly.",
+    "AMD": "Semiconductor. High options volume, strong intraday moves. Good scalping candidate.",
+    "VIX": "Volatility index — DO NOT trade options on VIX directly. Use as a filter: VIX above 20 = wider stops allowed, VIX above 30 = reduce size or skip scalps entirely."
+  },
+
+  "notes": "Options scalping strategy for high-liquidity US equities. Uses 1-min momentum + RSI + VWAP + volume filters. Buys short-dated ATM calls or puts. Exits on profit target (+25%), stop (-15%), or 5-minute time stop. Avoid first/last 30 min of session. Paper trade to validate before going live."
 }
