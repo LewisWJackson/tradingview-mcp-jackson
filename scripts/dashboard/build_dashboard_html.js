@@ -92,6 +92,7 @@ async function fetchBreakingNews() {
 // ═══ Yahoo Finance live quote fetcher ═══
 async function fetchLiveQuotes(symbols, crumb, cookies) {
   const quotes = {};
+  const quotesFull = {};  // full quote objects for indices
   console.log(`[quotes] fetching live prices for ${symbols.length} symbols...`);
   const syms = symbols.join(',');
   try {
@@ -101,11 +102,18 @@ async function fetchLiveQuotes(symbols, crumb, cookies) {
       const data = JSON.parse(res.body);
       for (const q of (data.quoteResponse?.result || [])) {
         quotes[q.symbol] = q.regularMarketPrice ?? q.postMarketPrice ?? null;
+        quotesFull[q.symbol] = {
+          price: q.regularMarketPrice ?? q.postMarketPrice ?? null,
+          change: q.regularMarketChange,
+          changePct: q.regularMarketChangePercent,
+          prevClose: q.regularMarketPreviousClose,
+        };
       }
     }
   } catch (e) {
     console.warn('[quotes] live fetch failed:', e.message);
   }
+  quotes._full = quotesFull;
   return quotes;
 }
 
@@ -517,9 +525,12 @@ for (const p of equityCurve) {
 // 9. Compute unrealized P&L for open option positions
 // Fetch live prices from Yahoo Finance (fallback to stale defaults if fetch fails)
 const _fallbackPrices = { AMZN: 238.38, MSFT: 370.87, GOOGL: 317.24, TSM: 370.60, CIFR: 16.53, ET: 19.19, NOW: 83.00, SPX: 6816.90 };
-const _quoteSymbols = [...new Set(openLegs.map((l) => l.symbol))];
+// Include index symbols for live Market Snapshot data
+const _indexSymbols = ['^GSPC', '^IXIC', '^VIX', '^RUT', 'QQQ'];
+const _quoteSymbols = [...new Set([...openLegs.map((l) => l.symbol), ..._indexSymbols])];
 let currentPrices;
 let liveYields = {};
+let liveIndexQuotes = {};  // full quote objects for SPX, QQQ, VIX, RUT
 try {
   const { crumb, cookies } = await yahooGetCrumb();
   const [live, ylds] = await Promise.all([
@@ -527,9 +538,14 @@ try {
     fetchYieldQuotes(crumb, cookies),
   ]);
   liveYields = ylds;
+  liveIndexQuotes = live._full || {};
+  delete live._full;
   if (Object.keys(live).length > 0) {
     currentPrices = { ..._fallbackPrices, ...live };
-    console.log(`[quotes] live prices: ${Object.entries(live).map(([s, p]) => s + '=' + p).join(', ')}`);
+    console.log(`[quotes] live prices: ${Object.entries(live).filter(([s]) => !s.startsWith('^')).map(([s, p]) => s + '=' + p).join(', ')}`);
+    // Log index quotes separately
+    const idxLog = ['^GSPC', '^VIX', '^RUT', 'QQQ'].filter(s => live[s]).map(s => `${s}=${live[s]}`).join(', ');
+    if (idxLog) console.log(`[quotes] indices: ${idxLog}`);
   } else {
     currentPrices = _fallbackPrices;
     console.warn('[quotes] no live data returned, using fallback prices');
@@ -702,14 +718,31 @@ function renderMorningBrief(b) {
     return `${sign}${y.changePct.toFixed(2)}%${bpsStr}`;
   };
 
+  // Override market snapshot with live index quotes when available
+  const iq = liveIndexQuotes;
+  const fmtIdxChg = (q) => {
+    if (!q || q.changePct == null) return '';
+    const sign = q.changePct >= 0 ? '+' : '';
+    return `${sign}${q.changePct.toFixed(2)}%`;
+  };
+  const liveSpx = iq['^GSPC'];
+  const liveQqq = iq['QQQ'];
+  const liveVix = iq['^VIX'];
+  const liveRut = iq['^RUT'];
+
+  // Compute live yield spread if both yields available
+  const live10y = y10.price ?? yield10y;
+  const live2y = y2.price ?? yield2y;
+  const liveSpread = (live10y != null && live2y != null) ? Math.round((live10y - live2y) * 100 * 10) / 10 : spread;
+
   const gridCells = [
-    { label: 'SPX', value: priceOf(ms.spx), note: pctOf(ms.spx) },
-    { label: 'QQQ', value: priceOf(ms.qqq), note: pctOf(ms.qqq) },
-    { label: 'VIX', value: priceOf(ms.vix), note: pctOf(ms.vix) },
-    { label: 'RUT', value: priceOf(ms.rut), note: pctOf(ms.rut) },
-    { label: '10Y', value: (y10.price ?? yield10y) != null ? (y10.price ?? yield10y).toFixed(3) + '%' : null, note: fmtYieldChg(y10) },
-    { label: '2Y', value: (y2.price ?? yield2y) != null ? (y2.price ?? yield2y).toFixed(3) + '%' : null, note: fmtYieldChg(y2) },
-    { label: '10Y-2Y', value: spread != null ? (spread >= 0 ? '+' : '') + spread.toFixed(1) + ' bps' : null, note: ms.yieldDirection || '' },
+    { label: 'SPX', value: liveSpx?.price?.toFixed(2) ?? priceOf(ms.spx), note: liveSpx ? fmtIdxChg(liveSpx) : pctOf(ms.spx) },
+    { label: 'QQQ', value: liveQqq?.price?.toFixed(2) ?? priceOf(ms.qqq), note: liveQqq ? fmtIdxChg(liveQqq) : pctOf(ms.qqq) },
+    { label: 'VIX', value: liveVix?.price?.toFixed(2) ?? priceOf(ms.vix), note: liveVix ? fmtIdxChg(liveVix) : pctOf(ms.vix) },
+    { label: 'RUT', value: liveRut?.price?.toFixed(2) ?? priceOf(ms.rut), note: liveRut ? fmtIdxChg(liveRut) : pctOf(ms.rut) },
+    { label: '10Y', value: live10y != null ? live10y.toFixed(3) + '%' : null, note: fmtYieldChg(y10) },
+    { label: '2Y', value: live2y != null ? live2y.toFixed(3) + '%' : null, note: fmtYieldChg(y2) },
+    { label: '10Y-2Y', value: liveSpread != null ? (liveSpread >= 0 ? '+' : '') + liveSpread.toFixed(1) + ' bps' : null, note: ms.yieldDirection || '' },
     { label: 'Regime', value: ms.regimeInterpretation ? ms.regimeInterpretation.split('.')[0] : (ms.regime || '—'), note: '' },
   ];
   const gridHtml = gridCells
