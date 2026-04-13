@@ -113,6 +113,31 @@ export function calcATRPercentile(bars, period = 14, lookback = 252) {
 }
 
 /**
+ * Standard deviation contraction rate across 3 time windows.
+ * @param {Array} bars - OHLCV array
+ * @param {number[]} windows - Time windows to compare (default [10, 20, 40])
+ * @returns {{ ratio: number, isContracting: boolean }}
+ */
+export function calcStdDevContractionRate(bars, windows = [10, 20, 40]) {
+  const maxWindow = Math.max(...windows);
+  if (bars.length < maxWindow) return { ratio: 1, isContracting: false };
+
+  function stddev(arr) {
+    const mean = arr.reduce((s, v) => s + v, 0) / arr.length;
+    const variance = arr.reduce((s, v) => s + (v - mean) ** 2, 0) / arr.length;
+    return Math.sqrt(variance);
+  }
+
+  const closes = bars.map(b => b.close);
+  const stds = windows.map(w => stddev(closes.slice(-w)));
+
+  const isContracting = stds[0] < stds[1] && stds[1] < stds[2];
+  const ratio = stds[2] > 0 ? Math.round((stds[0] / stds[2]) * 100) / 100 : 1;
+
+  return { ratio, isContracting };
+}
+
+/**
  * Calculate Bollinger Band width from OHLCV bars.
  * @param {Array<{close:number}>} bars
  * @param {number} period

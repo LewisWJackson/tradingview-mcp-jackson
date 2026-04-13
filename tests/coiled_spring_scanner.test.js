@@ -18,6 +18,7 @@ import {
   classifyCandidate,
   generatePlay,
   calcATRPercentile,
+  calcStdDevContractionRate,
 } from '../scripts/scanner/scoring_v2.js';
 
 import {
@@ -371,5 +372,26 @@ describe('calcATRPercentile', () => {
     const result = calcATRPercentile(shortBars, 14, 252);
     assert.ok(typeof result.atrPercentile === 'number');
     assert.ok(result.atrPercentile >= 0 && result.atrPercentile <= 100);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// calcStdDevContractionRate
+// ---------------------------------------------------------------------------
+describe('calcStdDevContractionRate', () => {
+  it('returns isContracting=true when stddev declining across windows', () => {
+    const result = calcStdDevContractionRate(VALID_COIL.ohlcv);
+    assert.strictEqual(result.isContracting, true);
+  });
+
+  it('returns isContracting=false for flat or expanding volatility', () => {
+    const flatBars = makeBars(63, { basePrice: 50, trend: 'flat', volatility: 'wide', volumeBase: 1_000_000, volumeTrend: 'flat' });
+    const result = calcStdDevContractionRate(flatBars);
+    assert.strictEqual(result.isContracting, false);
+  });
+
+  it('returns ratio < 1 when contracting', () => {
+    const result = calcStdDevContractionRate(VALID_COIL.ohlcv);
+    assert.ok(result.ratio < 1, `expected ratio < 1, got ${result.ratio}`);
   });
 });
