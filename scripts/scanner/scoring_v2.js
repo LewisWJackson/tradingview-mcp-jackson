@@ -89,6 +89,30 @@ function calcATR(bars, period) {
 }
 
 /**
+ * ATR percentile rank vs historical ATR values.
+ * @param {Array} bars - OHLCV array
+ * @param {number} period - ATR period (default 14)
+ * @param {number} lookback - Historical window to rank against (default 252)
+ * @returns {{ atrPercentile: number }}
+ */
+export function calcATRPercentile(bars, period = 14, lookback = 252) {
+  if (bars.length < period + 1) return { atrPercentile: 50 };
+
+  const usableBars = Math.min(bars.length, lookback);
+  const atrValues = [];
+  for (let end = period + 1; end <= usableBars; end++) {
+    const slice = bars.slice(end - period - 1, end);
+    atrValues.push(calcATR(slice, period));
+  }
+
+  const currentATR = atrValues[atrValues.length - 1];
+  const belowCount = atrValues.filter(v => v < currentATR).length;
+  const atrPercentile = Math.round((belowCount / atrValues.length) * 100);
+
+  return { atrPercentile };
+}
+
+/**
  * Calculate Bollinger Band width from OHLCV bars.
  * @param {Array<{close:number}>} bars
  * @param {number} period

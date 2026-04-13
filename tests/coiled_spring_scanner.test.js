@@ -17,6 +17,7 @@ import {
   computeCompositeScore,
   classifyCandidate,
   generatePlay,
+  calcATRPercentile,
 } from '../scripts/scanner/scoring_v2.js';
 
 import {
@@ -348,5 +349,27 @@ describe('generatePlay', () => {
   it('says watchlist for building base', () => {
     const play = generatePlay('TEST', 'building_base', { ma50: 50, distFromResistance: 12, price: 55 }, 'constructive');
     assert.ok(play.includes('Watchlist'), 'should say watchlist');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// calcATRPercentile
+// ---------------------------------------------------------------------------
+describe('calcATRPercentile', () => {
+  it('returns low percentile for contracting volatility', () => {
+    const result = calcATRPercentile(VALID_COIL.ohlcv);
+    assert.ok(result.atrPercentile <= 30, `expected <= 30, got ${result.atrPercentile}`);
+  });
+
+  it('returns high percentile for wide volatility', () => {
+    const result = calcATRPercentile(ALREADY_EXPLODED.ohlcv);
+    assert.ok(result.atrPercentile >= 50, `expected >= 50, got ${result.atrPercentile}`);
+  });
+
+  it('handles bars shorter than lookback gracefully', () => {
+    const shortBars = makeBars(20, { basePrice: 50, trend: 'flat', volatility: 'normal', volumeBase: 1_000_000, volumeTrend: 'flat' });
+    const result = calcATRPercentile(shortBars, 14, 252);
+    assert.ok(typeof result.atrPercentile === 'number');
+    assert.ok(result.atrPercentile >= 0 && result.atrPercentile <= 100);
   });
 });
