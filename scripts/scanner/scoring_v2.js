@@ -152,6 +152,36 @@ export function calcStdDevContractionRate(bars, windows = [10, 20, 40]) {
 }
 
 /**
+ * Parkinson volatility using high-low range. More sensitive to intraday compression
+ * than close-to-close measures.
+ * Returns ratio of rolling 10-bar mean PV to 20-bar mean PV.
+ * @param {Array} bars - OHLCV array
+ * @param {number} period - Full lookback period (default 20)
+ * @returns {{ parkinsonVol: number, parkinsonRatio: number }}
+ */
+export function calcParkinsonVolatility(bars, period = 20) {
+  if (bars.length < period) return { parkinsonVol: 0, parkinsonRatio: 1 };
+
+  const LN2x4 = 4 * Math.LN2;
+  function pvBar(bar) {
+    if (bar.low <= 0 || bar.high <= 0) return 0;
+    const logHL = Math.log(bar.high / bar.low);
+    return (logHL * logHL) / LN2x4;
+  }
+
+  const recent = bars.slice(-period);
+  const pvValues = recent.map(pvBar);
+
+  const avgPV20 = pvValues.reduce((s, v) => s + v, 0) / pvValues.length;
+  const avgPV10 = pvValues.slice(-10).reduce((s, v) => s + v, 0) / 10;
+
+  const parkinsonVol = Math.round(Math.sqrt(avgPV20) * 10000) / 10000;
+  const parkinsonRatio = avgPV20 > 0 ? Math.round((avgPV10 / avgPV20) * 1000) / 1000 : 1;
+
+  return { parkinsonVol, parkinsonRatio };
+}
+
+/**
  * Calculate Bollinger Band width from OHLCV bars.
  * @param {Array<{close:number}>} bars
  * @param {number} period
@@ -337,18 +367,29 @@ export function scoreContractionQuality(d) {
   // 6. StdDev Contraction (gate only, no points)
   const { isContracting } = calcStdDevContractionRate(bars);
 
-  // --- Multi-factor confirmation gate ---
-  let confirmingSignals = 0;
-  if (atrPercentile <= 25) confirmingSignals++;
-  if (bbWidthPctile <= 30) confirmingSignals++;
-  if (atrRatio < 0.7) confirmingSignals++;
-  if (isContracting) confirmingSignals++;
-  if (vcp.contractions >= 2) confirmingSignals++;
+  // 7. Parkinson volatility (gate only, no points)
+  const { parkinsonRatio } = calcParkinsonVolatility(bars);
+
+  // --- Tiered confirmation gate ---
+  // Primary: direct volatility compression measures
+  let primaryConfirming = 0;
+  if (atrPercentile <= 25) primaryConfirming++;
+  if (bbWidthPctile <= 30) primaryConfirming++;
+  if (atrRatio < 0.7) primaryConfirming++;
+  if (parkinsonRatio < 0.75) primaryConfirming++;
+
+  // Secondary: structural confirmation
+  let secondaryConfirming = 0;
+  if (isContracting) secondaryConfirming++;
+  if (vcp.contractions >= 2) secondaryConfirming++;
+
+  const totalConfirming = primaryConfirming + secondaryConfirming;
 
   score = bbPts + atrRatioPts + vcpPts + rangePts + atrPctilePts;
 
-  // Cap at 15 if fewer than 3 signals confirm
-  if (confirmingSignals < 3) {
+  // Unlock: 2+ primary OR 3+ total with at least 1 primary
+  const gateUnlocked = primaryConfirming >= 2 || (totalConfirming >= 3 && primaryConfirming >= 1);
+  if (!gateUnlocked) {
     score = Math.min(score, 15);
   }
 
@@ -362,7 +403,10 @@ export function scoreContractionQuality(d) {
     vcpQuality: vcp.vcpQuality,
     dailyRangePct,
     atrPercentile,
-    confirmingSignals
+    confirmingSignals: totalConfirming,  // backward compat
+    primaryConfirming,
+    totalConfirming,
+    parkinsonRatio
   };
 }
 
