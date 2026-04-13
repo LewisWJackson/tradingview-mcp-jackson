@@ -25,6 +25,9 @@ const OPTIONS_CACHE = path.join(__dirname, 'options_cache.json');
 
 const REBUILD_INTERVAL_MS = 60 * 1000;       // 60 seconds
 const OPTIONS_MAX_AGE_MS = 15 * 60 * 1000;   // 15 minutes
+const SCANNER_MAX_AGE_MS = 30 * 60 * 1000;   // 30 minutes
+const SCANNER_SCRIPT = path.join(__dirname, '..', 'scanner', 'coiled_spring_scanner.js');
+const SCANNER_RESULTS = path.join(__dirname, '..', 'scanner', 'coiled_spring_results.json');
 
 // ─── Helpers ───
 
@@ -45,6 +48,43 @@ function isOptionsCacheFresh() {
   } catch {
     return false;
   }
+}
+
+/** Check if coiled_spring_results.json exists and is younger than SCANNER_MAX_AGE_MS */
+function isScannerFresh() {
+  try {
+    const stat = fs.statSync(SCANNER_RESULTS);
+    const ageMs = Date.now() - stat.mtimeMs;
+    return ageMs < SCANNER_MAX_AGE_MS;
+  } catch {
+    return false;
+  }
+}
+
+let scanning = false;
+
+/** Run the coiled spring scanner in the background */
+function runScanner() {
+  if (scanning) {
+    log('scanner already running, skipping');
+    return;
+  }
+  scanning = true;
+  log('🌀 scanner: starting coiled spring scan...');
+  const startTime = Date.now();
+
+  execFile('node', [SCANNER_SCRIPT, '--top=15'], { cwd: path.dirname(SCANNER_SCRIPT), maxBuffer: 50 * 1024 * 1024 }, (err, stdout, stderr) => {
+    scanning = false;
+    const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+
+    if (err) {
+      log(`🌀 scanner: FAILED (${elapsed}s): ${err.message}`);
+      return;
+    }
+    // Extract the results summary line
+    const resultsLine = stdout.split('\n').find(l => l.includes('Universe:')) || '';
+    log(`🌀 scanner: done (${elapsed}s) ${resultsLine.trim()}`);
+  });
 }
 
 // ─── Build logic ───
@@ -128,16 +168,25 @@ server.listen(PORT, () => {
   console.log(`  Dashboard live server`);
   console.log(`  http://localhost:${PORT}`);
   console.log('');
-  console.log(`  Rebuild:  every ${REBUILD_INTERVAL_MS / 1000}s`);
+  console.log(`  Rebuild:  every ${REBUILD_INTERVAL_MS / 1000}s (quotes, news, yields, indices)`);
   console.log(`  Options:  cached, refreshed every ${OPTIONS_MAX_AGE_MS / 60000} min`);
+  console.log(`  Scanner:  coiled spring scan every ${SCANNER_MAX_AGE_MS / 60000} min`);
   console.log(`  News:     refreshed every rebuild`);
   console.log(`  Output:   ${OUTPUT_HTML}`);
   console.log('='.repeat(56));
   console.log('');
 
-  // First build immediately
+  // Run scanner immediately if stale, then first build
+  if (!isScannerFresh()) {
+    runScanner();
+  }
   rebuild();
 
-  // Schedule recurring rebuilds
-  setInterval(rebuild, REBUILD_INTERVAL_MS);
+  // Schedule recurring rebuilds + scanner checks
+  setInterval(() => {
+    if (!isScannerFresh()) {
+      runScanner();
+    }
+    rebuild();
+  }, REBUILD_INTERVAL_MS);
 });
