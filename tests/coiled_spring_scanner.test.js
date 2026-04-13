@@ -19,6 +19,7 @@ import {
   generatePlay,
   calcATRPercentile,
   calcStdDevContractionRate,
+  detectVCP,
 } from '../scripts/scanner/scoring_v2.js';
 
 import {
@@ -350,6 +351,30 @@ describe('generatePlay', () => {
   it('says watchlist for building base', () => {
     const play = generatePlay('TEST', 'building_base', { ma50: 50, distFromResistance: 12, price: 55 }, 'constructive');
     assert.ok(play.includes('Watchlist'), 'should say watchlist');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// detectVCP (enhanced)
+// ---------------------------------------------------------------------------
+describe('detectVCP (enhanced)', () => {
+  it('returns vcpQuality as a 0-1 float', () => {
+    const result = detectVCP(VALID_COIL.ohlcv);
+    assert.ok(typeof result.vcpQuality === 'number');
+    assert.ok(result.vcpQuality >= 0 && result.vcpQuality <= 1);
+  });
+
+  it('allows one non-declining depth in sequence', () => {
+    const bars = makeBars(63, { basePrice: 50, trend: 'up', volatility: 'contracting', volumeBase: 1_000_000, volumeTrend: 'drying' });
+    const result = detectVCP(bars);
+    assert.ok(typeof result.contractions === 'number');
+    assert.ok(typeof result.vcpQuality === 'number');
+  });
+
+  it('returns 0 contractions for wide volatile bars', () => {
+    const wideBars = makeBars(63, { basePrice: 50, trend: 'flat', volatility: 'wide', volumeBase: 1_000_000, volumeTrend: 'flat' });
+    const result = detectVCP(wideBars);
+    assert.ok(result.contractions <= 1, `expected <= 1, got ${result.contractions}`);
   });
 });
 

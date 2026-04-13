@@ -153,49 +153,61 @@ function calcBBWidth(bars, period) {
 }
 
 /**
- * Detect VCP tightening: successive pullback depths from swing pivots.
- * Uses 3-bar pivot detection (simplified).
- * @param {Array<{high:number, low:number}>} bars
- * @returns {{ contractions: number, depths: number[] }}
+ * Enhanced VCP (Volatility Contraction Pattern) detection.
+ * Uses 5-bar pivots and allows one non-declining depth.
+ * @param {Array} bars - OHLCV array
+ * @returns {{ contractions: number, depths: number[], vcpQuality: number }}
  */
-function detectVCP(bars) {
-  if (bars.length < 15) return { contractions: 0, depths: [] };
+export function detectVCP(bars) {
+  if (bars.length < 15) return { contractions: 0, depths: [], vcpQuality: 0 };
 
-  // Find swing highs and lows using 3-bar pivots
+  // Find 5-bar swing highs (high > 2 bars on each side)
   const swingHighs = [];
   const swingLows = [];
   for (let i = 2; i < bars.length - 2; i++) {
-    if (bars[i].high > bars[i - 1].high && bars[i].high > bars[i - 2].high &&
-        bars[i].high > bars[i + 1].high && bars[i].high > bars[i + 2].high) {
+    if (bars[i].high > bars[i-1].high && bars[i].high > bars[i-2].high &&
+        bars[i].high > bars[i+1].high && bars[i].high > bars[i+2].high) {
       swingHighs.push({ idx: i, price: bars[i].high });
     }
-    if (bars[i].low < bars[i - 1].low && bars[i].low < bars[i - 2].low &&
-        bars[i].low < bars[i + 1].low && bars[i].low < bars[i + 2].low) {
+    if (bars[i].low < bars[i-1].low && bars[i].low < bars[i-2].low &&
+        bars[i].low < bars[i+1].low && bars[i].low < bars[i+2].low) {
       swingLows.push({ idx: i, price: bars[i].low });
     }
   }
 
-  // Calculate pullback depths: from each swing high to the next swing low
+  // Calculate pullback depths: from each swing high to the next swing low after it
   const depths = [];
-  for (let i = 0; i < swingHighs.length; i++) {
-    const nextLow = swingLows.find((sl) => sl.idx > swingHighs[i].idx);
-    if (nextLow && swingHighs[i].price > 0) {
-      const depth = ((swingHighs[i].price - nextLow.price) / swingHighs[i].price) * 100;
-      depths.push(+depth.toFixed(1));
+  for (const sh of swingHighs) {
+    const nextLow = swingLows.find(sl => sl.idx > sh.idx);
+    if (nextLow) {
+      const depth = ((sh.price - nextLow.price) / sh.price) * 100;
+      depths.push(Math.round(depth * 10) / 10);
     }
   }
 
-  // Count tightening contractions (each shallower than previous)
+  if (depths.length < 2) return { contractions: 0, depths, vcpQuality: 0 };
+
+  // Count contractions allowing one non-declining depth
   let contractions = 0;
+  let wobbles = 0;
   for (let i = 1; i < depths.length; i++) {
     if (depths[i] < depths[i - 1]) {
       contractions++;
+    } else if (wobbles === 0) {
+      wobbles++;
+      contractions++;
     } else {
-      break; // must be monotonic
+      break;
     }
   }
 
-  return { contractions, depths };
+  // vcpQuality: 0-1 based on how clean the tightening is
+  const avgDeclineRate = depths.length >= 2
+    ? depths.slice(0, -1).reduce((sum, d, i) => sum + (d - depths[i + 1]), 0) / (depths.length - 1)
+    : 0;
+  const vcpQuality = Math.min(1, Math.max(0, (contractions / 5) * (1 - wobbles * 0.2) * Math.min(1, avgDeclineRate / 3)));
+
+  return { contractions, depths, vcpQuality };
 }
 
 /**
