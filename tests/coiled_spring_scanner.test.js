@@ -21,6 +21,9 @@ import {
   calcStdDevContractionRate,
   detectVCP,
   calcRSvsIndex,
+  calcAccumulationScore,
+  calcOBVTrendSlope,
+  calcVolumeClustering,
 } from '../scripts/scanner/scoring_v2.js';
 
 import {
@@ -57,7 +60,7 @@ describe('scoreTrendHealth', () => {
   it('gives 8 pts for stacked MA alignment', () => {
     const { score } = scoreTrendHealth({
       price: 100, ma50: 90, ma150: 85, ma200: 80, high52w: 200,
-      relStrengthPctile: 0, ohlcv: [],
+      relStrengthPctile: 0, ohlcv: makeBars(10),
     });
     assert.ok(score >= 8, `stacked MAs should give at least 8, got ${score}`);
   });
@@ -65,7 +68,7 @@ describe('scoreTrendHealth', () => {
   it('gives 0 for inverted MAs', () => {
     const { score } = scoreTrendHealth({
       price: 50, ma50: 60, ma150: 70, ma200: 80, high52w: 100,
-      relStrengthPctile: 0, ohlcv: [],
+      relStrengthPctile: 0, ohlcv: makeBars(10),
     });
     assert.equal(score, 0);
   });
@@ -78,12 +81,29 @@ describe('scoreTrendHealth', () => {
     assert.equal(confidence, 'medium');
   });
 
-  it('awards 7 pts for top 30% relative strength', () => {
+  it('awards higher RS fallback for top 30% relative strength', () => {
     const { score: high } = scoreTrendHealth({ ...VALID_COIL, relStrengthPctile: 75 });
     const { score: mid } = scoreTrendHealth({ ...VALID_COIL, relStrengthPctile: 55 });
     const { score: low } = scoreTrendHealth({ ...VALID_COIL, relStrengthPctile: 30 });
     assert.ok(high > mid, 'top 30% should score higher than top 50%');
     assert.ok(mid > low, 'top 50% should score higher than bottom');
+  });
+
+  it('uses index-based RS when context provided', () => {
+    const result = scoreTrendHealth(OUTPERFORMER, { spyOhlcv: SPY_BARS, qqqOhlcv: QQQ_BARS });
+    assert.ok(result.rsSubtotal > 0, `expected rsSubtotal > 0, got ${result.rsSubtotal}`);
+  });
+
+  it('falls back to Yahoo RS when no context', () => {
+    const result = scoreTrendHealth(VALID_COIL);
+    assert.ok(result.rsSubtotal >= 3, `expected >= 3, got ${result.rsSubtotal}`);
+  });
+
+  it('returns rsSubtotal and trendSubtotal breakdown', () => {
+    const result = scoreTrendHealth(VALID_COIL);
+    assert.ok(typeof result.rsSubtotal === 'number');
+    assert.ok(typeof result.trendSubtotal === 'number');
+    assert.strictEqual(result.score, result.rsSubtotal + result.trendSubtotal);
   });
 });
 
@@ -479,5 +499,53 @@ describe('calcRSvsIndex', () => {
   it('returns outperformingOnPullbacks boolean', () => {
     const result = calcRSvsIndex(OUTPERFORMER.ohlcv, SPY_BARS, QQQ_BARS);
     assert.strictEqual(typeof result.outperformingOnPullbacks, 'boolean');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// calcAccumulationScore
+// ---------------------------------------------------------------------------
+describe('calcAccumulationScore', () => {
+  it('returns higher score for accumulating stock', () => {
+    const result = calcAccumulationScore(VALID_COIL.ohlcv);
+    assert.ok(result.accDistScore > 0, `expected > 0, got ${result.accDistScore}`);
+  });
+
+  it('returns lower score for distributing stock', () => {
+    const result = calcAccumulationScore(BROKEN_DOWN.ohlcv);
+    const validResult = calcAccumulationScore(VALID_COIL.ohlcv);
+    assert.ok(result.accDistScore < validResult.accDistScore);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// calcOBVTrendSlope
+// ---------------------------------------------------------------------------
+describe('calcOBVTrendSlope', () => {
+  it('returns positive slope for accumulating stock', () => {
+    const result = calcOBVTrendSlope(OUTPERFORMER.ohlcv);
+    assert.ok(result.obvSlope >= 0, `expected >= 0, got ${result.obvSlope}`);
+  });
+
+  it('returns normalized slope for cross-stock comparison', () => {
+    const result = calcOBVTrendSlope(VALID_COIL.ohlcv);
+    assert.ok(typeof result.obvSlopeNormalized === 'number');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// calcVolumeClustering
+// ---------------------------------------------------------------------------
+describe('calcVolumeClustering', () => {
+  it('detects volume at swing lows', () => {
+    const result = calcVolumeClustering(VALID_COIL.ohlcv);
+    assert.ok(typeof result.supportVolumeRatio === 'number');
+    assert.ok(result.supportVolumeRatio > 0);
+  });
+
+  it('returns ratio near 1 when volume is uniform', () => {
+    const flatBars = makeBars(63, { basePrice: 50, trend: 'flat', volatility: 'normal', volumeBase: 1_000_000, volumeTrend: 'flat' });
+    const result = calcVolumeClustering(flatBars);
+    assert.ok(result.supportVolumeRatio < 2, `expected < 2, got ${result.supportVolumeRatio}`);
   });
 });

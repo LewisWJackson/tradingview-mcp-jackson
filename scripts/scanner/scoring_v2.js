@@ -15,52 +15,66 @@
 
 /**
  * @param {{ price: number, ma50: number, ma150: number, ma200: number, high52w: number, relStrengthPctile: number, ohlcv: Array<{high:number, low:number}> }} d
- * @returns {{ score: number, confidence: 'high'|'medium'|'low' }}
+ * @param {{ spyOhlcv?: Array, qqqOhlcv?: Array }} context
+ * @returns {{ score: number, confidence: 'high'|'medium'|'low', rsSubtotal: number, trendSubtotal: number }}
  */
-export function scoreTrendHealth(d) {
-  let pts = 0;
-  let hasProxy = false;
-
-  // 50 MA > 150 MA > 200 MA alignment (8 pts)
-  if (d.ma50 > d.ma150 && d.ma150 > d.ma200 && d.ma200 > 0) {
-    pts += 8;
-  }
-
-  // Price above 50-day MA (5 pts)
-  if (d.ma50 > 0 && d.price > d.ma50) {
-    pts += 5;
-  }
-
-  // Within 25% of 52-week high (5 pts)
-  if (d.high52w > 0 && d.price >= d.high52w * 0.75) {
-    pts += 5;
-  }
-
-  // Relative strength vs SPY (7 pts)
-  if (d.relStrengthPctile >= 70) {
-    pts += 7;
-  } else if (d.relStrengthPctile >= 50) {
-    pts += 4;
-  }
-
-  // Higher highs + higher lows over 20 days (5 pts)
+export function scoreTrendHealth(d, context = {}) {
   const bars = d.ohlcv || [];
-  if (bars.length >= 20) {
-    const recent10 = bars.slice(-10);
-    const prior10 = bars.slice(-20, -10);
-    const recentHigh = Math.max(...recent10.map((b) => b.high));
-    const priorHigh = Math.max(...prior10.map((b) => b.high));
-    const recentLow = Math.min(...recent10.map((b) => b.low));
-    const priorLow = Math.min(...prior10.map((b) => b.low));
-    if (recentHigh > priorHigh && recentLow > priorLow) {
-      pts += 5;
+  if (bars.length < 5) return { score: 0, confidence: 'low', rsSubtotal: 0, trendSubtotal: 0 };
+
+  const confidence = bars.length >= 20 ? 'high' : 'medium';
+  let trendSubtotal = 0;
+  let rsSubtotal = 0;
+
+  // --- Trend signals (21 pts max) ---
+  // MA stacking: 8 pts
+  if (d.ma50 > d.ma150 && d.ma150 > d.ma200) trendSubtotal += 8;
+
+  // Price above 50-day MA: 5 pts
+  if (d.price > d.ma50) trendSubtotal += 5;
+
+  // Within 25% of 52-week high: 4 pts
+  if (d.high52w > 0 && d.price >= d.high52w * 0.75) trendSubtotal += 4;
+
+  // Higher highs + higher lows over last 20 days: 4 pts
+  const recent = bars.slice(-20);
+  if (recent.length >= 10) {
+    const firstHalf = recent.slice(0, Math.floor(recent.length / 2));
+    const secondHalf = recent.slice(Math.floor(recent.length / 2));
+    const fhHigh = Math.max(...firstHalf.map(b => b.high));
+    const shHigh = Math.max(...secondHalf.map(b => b.high));
+    const fhLow = Math.min(...firstHalf.map(b => b.low));
+    const shLow = Math.min(...secondHalf.map(b => b.low));
+    if (shHigh > fhHigh && shLow > fhLow) trendSubtotal += 4;
+  }
+
+  // --- RS signals (9 pts max) ---
+  if (context.spyOhlcv && context.qqqOhlcv) {
+    const rs = calcRSvsIndex(bars, context.spyOhlcv, context.qqqOhlcv);
+
+    // RS vs index ratio > 1.0: 4 pts
+    if (rs.rsRatio20d > 1.05) rsSubtotal += 4;
+    else if (rs.rsRatio20d > 1.0) rsSubtotal += 2;
+
+    // RS trending upward: 3 pts
+    if (rs.rsTrending) rsSubtotal += 3;
+
+    // Outperforming on pullbacks: 2 pts
+    if (rs.outperformingOnPullbacks) rsSubtotal += 2;
+
+    // Penalty: underperforming both windows by > 10%
+    if (rs.rsRatio20d < 0.9 && rs.rsRatio40d < 0.9) {
+      rsSubtotal = Math.max(0, rsSubtotal - 3);
     }
   } else {
-    hasProxy = true; // insufficient data for HH/HL check
+    // Fallback: use Yahoo relStrengthPctile when no index data available
+    if ((d.relStrengthPctile || 0) >= 70) rsSubtotal += 5;
+    else if ((d.relStrengthPctile || 0) >= 50) rsSubtotal += 3;
   }
 
-  const confidence = hasProxy ? 'medium' : 'high';
-  return { score: pts, confidence };
+  const score = Math.max(0, trendSubtotal + rsSubtotal);
+
+  return { score, confidence, rsSubtotal, trendSubtotal };
 }
 
 // ---------------------------------------------------------------------------
@@ -353,7 +367,107 @@ export function scoreContractionQuality(d) {
 }
 
 // ---------------------------------------------------------------------------
-// 3. Volume Signature (0-20 pts)
+// 3. Volume Signature (0-20 pts) — helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Accumulation/Distribution score — measures whether up-days on above-avg
+ * volume dominate down-days on below-avg volume (classic institutional footprint).
+ * @param {Array<{open:number, close:number, volume:number}>} bars
+ * @param {number} [period] — defaults to bars.length (use full history)
+ * @returns {{ accDistScore: number }}
+ */
+export function calcAccumulationScore(bars, period) {
+  const lookback = period || bars.length;
+  if (bars.length < lookback) return { accDistScore: 0 };
+
+  const recent = bars.slice(-lookback);
+  const avgVol = recent.reduce((s, b) => s + b.volume, 0) / recent.length;
+
+  let weightedUp = 0;
+  let weightedDown = 0;
+
+  for (const bar of recent) {
+    if (bar.close > bar.open && bar.volume > avgVol * 1.2) {
+      weightedUp += bar.volume / avgVol;
+    } else if (bar.close < bar.open && bar.volume < avgVol * 0.8) {
+      weightedDown += bar.volume / avgVol;
+    }
+  }
+
+  const accDistScore = weightedDown > 0
+    ? Math.round((weightedUp / weightedDown) * 100) / 100
+    : weightedUp > 0 ? 3 : 0;
+
+  return { accDistScore };
+}
+
+/**
+ * On-Balance Volume trend slope — linear regression of OBV over the period,
+ * plus a normalised version for cross-stock comparison.
+ * @param {Array<{close:number, volume:number}>} bars
+ * @param {number} [period=20]
+ * @returns {{ obvSlope: number, obvSlopeNormalized: number }}
+ */
+export function calcOBVTrendSlope(bars, period = 20) {
+  if (bars.length < period) return { obvSlope: 0, obvSlopeNormalized: 0 };
+
+  const recent = bars.slice(-period);
+  const obv = [0];
+  for (let i = 1; i < recent.length; i++) {
+    const change = recent[i].close > recent[i - 1].close ? recent[i].volume
+      : recent[i].close < recent[i - 1].close ? -recent[i].volume : 0;
+    obv.push(obv[obv.length - 1] + change);
+  }
+
+  const n = obv.length;
+  const xMean = (n - 1) / 2;
+  const yMean = obv.reduce((s, v) => s + v, 0) / n;
+  let num = 0, den = 0;
+  for (let i = 0; i < n; i++) {
+    num += (i - xMean) * (obv[i] - yMean);
+    den += (i - xMean) ** 2;
+  }
+  const obvSlope = den > 0 ? Math.round(num / den) : 0;
+
+  const avgVol = recent.reduce((s, b) => s + b.volume, 0) / n;
+  const obvSlopeNormalized = avgVol > 0 ? Math.round((obvSlope / avgVol) * 10000) / 10000 : 0;
+
+  return { obvSlope, obvSlopeNormalized };
+}
+
+/**
+ * Volume clustering at support — compares average volume on bars near
+ * rolling lows vs overall average volume. Ratio > 1 means institutions
+ * are buying the dips.
+ * @param {Array<{low:number, volume:number}>} bars
+ * @param {number} [period=20]
+ * @returns {{ supportVolumeRatio: number }}
+ */
+export function calcVolumeClustering(bars, period = 20) {
+  if (bars.length < period) return { supportVolumeRatio: 1 };
+
+  const recent = bars.slice(-period);
+  const avgVol = recent.reduce((s, b) => s + b.volume, 0) / recent.length;
+
+  const supportBars = [];
+  for (let i = 10; i < recent.length; i++) {
+    const rollingLow = Math.min(...recent.slice(i - 10, i).map(b => b.low));
+    if (recent[i].low <= rollingLow * 1.02) {
+      supportBars.push(recent[i]);
+    }
+  }
+
+  if (supportBars.length === 0) return { supportVolumeRatio: 1 };
+
+  const supportAvgVol = supportBars.reduce((s, b) => s + b.volume, 0) / supportBars.length;
+  const supportVolumeRatio = avgVol > 0 ? Math.round((supportAvgVol / avgVol) * 100) / 100 : 1;
+
+  return { supportVolumeRatio };
+}
+
+// ---------------------------------------------------------------------------
+// 3. Volume Signature (0-20 pts) — scorer
 // ---------------------------------------------------------------------------
 
 /**
