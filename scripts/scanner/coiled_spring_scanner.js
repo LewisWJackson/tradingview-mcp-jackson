@@ -30,6 +30,7 @@ import {
   calcRiskCategory,
   calcEntryTrigger,
   generateNotes,
+  calcConfidenceBand,
   REGIME_MULTIPLIERS,
 } from './scoring_v2.js';
 
@@ -152,6 +153,7 @@ async function main() {
 
     const signals = { trendHealth: trend, contraction, volumeSignature: volume, pivotProximity: pivot, catalystAwareness: catalyst };
     const probability = computeProbabilityScore(signals, scoringContext);
+    const confidence_band = calcConfidenceBand(probability.probability_score, signals, scoringContext);
 
     const classification = classifyCandidate({
       score: composite.score,
@@ -214,6 +216,7 @@ async function main() {
       entry_trigger,
       catalyst_tag: catalyst.catalystTag || 'catalyst_unknown',
       regime_multiplier: probability.regime_multiplier,
+      confidence_band,
       factor_breakdown: probability.factor_breakdown,
       signals: composite.signals,
       details: {
@@ -286,7 +289,8 @@ async function main() {
     const quality = r.setup_quality.padEnd(8);
     const risk = r.risk_level !== 'low' ? ` ⚠${r.risk_level}` : '';
     const flags = (r.red_flags || []).length > 0 ? ` 🚩${r.red_flags.join(',')}` : '';
-    console.log(`  #${r.rank} ${r.probability_score}% ${quality} ${r.setup_type.padEnd(16)} ${r.symbol.padEnd(6)} $${r.price} | ${r.entry_trigger}${risk}${flags}`);
+    const band = r.confidence_band ? `${r.confidence_band.low}-${r.confidence_band.mid}-${r.confidence_band.high}%` : `${r.probability_score}%`;
+    console.log(`  #${r.rank} ${band.padEnd(12)} ${quality} ${r.setup_type.padEnd(16)} ${r.symbol.padEnd(6)} $${r.price} | ${r.entry_trigger}${risk}${flags}`);
   }
 
   console.log(`\nOutput: ${outFile}`);
