@@ -25,9 +25,15 @@
 
 Formula: `PV = sqrt((1 / (4n * ln2)) * sum(ln(H/L)^2))` over the period.
 
-Returns `{ parkinsonVol, parkinsonRatio }` where `parkinsonRatio` is current 10-bar PV divided by 20-bar PV.
+Returns `{ parkinsonVol, parkinsonRatio }` where `parkinsonRatio` is rolling mean PV over last 10 bars divided by rolling mean PV over last 20 bars:
 
-Threshold: ratio < 0.75 = contracting intraday ranges. Using 0.75 instead of 0.7 to account for high/low noise sensitivity. The 10-bar PV window provides mild smoothing.
+```
+avgPV_10 = mean(PV over last 10 bars)
+avgPV_20 = mean(PV over last 20 bars)
+parkinsonRatio = avgPV_10 / avgPV_20
+```
+
+Threshold: ratio < 0.75 = contracting intraday ranges. Using 0.75 instead of 0.7 to account for high/low noise sensitivity. Rolling mean evaluation ensures stable gate participation on thinly traded symbols.
 
 ### Tiered Confirmation Gate
 
@@ -104,10 +110,10 @@ Restructured to favor 2-8% pre-breakout zone and penalize >12%:
 
 Maximum score remains 6 points. Category total remains 15 points.
 
-Distance calculation:
+Distance calculation (uses close price, not high or midpoint):
 
 ```
-distancePct = abs(resistanceLevel - currentPrice) / resistanceLevel * 100
+distancePct = (resistancePrice - close) / resistancePrice * 100
 ```
 
 Penalty floor: pivot subtotal cannot fall below 0. Follows existing category behavior.
@@ -244,6 +250,8 @@ One low-confidence category, 2 confirming signals, VIX 28:
   "setup_quality": "HIGH"
 }
 ```
+
+All band values rounded to nearest integer before output.
 
 Console display: `#1 64-67-70% HIGH building_base ZION $61.05`
 
