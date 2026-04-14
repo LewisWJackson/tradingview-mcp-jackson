@@ -1,0 +1,60 @@
+//@version=6
+indicator("Momentum Scalper Signal", shorttitle="MSS", overlay=false)
+
+// ─── Inputs (mirror rules.json) ───────────────────────────────────────────────
+rsi_len      = input.int(14,    "RSI Length",          group="Rules")
+rsi_low      = input.float(30,  "RSI Lower Bound",     group="Rules")
+rsi_high     = input.float(70,  "RSI Upper Bound",     group="Rules")
+min_move_pct = input.float(0.05,"Min Momentum % Move", group="Rules", step=0.01)
+
+// ─── Core calculations ─────────────────────────────────────────────────────────
+rsi_val   = ta.rsi(close, rsi_len)
+rsi_ok    = rsi_val >= rsi_low and rsi_val <= rsi_high
+chg_pct   = (close - close[1]) / close[1] * 100
+mom_long  = chg_pct >=  min_move_pct
+mom_short = chg_pct <= -min_move_pct
+
+long_signal  = rsi_ok and mom_long
+short_signal = rsi_ok and mom_short
+
+// ─── RSI plot ─────────────────────────────────────────────────────────────────
+rsi_color = rsi_val > rsi_high or rsi_val < rsi_low ? color.red : color.new(color.aqua, 20)
+plot(rsi_val, "RSI", color=rsi_color, linewidth=2)
+hline(rsi_high, "Overbought", color=color.new(color.red,   50), linestyle=hline.style_dashed)
+hline(rsi_low,  "Oversold",   color=color.new(color.green, 50), linestyle=hline.style_dashed)
+hline(50,       "Mid",        color=color.new(color.gray,  70), linestyle=hline.style_dotted)
+
+// ─── Momentum % change bars ───────────────────────────────────────────────────
+chg_color = long_signal ? color.new(color.green, 30) : short_signal ? color.new(color.red, 30) : color.new(color.gray, 60)
+plot(chg_pct, "Momentum %", color=chg_color, style=plot.style_columns)
+hline(0, "", color=color.new(color.white, 70))
+
+// ─── Signal shapes ────────────────────────────────────────────────────────────
+plotshape(long_signal,  title="LONG",  location=location.top,    style=shape.labelup,   color=color.green, textcolor=color.white, text="LONG",  size=size.small)
+plotshape(short_signal, title="SHORT", location=location.bottom, style=shape.labeldown, color=color.red,   textcolor=color.white, text="SHORT", size=size.small)
+
+// ─── Dashboard table ──────────────────────────────────────────────────────────
+var table dash = table.new(position.top_right, 2, 5, bgcolor=color.new(color.black, 80), border_color=color.new(color.gray, 60), border_width=1, frame_color=color.new(color.gray, 40), frame_width=1)
+
+bias_text  = long_signal  ? "LONG"    : short_signal ? "SHORT"   : "NEUTRAL"
+bias_color = long_signal  ? color.green : short_signal ? color.red : color.gray
+rsi_status = rsi_val > rsi_high ? "OVERBOUGHT" : rsi_val < rsi_low ? "OVERSOLD" : "OK ✓"
+rsi_sc     = rsi_val > rsi_high or rsi_val < rsi_low ? color.red : color.green
+mom_status = long_signal ? "▲ +" + str.tostring(chg_pct, "#.##") + "%" : short_signal ? "▼ " + str.tostring(chg_pct, "#.##") + "%" : str.tostring(chg_pct, "#.##") + "% (skip)"
+mom_sc     = long_signal ? color.green : short_signal ? color.red : color.gray
+
+if barstate.islast
+    table.cell(dash, 0, 0, "SIGNAL",    text_color=color.gray,  text_size=size.small)
+    table.cell(dash, 1, 0, bias_text,   text_color=bias_color,  text_size=size.small)
+    table.cell(dash, 0, 1, "RSI(14)",   text_color=color.gray,  text_size=size.small)
+    table.cell(dash, 1, 1, str.tostring(rsi_val, "#.#") + "  " + rsi_status, text_color=rsi_sc, text_size=size.small)
+    table.cell(dash, 0, 2, "MOM %",     text_color=color.gray,  text_size=size.small)
+    table.cell(dash, 1, 2, mom_status,  text_color=mom_sc,      text_size=size.small)
+    table.cell(dash, 0, 3, "MIN MOVE",  text_color=color.gray,  text_size=size.small)
+    table.cell(dash, 1, 3, str.tostring(min_move_pct, "#.##") + "%", text_color=color.white, text_size=size.small)
+    table.cell(dash, 0, 4, "RSI RANGE", text_color=color.gray,  text_size=size.small)
+    table.cell(dash, 1, 4, str.tostring(rsi_low) + " – " + str.tostring(rsi_high), text_color=color.white, text_size=size.small)
+
+// ─── Alerts ───────────────────────────────────────────────────────────────────
+alertcondition(long_signal,  "MSS Long Entry",  "Momentum Scalper: LONG — RSI OK, close up ≥0.05%")
+alertcondition(short_signal, "MSS Short Entry", "Momentum Scalper: SHORT — RSI OK, close down ≥0.05%")

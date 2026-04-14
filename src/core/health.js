@@ -3,6 +3,7 @@
  */
 import { getClient, getTargetInfo, evaluate } from '../connection.js';
 import { existsSync } from 'fs';
+import { join } from 'path';
 import { execSync, spawn } from 'child_process';
 
 export async function healthCheck() {
@@ -187,6 +188,20 @@ export async function launch({ port, kill_existing } = {}) {
   const candidates = pathMap[platform] || pathMap.linux;
   for (const p of candidates) {
     if (p && existsSync(p)) { tvPath = p; break; }
+  }
+
+  // Windows Store install — use Get-AppxPackage (no admin needed, works on ACL-protected WindowsApps dir)
+  if (!tvPath && platform === 'win32') {
+    try {
+      const psOut = execSync(
+        'powershell.exe -NoProfile -Command "(Get-AppxPackage -Name \'TradingView.Desktop\' -ErrorAction SilentlyContinue).InstallLocation"',
+        { timeout: 8000 }
+      ).toString().trim();
+      if (psOut) {
+        const candidate = join(psOut, 'TradingView.exe');
+        if (existsSync(candidate)) tvPath = candidate;
+      }
+    } catch { /* PowerShell not available or package not found */ }
   }
 
   if (!tvPath) {
