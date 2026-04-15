@@ -159,6 +159,155 @@ export async function uiState() {
   return { success: true, ...state };
 }
 
+export async function launchBrowser({ port, browser: preferredBrowser, profile } = {}) {
+  const cdpPort = port || 9222;
+  const platform = process.platform;
+  const tvUrl = 'https://www.tradingview.com/chart/';
+
+  // --- Persistent profile directory (keeps TradingView login cookies across sessions) ---
+  // Uses a dedicated dir so it never conflicts with a user's normal Chrome session.
+  const defaultProfileDir = platform === 'win32'
+    ? `${process.env.LOCALAPPDATA}\\TradingView-MCP\\browser-profile`
+    : `${process.env.HOME}/.tradingview-mcp/browser-profile`;
+  const profileDir = profile || defaultProfileDir;
+
+  // --- Ensure profile directory exists ---
+  const { mkdirSync } = await import('fs');
+  try { mkdirSync(profileDir, { recursive: true }); } catch { /* already exists */ }
+
+  // --- Check if CDP is already live on the port (avoid double-launch) ---
+  const http = await import('http');
+  const cdpAlreadyLive = await new Promise((resolve) => {
+    http.get(`http://localhost:${cdpPort}/json/version`, (res) => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => {
+        try { resolve(JSON.parse(data)); } catch { resolve(null); }
+      });
+    }).on('error', () => resolve(null));
+  });
+
+  if (cdpAlreadyLive) {
+    // CDP already running — just open the TradingView URL in a new tab if needed
+    const targets = await new Promise((resolve) => {
+      http.get(`http://localhost:${cdpPort}/json/list`, (res) => {
+        let data = '';
+        res.on('data', chunk => data += chunk);
+        res.on('end', () => { try { resolve(JSON.parse(data)); } catch { resolve([]); } });
+      }).on('error', () => resolve([]));
+    });
+    const hasTVTab = targets.some(t => /tradingview\.com\/chart/i.test(t.url));
+    return {
+      success: true,
+      already_running: true,
+      cdp_port: cdpPort,
+      browser: cdpAlreadyLive.Browser,
+      tradingview_tab_open: hasTVTab,
+      profile_dir: profileDir,
+      note: hasTVTab
+        ? 'Browser with TradingView already running and connected. Run tv_health_check.'
+        : `Browser already running but no TradingView chart tab found. Open ${tvUrl} in that browser window.`,
+    };
+  }
+
+  // --- Find browser binary ---
+  const chromeCandidates = {
+    win32: [
+      `${process.env.LOCALAPPDATA}\\Google\\Chrome\\Application\\chrome.exe`,
+      `${process.env.PROGRAMFILES}\\Google\\Chrome\\Application\\chrome.exe`,
+      `${process.env['PROGRAMFILES(X86)']}\\Google\\Chrome\\Application\\chrome.exe`,
+    ],
+    darwin: [
+      '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+      `${process.env.HOME}/Applications/Google Chrome.app/Contents/MacOS/Google Chrome`,
+    ],
+    linux: ['google-chrome', 'google-chrome-stable', 'chromium-browser', 'chromium'],
+  };
+
+  const edgeCandidates = {
+    win32: [
+      `${process.env['PROGRAMFILES(X86)']}\\Microsoft\\Edge\\Application\\msedge.exe`,
+      `${process.env.PROGRAMFILES}\\Microsoft\\Edge\\Application\\msedge.exe`,
+    ],
+    darwin: [
+      '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge',
+    ],
+    linux: ['microsoft-edge', 'microsoft-edge-stable'],
+  };
+
+  const allCandidates = preferredBrowser === 'edge'
+    ? [...(edgeCandidates[platform] || []), ...(chromeCandidates[platform] || [])]
+    : [...(chromeCandidates[platform] || []), ...(edgeCandidates[platform] || [])];
+
+  let browserPath = null;
+  for (const p of allCandidates) {
+    if (!p) continue;
+    if (p.includes('/') || p.includes('\\')) {
+      if (existsSync(p)) { browserPath = p; break; }
+    } else {
+      try {
+        const cmd = platform === 'win32' ? `where "${p}"` : `which "${p}"`;
+        const found = execSync(cmd, { timeout: 3000 }).toString().trim().split('\n')[0];
+        if (found && existsSync(found)) { browserPath = found; break; }
+      } catch { /* not found */ }
+    }
+  }
+
+  if (!browserPath) {
+    throw new Error(
+      `No Chrome or Edge browser found on ${platform}. ` +
+      `Install Google Chrome or Microsoft Edge, then try again. ` +
+      `Or launch manually: "chrome.exe" --remote-debugging-port=${cdpPort} --user-data-dir="${profileDir}" "${tvUrl}"`
+    );
+  }
+
+  // --- Launch browser with persistent profile and remote debugging ---
+  const isFirstRun = !existsSync(`${profileDir}/Default/Cookies`);
+  const args = [
+    `--remote-debugging-port=${cdpPort}`,
+    `--user-data-dir=${profileDir}`,
+    '--no-first-run',
+    '--no-default-browser-check',
+    tvUrl,
+  ];
+
+  const child = spawn(browserPath, args, { detached: true, stdio: 'ignore' });
+  child.unref();
+
+  // --- Wait for CDP to become available ---
+  for (let i = 0; i < 20; i++) {
+    await new Promise(r => setTimeout(r, 1000));
+    const info = await new Promise((resolve) => {
+      http.get(`http://localhost:${cdpPort}/json/version`, (res) => {
+        let data = '';
+        res.on('data', chunk => data += chunk);
+        res.on('end', () => { try { resolve(JSON.parse(data)); } catch { resolve(null); } });
+      }).on('error', () => resolve(null));
+    });
+    if (info) {
+      return {
+        success: true, platform, binary: browserPath, pid: child.pid,
+        cdp_port: cdpPort, cdp_url: `http://localhost:${cdpPort}`,
+        browser: info.Browser,
+        profile_dir: profileDir,
+        tradingview_url: tvUrl,
+        first_run: isFirstRun,
+        note: isFirstRun
+          ? 'First launch: log in to TradingView in the browser window. Your session will be saved for future launches.'
+          : 'Browser launched with saved session — you should already be logged in. Run tv_health_check.',
+      };
+    }
+  }
+
+  return {
+    success: true, platform, binary: browserPath, pid: child.pid,
+    cdp_port: cdpPort, cdp_ready: false,
+    profile_dir: profileDir,
+    warning: 'Browser launched but CDP not responding yet. Try tv_health_check in a few seconds.',
+    tradingview_url: tvUrl,
+  };
+}
+
 export async function launch({ port, kill_existing } = {}) {
   const cdpPort = port || 9222;
   const killFirst = kill_existing !== false;
