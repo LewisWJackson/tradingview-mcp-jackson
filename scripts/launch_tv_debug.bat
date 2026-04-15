@@ -17,9 +17,11 @@ if exist "%LOCALAPPDATA%\TradingView\TradingView.exe" set "TV_EXE=%LOCALAPPDATA%
 if exist "%PROGRAMFILES%\TradingView\TradingView.exe" set "TV_EXE=%PROGRAMFILES%\TradingView\TradingView.exe"
 if exist "%PROGRAMFILES(x86)%\TradingView\TradingView.exe" set "TV_EXE=%PROGRAMFILES(x86)%\TradingView\TradingView.exe"
 
-REM Check MSIX / Windows Store installs
+REM Check MSIX / Windows Store installs (WindowsApps is permission-restricted, use PowerShell)
 if "%TV_EXE%"=="" (
-    for /f "tokens=*" %%i in ('dir /s /b "%PROGRAMFILES%\WindowsApps\TradingView*\TradingView.exe" 2^>nul') do set "TV_EXE=%%i"
+    for /f "tokens=*" %%i in ('powershell -NoProfile -Command "(Get-AppxPackage -Name 'TradingView*').InstallLocation + '\TradingView.exe'" 2^>nul') do (
+        if exist "%%i" set "TV_EXE=%%i"
+    )
 )
 if "%TV_EXE%"=="" (
     for /f "tokens=*" %%i in ('where TradingView.exe 2^>nul') do set "TV_EXE=%%i"
@@ -36,7 +38,14 @@ if "%TV_EXE%"=="" (
 
 echo Found TradingView at: %TV_EXE%
 echo Starting with --remote-debugging-port=%PORT%...
-start "" "%TV_EXE%" --remote-debugging-port=%PORT%
+
+REM MSIX apps in WindowsApps require Start-Process to honour CLI flags
+echo "%TV_EXE%" | findstr /i "WindowsApps" >nul 2>&1
+if %errorlevel% equ 0 (
+    powershell -NoProfile -Command "Start-Process '%TV_EXE%' -ArgumentList '--remote-debugging-port=%PORT%'"
+) else (
+    start "" "%TV_EXE%" --remote-debugging-port=%PORT%
+)
 
 echo Waiting for CDP to become available...
 timeout /t 5 /nobreak >nul
