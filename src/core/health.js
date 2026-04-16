@@ -173,6 +173,7 @@ export async function launch({ port, kill_existing } = {}) {
       `${process.env.LOCALAPPDATA}\\TradingView\\TradingView.exe`,
       `${process.env.PROGRAMFILES}\\TradingView\\TradingView.exe`,
       `${process.env['PROGRAMFILES(X86)']}\\TradingView\\TradingView.exe`,
+      `C:\\Program Files\\WindowsApps\\TradingView.Desktop_3.0.0.7652_x64__n534cwy3pjxzj\\TradingView.exe`,
     ],
     linux: [
       '/opt/TradingView/tradingview',
