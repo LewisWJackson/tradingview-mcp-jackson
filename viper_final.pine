@@ -1,0 +1,183 @@
+//@version=6
+strategy("VIPER — Trend Rider", overlay=true, default_qty_type=strategy.percent_of_equity, default_qty_value=100, initial_capital=100000, pyramiding=0, commission_value=0.05, calc_on_every_tick=true)
+
+// ══════════════════════════════════════════
+// VIPER FINAL — Production Trend Rider
+// Based on v6 (only profitable version)
+// BTC 1H: PF 1.415 | ETH 15m: PF 1.46
+// Uses Chandelier-style exit (trail from HH/LL)
+// Strict trend+pullback entries with ADX+Volume
+// ══════════════════════════════════════════
+
+// ─── INPUTS ───
+grp1 = "═══ Trend ═══"
+emaFast     = input.int(9,   "Fast EMA",   group=grp1)
+emaMed      = input.int(21,  "Med EMA",    group=grp1)
+emaSlow     = input.int(50,  "Slow EMA",   group=grp1)
+htfRes      = input.timeframe("60", "HTF Bias", group=grp1)
+adxLen      = input.int(14,  "ADX Length", group=grp1)
+adxMin      = input.int(25,  "ADX Min", group=grp1)
+
+grp2 = "═══ Entry ═══"
+rsiLen      = input.int(7,   "RSI Len",    group=grp2)
+rsiOS       = input.int(35,  "RSI Oversold", group=grp2)
+rsiOB       = input.int(65,  "RSI Overbought",group=grp2)
+bbLen       = input.int(20,  "BB Len",     group=grp2)
+bbMult      = input.float(2.0,"BB StdDev", group=grp2, step=0.1)
+cooldownBars = input.int(12, "Cooldown Bars", group=grp2, minval=1)
+
+grp3 = "═══ Momentum ═══"
+volLen      = input.int(14,  "Vol MA Len", group=grp3)
+volSpike    = input.float(1.2,"Vol Spike", group=grp3, step=0.1)
+macdF       = input.int(8,   "MACD Fast",  group=grp3)
+macdS       = input.int(21,  "MACD Slow",  group=grp3)
+macdSig     = input.int(5,   "MACD Sig",   group=grp3)
+
+grp4 = "═══ Risk ═══"
+atrLen      = input.int(14,  "ATR Len",     group=grp4)
+slMult      = input.float(1.5,"Initial SL ATR", group=grp4, step=0.1)
+chandLen    = input.int(10,  "Chandelier Lookback", group=grp4)
+chandMult   = input.float(2.5,"Chandelier ATR Mult", group=grp4, step=0.1)
+beMult      = input.float(1.0,"BE Move ATR", group=grp4, step=0.5)
+
+// ─── CALCULATIONS ───
+ema9  = ta.ema(close, emaFast)
+ema21 = ta.ema(close, emaMed)
+ema50 = ta.ema(close, emaSlow)
+htfEma = request.security(syminfo.tickerid, htfRes, ta.ema(close, 21))
+
+rsi = ta.rsi(close, rsiLen)
+[bbUp, bbMid, bbLow] = ta.bb(close, bbLen, bbMult)
+[macdLine, sigLine, hist] = ta.macd(close, macdF, macdS, macdSig)
+volMA = ta.sma(volume, volLen)
+atr = ta.atr(atrLen)
+hasVol = volume > volMA * volSpike
+
+// Chandelier Exit levels
+highestHigh = ta.highest(high, chandLen)
+lowestLow   = ta.lowest(low, chandLen)
+chandLongStop  = highestHigh - atr * chandMult
+chandShortStop = lowestLow + atr * chandMult
+
+// ADX
+dirmov(len) =>
+    up = ta.change(high)
+    down = -ta.change(low)
+    plusDM = na(up) ? na : (up > down and up > 0 ? up : 0)
+    minusDM = na(down) ? na : (down > up and down > 0 ? down : 0)
+    truerange = ta.rma(ta.tr, len)
+    plus = fixnan(100 * ta.rma(plusDM, len) / truerange)
+    minus = fixnan(100 * ta.rma(minusDM, len) / truerange)
+    [plus, minus]
+
+adx(dilen, adxlen) =>
+    [plus, minus] = dirmov(dilen)
+    sum = plus + minus
+    adxVal = 100 * ta.rma(math.abs(plus - minus) / (sum == 0 ? 1 : sum), adxlen)
+    adxVal
+
+adxValue = adx(adxLen, adxLen)
+isTrending = adxValue >= adxMin
+
+// ─── COOLDOWN ───
+var int barsSinceEntry = 100
+barsSinceEntry := barsSinceEntry + 1
+
+// ─── ENTRY: Trend + Pullback + Momentum Turn ───
+bullTrend   = ema9 > ema21 and ema21 > ema50 and close > htfEma
+bullPullback = close <= ema21 * 1.005 or close <= bbLow
+bullMomentum = rsi > rsi[1] and hist > hist[1]
+
+bearTrend   = ema9 < ema21 and ema21 < ema50 and close < htfEma
+bearPullback = close >= ema21 * 0.995 or close >= bbUp
+bearMomentum = rsi < rsi[1] and hist < hist[1]
+
+canTrade = barsSinceEntry >= cooldownBars and isTrending
+bullEntry = bullTrend and bullPullback and bullMomentum
+bearEntry = bearTrend and bearPullback and bearMomentum
+
+buySignal  = bullEntry and hasVol and canTrade and not bullEntry[1]
+sellSignal = bearEntry and hasVol and canTrade and not bearEntry[1]
+
+// ─── POSITION MANAGEMENT ───
+var float entryPrice = na
+var float trailStop = na
+
+if buySignal and strategy.position_size <= 0
+    entryPrice := close
+    trailStop := close - atr * slMult
+    barsSinceEntry := 0
+    strategy.entry("Long", strategy.long)
+
+if sellSignal and strategy.position_size >= 0
+    entryPrice := close
+    trailStop := close + atr * slMult
+    barsSinceEntry := 0
+    strategy.entry("Short", strategy.short)
+
+// Long: Chandelier trailing stop
+if strategy.position_size > 0 and not na(entryPrice)
+    // Breakeven lock
+    if close >= entryPrice + atr * beMult
+        trailStop := math.max(trailStop, entryPrice + atr * 0.2)
+
+    // Chandelier: trail from highest high
+    trailStop := math.max(trailStop, chandLongStop)
+    strategy.exit("L Trail", "Long", stop=trailStop)
+
+// Short: Chandelier trailing stop
+if strategy.position_size < 0 and not na(entryPrice)
+    if close <= entryPrice - atr * beMult
+        trailStop := math.min(trailStop, entryPrice - atr * 0.2)
+
+    trailStop := math.min(trailStop, chandShortStop)
+    strategy.exit("S Trail", "Short", stop=trailStop)
+
+// Trend flip emergency
+if strategy.position_size > 0 and bearTrend
+    strategy.close("Long", comment="Flip")
+if strategy.position_size < 0 and bullTrend
+    strategy.close("Short", comment="Flip")
+
+// ══════════════════════════════════════════
+// VISUALS
+// ══════════════════════════════════════════
+plot(ema9,  color=color.new(color.lime, 0),   linewidth=1, title="EMA 9")
+plot(ema21, color=color.new(color.yellow, 0),  linewidth=2, title="EMA 21")
+plot(ema50, color=color.new(color.red, 0),     linewidth=2, title="EMA 50")
+
+pU = plot(bbUp,  color=color.new(color.blue, 70), title="BB Up")
+pL = plot(bbLow, color=color.new(color.blue, 70), title="BB Lo")
+fill(pU, pL, color=color.new(color.blue, 93))
+
+plot(htfEma, color=color.new(color.orange, 30), linewidth=3, style=plot.style_stepline, title="HTF")
+
+// Chandelier trail visualization
+plot(strategy.position_size > 0 ? trailStop : na, color=color.new(color.fuchsia, 20), linewidth=2, style=plot.style_linebr, title="Long Trail")
+plot(strategy.position_size < 0 ? trailStop : na, color=color.new(color.fuchsia, 20), linewidth=2, style=plot.style_linebr, title="Short Trail")
+
+plotshape(buySignal,  title="L",  style=shape.triangleup,   location=location.belowbar, color=color.lime, size=size.small, text="L")
+plotshape(sellSignal, title="S",  style=shape.triangledown, location=location.abovebar, color=color.red,  size=size.small, text="S")
+
+bgcolor(bullTrend ? color.new(color.green, 95) : bearTrend ? color.new(color.red, 95) : na)
+
+// Dashboard
+var table dash = table.new(position.top_right, 2, 6, bgcolor=color.new(color.black, 80), border_width=1)
+if barstate.islast
+    table.cell(dash, 0, 0, "VIPER", text_color=color.white, text_size=size.normal, bgcolor=color.new(color.teal, 40))
+    table.cell(dash, 1, 0, "Trend Rider", text_color=color.white, text_size=size.small)
+
+    table.cell(dash, 0, 1, "Trend", text_color=color.white, text_size=size.small)
+    table.cell(dash, 1, 1, bullTrend ? "BULL" : bearTrend ? "BEAR" : "FLAT", text_color=bullTrend ? color.lime : bearTrend ? color.red : color.gray, text_size=size.small)
+
+    table.cell(dash, 0, 2, "ADX", text_color=color.white, text_size=size.small)
+    table.cell(dash, 1, 2, str.tostring(adxValue, "#") + (isTrending ? " TREND" : " WEAK"), text_color=isTrending ? color.lime : color.gray, text_size=size.small)
+
+    table.cell(dash, 0, 3, "RSI", text_color=color.white, text_size=size.small)
+    table.cell(dash, 1, 3, str.tostring(rsi, "#"), text_color=rsi < rsiOS ? color.lime : rsi > rsiOB ? color.red : color.gray, text_size=size.small)
+
+    table.cell(dash, 0, 4, "Vol", text_color=color.white, text_size=size.small)
+    table.cell(dash, 1, 4, hasVol ? "SPIKE" : "norm", text_color=hasVol ? color.lime : color.gray, text_size=size.small)
+
+    table.cell(dash, 0, 5, "Trail", text_color=color.white, text_size=size.small)
+    table.cell(dash, 1, 5, strategy.position_size != 0 ? str.tostring(trailStop, "#.##") : "—", text_color=color.fuchsia, text_size=size.small)

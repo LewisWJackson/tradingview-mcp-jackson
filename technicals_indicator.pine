@@ -1,0 +1,129 @@
+//@version=6
+indicator("TECH SCANNER", overlay=true)
+
+// ─── Calculations ───
+ema9   = ta.ema(close, 9)
+ema21  = ta.ema(close, 21)
+ema50  = ta.ema(close, 50)
+ema200 = ta.ema(close, 200)
+rsi14  = ta.rsi(close, 14)
+[macdL, sigL, histL] = ta.macd(close, 12, 26, 9)
+atr14  = ta.atr(14)
+volMA  = ta.sma(volume, 20)
+volRatio = volume / volMA
+
+// 52-week high/low (252 trading days)
+hi252  = ta.highest(high, 252)
+lo252  = ta.lowest(low, 252)
+
+// Bollinger Bands
+[bbUp, bbMid, bbLow] = ta.bb(close, 20, 2.0)
+bbWidth = (bbUp - bbLow) / bbMid * 100
+
+// ADX
+dirmov(len) =>
+    up = ta.change(high)
+    down = -ta.change(low)
+    plusDM = na(up) ? na : (up > down and up > 0 ? up : 0)
+    minusDM = na(down) ? na : (down > up and down > 0 ? down : 0)
+    truerange = ta.rma(ta.tr, len)
+    plus = fixnan(100 * ta.rma(plusDM, len) / truerange)
+    minus = fixnan(100 * ta.rma(minusDM, len) / truerange)
+    [plus, minus]
+
+adx(dilen, adxlen) =>
+    [plus, minus] = dirmov(dilen)
+    sum = plus + minus
+    100 * ta.rma(math.abs(plus - minus) / (sum == 0 ? 1 : sum), adxlen)
+
+adxVal = adx(14, 14)
+
+// Trend classification
+bullTrend = ema9 > ema21 and ema21 > ema50 and ema50 > ema200
+bearTrend = ema9 < ema21 and ema21 < ema50 and ema50 < ema200
+trendStr = bullTrend ? "STRONG_BULL" : bearTrend ? "STRONG_BEAR" : ema9 > ema21 ? "MILD_BULL" : ema9 < ema21 ? "MILD_BEAR" : "CHOP"
+
+// Price position
+pctFromHigh = (close - hi252) / hi252 * 100
+pctFromLow = (close - lo252) / lo252 * 100
+
+// Stochastic
+stochK = ta.sma(ta.stoch(close, high, low, 14), 3)
+
+// Output table
+var table t = table.new(position.bottom_right, 2, 25, bgcolor=color.new(color.black, 80), border_width=1)
+if barstate.islast
+    table.cell(t, 0, 0, "SCAN", text_color=color.white, text_size=size.small, bgcolor=color.teal)
+    table.cell(t, 1, 0, syminfo.ticker, text_color=color.white, text_size=size.small, bgcolor=color.teal)
+
+    table.cell(t, 0, 1, "CLOSE", text_color=color.white, text_size=size.tiny)
+    table.cell(t, 1, 1, str.tostring(close), text_color=color.white, text_size=size.tiny)
+
+    table.cell(t, 0, 2, "EMA9", text_color=color.white, text_size=size.tiny)
+    table.cell(t, 1, 2, str.tostring(ema9, "#.####"), text_color=color.white, text_size=size.tiny)
+
+    table.cell(t, 0, 3, "EMA21", text_color=color.white, text_size=size.tiny)
+    table.cell(t, 1, 3, str.tostring(ema21, "#.####"), text_color=color.white, text_size=size.tiny)
+
+    table.cell(t, 0, 4, "EMA50", text_color=color.white, text_size=size.tiny)
+    table.cell(t, 1, 4, str.tostring(ema50, "#.####"), text_color=color.white, text_size=size.tiny)
+
+    table.cell(t, 0, 5, "EMA200", text_color=color.white, text_size=size.tiny)
+    table.cell(t, 1, 5, str.tostring(ema200, "#.####"), text_color=color.white, text_size=size.tiny)
+
+    table.cell(t, 0, 6, "RSI14", text_color=color.white, text_size=size.tiny)
+    table.cell(t, 1, 6, str.tostring(rsi14, "#.##"), text_color=color.white, text_size=size.tiny)
+
+    table.cell(t, 0, 7, "MACD", text_color=color.white, text_size=size.tiny)
+    table.cell(t, 1, 7, str.tostring(macdL, "#.####"), text_color=color.white, text_size=size.tiny)
+
+    table.cell(t, 0, 8, "MACD_SIG", text_color=color.white, text_size=size.tiny)
+    table.cell(t, 1, 8, str.tostring(sigL, "#.####"), text_color=color.white, text_size=size.tiny)
+
+    table.cell(t, 0, 9, "MACD_HIST", text_color=color.white, text_size=size.tiny)
+    table.cell(t, 1, 9, str.tostring(histL, "#.####"), text_color=color.white, text_size=size.tiny)
+
+    table.cell(t, 0, 10, "ATR14", text_color=color.white, text_size=size.tiny)
+    table.cell(t, 1, 10, str.tostring(atr14, "#.####"), text_color=color.white, text_size=size.tiny)
+
+    table.cell(t, 0, 11, "ADX", text_color=color.white, text_size=size.tiny)
+    table.cell(t, 1, 11, str.tostring(adxVal, "#.##"), text_color=color.white, text_size=size.tiny)
+
+    table.cell(t, 0, 12, "VOL_RATIO", text_color=color.white, text_size=size.tiny)
+    table.cell(t, 1, 12, str.tostring(volRatio, "#.##"), text_color=color.white, text_size=size.tiny)
+
+    table.cell(t, 0, 13, "52W_HIGH", text_color=color.white, text_size=size.tiny)
+    table.cell(t, 1, 13, str.tostring(hi252), text_color=color.white, text_size=size.tiny)
+
+    table.cell(t, 0, 14, "52W_LOW", text_color=color.white, text_size=size.tiny)
+    table.cell(t, 1, 14, str.tostring(lo252), text_color=color.white, text_size=size.tiny)
+
+    table.cell(t, 0, 15, "PCT_FROM_HIGH", text_color=color.white, text_size=size.tiny)
+    table.cell(t, 1, 15, str.tostring(pctFromHigh, "#.##"), text_color=color.white, text_size=size.tiny)
+
+    table.cell(t, 0, 16, "PCT_FROM_LOW", text_color=color.white, text_size=size.tiny)
+    table.cell(t, 1, 16, str.tostring(pctFromLow, "#.##"), text_color=color.white, text_size=size.tiny)
+
+    table.cell(t, 0, 17, "BB_WIDTH", text_color=color.white, text_size=size.tiny)
+    table.cell(t, 1, 17, str.tostring(bbWidth, "#.##"), text_color=color.white, text_size=size.tiny)
+
+    table.cell(t, 0, 18, "STOCH_K", text_color=color.white, text_size=size.tiny)
+    table.cell(t, 1, 18, str.tostring(stochK, "#.##"), text_color=color.white, text_size=size.tiny)
+
+    table.cell(t, 0, 19, "TREND", text_color=color.white, text_size=size.tiny)
+    table.cell(t, 1, 19, trendStr, text_color=bullTrend ? color.lime : bearTrend ? color.red : color.gray, text_size=size.tiny)
+
+    table.cell(t, 0, 20, "ABOVE_200", text_color=color.white, text_size=size.tiny)
+    table.cell(t, 1, 20, close > ema200 ? "YES" : "NO", text_color=close > ema200 ? color.lime : color.red, text_size=size.tiny)
+
+    table.cell(t, 0, 21, "BB_UP", text_color=color.white, text_size=size.tiny)
+    table.cell(t, 1, 21, str.tostring(bbUp, "#.####"), text_color=color.white, text_size=size.tiny)
+
+    table.cell(t, 0, 22, "BB_LOW", text_color=color.white, text_size=size.tiny)
+    table.cell(t, 1, 22, str.tostring(bbLow, "#.####"), text_color=color.white, text_size=size.tiny)
+
+    table.cell(t, 0, 23, "VOLUME", text_color=color.white, text_size=size.tiny)
+    table.cell(t, 1, 23, str.tostring(volume), text_color=color.white, text_size=size.tiny)
+
+    table.cell(t, 0, 24, "VOL_MA20", text_color=color.white, text_size=size.tiny)
+    table.cell(t, 1, 24, str.tostring(volMA), text_color=color.white, text_size=size.tiny)

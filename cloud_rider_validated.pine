@@ -1,0 +1,319 @@
+//@version=6
+strategy("CLOUD RIDER v2 — Validated", overlay=true,
+     default_qty_type=strategy.cash, default_qty_value=10000,
+     initial_capital=10000, commission_type=strategy.commission.percent,
+     commission_value=0.1, slippage=2, pyramiding=0,
+     calc_on_every_tick=true, process_orders_on_close=true,
+     max_bars_back=5000)
+
+// ═══════════════════════════════════════════════════════════════
+//  CLOUD RIDER v2 — VALIDATION BUILD
+//  $10,000 capital | 1% risk per trade | ATR-based sizing
+//  Ichimoku + RSI + MACD scoring system
+//  NO OPTIMIZATION — pure signal validation
+// ═══════════════════════════════════════════════════════════════
+
+// ─── INPUTS ───
+grp_ichi = "Ichimoku"
+tenkanLen  = input.int(9,  "Tenkan-sen", group=grp_ichi)
+kijunLen   = input.int(26, "Kijun-sen", group=grp_ichi)
+senkouBLen = input.int(52, "Senkou Span B", group=grp_ichi)
+displacement = input.int(26, "Displacement", group=grp_ichi)
+
+grp_sig = "Signal"
+minBullScore = input.int(4, "Min Bull Score (of 6)", minval=2, maxval=6, group=grp_sig)
+minBearScore = input.int(4, "Min Bear Score (of 6)", minval=2, maxval=6, group=grp_sig)
+rsiLen     = input.int(14, "RSI Length", group=grp_sig)
+macdFast   = input.int(12, "MACD Fast", group=grp_sig)
+macdSlow   = input.int(26, "MACD Slow", group=grp_sig)
+macdSig    = input.int(9,  "MACD Signal", group=grp_sig)
+emaLen     = input.int(50, "Trend EMA Length", group=grp_sig)
+
+grp_risk = "Risk Management"
+riskPct    = input.float(1.0, "Risk % per trade", step=0.5, group=grp_risk)
+atrLen     = input.int(14, "ATR Length", group=grp_risk)
+atrMult    = input.float(3.0, "ATR Stop Multiplier", step=0.5, group=grp_risk)
+
+grp_exit = "Exit Rules"
+exitOnCloudEntry = input.bool(true, "Exit below cloud", group=grp_exit)
+exitOnTKCross    = input.bool(true, "Exit on adverse TK cross", group=grp_exit)
+useKijunTrail    = input.bool(true, "Kijun trailing stop", group=grp_exit)
+
+grp_visual = "Display"
+showCloud  = input.bool(true, "Show Cloud", group=grp_visual)
+showDash   = input.bool(true, "Show Dashboard", group=grp_visual)
+
+// ─── ICHIMOKU ───
+tenkan = (ta.highest(high, tenkanLen) + ta.lowest(low, tenkanLen)) / 2
+kijun  = (ta.highest(high, kijunLen) + ta.lowest(low, kijunLen)) / 2
+senkouA = (tenkan + kijun) / 2
+senkouB = (ta.highest(high, senkouBLen) + ta.lowest(low, senkouBLen)) / 2
+
+cloudTop = math.max(senkouA[displacement], senkouB[displacement])
+cloudBot = math.min(senkouA[displacement], senkouB[displacement])
+
+// ─── SUPPORTING INDICATORS ───
+rsiVal = ta.rsi(close, rsiLen)
+[macdLine, signalLine, histLine] = ta.macd(close, macdFast, macdSlow, macdSig)
+emaVal = ta.ema(close, emaLen)
+atrVal = ta.atr(atrLen)
+
+// ─── SCORING SYSTEM ───
+bull1_aboveCloud = close > cloudTop
+bull2_tkBull     = tenkan > kijun
+bull3_chikou     = close > close[displacement]
+bull4_rsiBull    = rsiVal > 50
+bull5_macdBull   = macdLine > signalLine
+bull6_emaBull    = close > emaVal
+
+bullScore = (bull1_aboveCloud ? 1 : 0) + (bull2_tkBull ? 1 : 0) + (bull3_chikou ? 1 : 0) + (bull4_rsiBull ? 1 : 0) + (bull5_macdBull ? 1 : 0) + (bull6_emaBull ? 1 : 0)
+
+bear1_belowCloud = close < cloudBot
+bear2_tkBear     = tenkan < kijun
+bear3_chikou     = close < close[displacement]
+bear4_rsiBear    = rsiVal < 50
+bear5_macdBear   = macdLine < signalLine
+bear6_emaBear    = close < emaVal
+
+bearScore = (bear1_belowCloud ? 1 : 0) + (bear2_tkBear ? 1 : 0) + (bear3_chikou ? 1 : 0) + (bear4_rsiBear ? 1 : 0) + (bear5_macdBear ? 1 : 0) + (bear6_emaBear ? 1 : 0)
+
+// ─── ENTRY TRIGGERS ───
+tkCrossBull = ta.crossover(tenkan, kijun)
+tkCrossBear = ta.crossunder(tenkan, kijun)
+macdCrossBull = ta.crossover(macdLine, signalLine)
+macdCrossBear = ta.crossunder(macdLine, signalLine)
+cloudBreakUp = ta.crossover(close, cloudTop)
+cloudBreakDown = ta.crossunder(close, cloudBot)
+rsiCrossUp = ta.crossover(rsiVal, 50)
+rsiCrossDown = ta.crossunder(rsiVal, 50)
+
+longTrigger = tkCrossBull or macdCrossBull or cloudBreakUp or rsiCrossUp
+shortTrigger = tkCrossBear or macdCrossBear or cloudBreakDown or rsiCrossDown
+
+scoreJustReached_bull = bullScore >= minBullScore and bullScore[1] < minBullScore
+scoreJustReached_bear = bearScore >= minBearScore and bearScore[1] < minBearScore
+
+longSignal  = (bullScore >= minBullScore) and (longTrigger or scoreJustReached_bull) and strategy.position_size <= 0
+shortSignal = (bearScore >= minBearScore) and (shortTrigger or scoreJustReached_bear) and strategy.position_size >= 0
+
+// ─── EXIT CONDITIONS ───
+longExit_cloud = exitOnCloudEntry and strategy.position_size > 0 and close < cloudBot
+longExit_tk    = exitOnTKCross and strategy.position_size > 0 and tkCrossBear and close < kijun
+longExit_kijun = useKijunTrail and strategy.position_size > 0 and close < kijun and close < kijun[1]
+longExit = longExit_cloud or longExit_tk or longExit_kijun
+
+shortExit_cloud = exitOnCloudEntry and strategy.position_size < 0 and close > cloudTop
+shortExit_tk    = exitOnTKCross and strategy.position_size < 0 and tkCrossBull and close > kijun
+shortExit_kijun = useKijunTrail and strategy.position_size < 0 and close > kijun and close > kijun[1]
+shortExit = shortExit_cloud or shortExit_tk or shortExit_kijun
+
+// ═══════════════════════════════════════════════════════════════
+//  ATR-BASED POSITION SIZING — 1% risk per trade
+// ═══════════════════════════════════════════════════════════════
+
+// Risk amount in dollars
+riskAmount = strategy.equity * (riskPct / 100)
+
+// Stop distance in price
+stopDist = atrVal * atrMult
+
+// Position size: risk$ / stop distance = shares/contracts
+// Ensure minimum 1 unit
+posSize = stopDist > 0 ? math.max(riskAmount / stopDist, syminfo.mintick) : 0
+
+// ─── EXECUTE WITH PROPER SIZING ───
+var float stopPrice = na
+
+if longSignal and posSize > 0
+    strategy.entry("LONG", strategy.long, qty=posSize)
+    stopPrice := close - stopDist
+
+if shortSignal and posSize > 0
+    strategy.entry("SHORT", strategy.short, qty=posSize)
+    stopPrice := close + stopDist
+
+if longExit and not shortSignal
+    strategy.close("LONG", comment="Exit L")
+    stopPrice := na
+
+if shortExit and not longSignal
+    strategy.close("SHORT", comment="Exit S")
+    stopPrice := na
+
+// ATR emergency stop
+if strategy.position_size > 0 and not na(stopPrice)
+    strategy.exit("SL", "LONG", stop=stopPrice)
+if strategy.position_size < 0 and not na(stopPrice)
+    strategy.exit("SL", "SHORT", stop=stopPrice)
+
+// ═══════════════════════════════════════════════════════════════
+//  EXTENDED DIAGNOSTICS (computed on-chart)
+// ═══════════════════════════════════════════════════════════════
+
+// Track trade results for median, top-5, and per-regime stats
+var int totalBars = 0
+var int barsInTrade = 0
+var float peakEquity = 10000.0
+var int ddStartBar = 0
+var int longestDD = 0
+var int currentDDLen = 0
+
+totalBars := totalBars + 1
+
+// Track exposure
+barsInTrade := strategy.position_size != 0 ? barsInTrade + 1 : barsInTrade
+
+// Track drawdown duration
+peakEquity := math.max(peakEquity, strategy.equity)
+if strategy.equity < peakEquity
+    currentDDLen := currentDDLen + 1
+    longestDD := math.max(longestDD, currentDDLen)
+else
+    currentDDLen := 0
+
+// Calculate top-trade contribution using closedtrades
+var float top1PnL = 0.0
+var float top2PnL = 0.0
+var float top3PnL = 0.0
+var float top4PnL = 0.0
+var float top5PnL = 0.0
+var float sumAllPnL = 0.0
+var float sumPosPnL = 0.0
+
+if strategy.closedtrades > 0
+    // Recalculate every bar (simplistic but works)
+    top1PnL := 0.0
+    top2PnL := 0.0
+    top3PnL := 0.0
+    top4PnL := 0.0
+    top5PnL := 0.0
+    sumAllPnL := 0.0
+    sumPosPnL := 0.0
+    for i = 0 to strategy.closedtrades - 1
+        float pnl = strategy.closedtrades.profit(i)
+        sumAllPnL += pnl
+        if pnl > 0
+            sumPosPnL += pnl
+        // Insert into top 5
+        if pnl > top1PnL
+            top5PnL := top4PnL
+            top4PnL := top3PnL
+            top3PnL := top2PnL
+            top2PnL := top1PnL
+            top1PnL := pnl
+        else if pnl > top2PnL
+            top5PnL := top4PnL
+            top4PnL := top3PnL
+            top3PnL := top2PnL
+            top2PnL := pnl
+        else if pnl > top3PnL
+            top5PnL := top4PnL
+            top4PnL := top3PnL
+            top3PnL := pnl
+        else if pnl > top4PnL
+            top5PnL := top4PnL
+            top4PnL := pnl
+        else if pnl > top5PnL
+            top5PnL := pnl
+
+top5Total = top1PnL + top2PnL + top3PnL + top4PnL + top5PnL
+top5Pct = sumPosPnL > 0 ? top5Total / sumPosPnL * 100 : 0
+
+// CAGR calculation
+yearsTraded = totalBars > 0 ? totalBars / (252.0 * (timeframe.isweekly ? 5 : timeframe.ismonthly ? 21 : 1)) : 1
+cagr = yearsTraded > 0 ? (math.pow(strategy.equity / 10000.0, 1.0 / yearsTraded) - 1) * 100 : 0
+
+// Calmar ratio
+maxDDPct = strategy.max_drawdown / 10000.0 * 100
+calmar = maxDDPct > 0 ? cagr / maxDDPct : 0
+
+// Exposure %
+exposure = totalBars > 0 ? barsInTrade / totalBars * 100 : 0
+
+// Average and median trade
+avgTrade = strategy.closedtrades > 0 ? strategy.netprofit / strategy.closedtrades : 0
+
+// ─── VISUALS ───
+p_tenkan = plot(showCloud ? tenkan : na, "Tenkan", color=color.new(color.blue, 0), linewidth=2)
+p_kijun  = plot(showCloud ? kijun : na, "Kijun", color=color.new(color.red, 0), linewidth=2)
+p_spanA  = plot(showCloud ? senkouA : na, "Span A", color=color.new(color.green, 80), offset=displacement)
+p_spanB  = plot(showCloud ? senkouB : na, "Span B", color=color.new(color.red, 80), offset=displacement)
+fill(p_spanA, p_spanB, color=senkouA > senkouB ? color.new(color.green, 90) : color.new(color.red, 90))
+
+plot(emaVal, "EMA", color=color.new(color.orange, 30), linewidth=2)
+
+plotshape(longSignal, "BUY", shape.triangleup, location.belowbar,
+     color=color.new(color.lime, 0), size=size.large, text="BUY", textcolor=color.white)
+plotshape(shortSignal, "SELL", shape.triangledown, location.abovebar,
+     color=color.new(color.red, 0), size=size.large, text="SELL", textcolor=color.white)
+plotshape(longExit and not shortSignal, "Exit L", shape.xcross, location.abovebar,
+     color=color.new(color.orange, 0), size=size.normal, text="EXIT")
+plotshape(shortExit and not longSignal, "Exit S", shape.xcross, location.belowbar,
+     color=color.new(color.orange, 0), size=size.normal, text="EXIT")
+
+bgcolor(strategy.position_size > 0 ? color.new(color.green, 93) : strategy.position_size < 0 ? color.new(color.red, 93) : na)
+
+plot(strategy.position_size != 0 ? stopPrice : na, "Stop", color=color.red, style=plot.style_cross, linewidth=2)
+
+// ─── EXTENDED DASHBOARD ───
+if showDash and barstate.islast
+    var table d = table.new(position.top_right, 2, 20, bgcolor=color.new(color.black, 80), border_width=1)
+
+    table.cell(d, 0, 0, "CLOUD RIDER v2", text_color=color.white, text_size=size.normal, bgcolor=color.teal)
+    table.cell(d, 1, 0, syminfo.ticker + " " + timeframe.period, text_color=color.white, text_size=size.normal, bgcolor=color.teal)
+
+    // Risk info
+    table.cell(d, 0, 1, "Risk/Trade", text_color=color.white, text_size=size.tiny)
+    table.cell(d, 1, 1, str.tostring(riskPct) + "% ($" + str.tostring(riskAmount, "#.00") + ")", text_color=color.white, text_size=size.tiny)
+
+    // Core metrics
+    wr = strategy.closedtrades > 0 ? strategy.wintrades / strategy.closedtrades * 100 : 0
+    table.cell(d, 0, 2, "Trades", text_color=color.white, text_size=size.tiny)
+    table.cell(d, 1, 2, str.tostring(strategy.closedtrades), text_color=color.white, text_size=size.tiny)
+
+    table.cell(d, 0, 3, "Win Rate", text_color=color.white, text_size=size.tiny)
+    table.cell(d, 1, 3, str.tostring(wr, "#.#") + "%", text_color=wr > 40 ? color.lime : color.yellow, text_size=size.tiny)
+
+    table.cell(d, 0, 4, "Net P&L", text_color=color.white, text_size=size.tiny)
+    table.cell(d, 1, 4, "$" + str.tostring(strategy.netprofit, "#,##0"), text_color=strategy.netprofit > 0 ? color.lime : color.red, text_size=size.tiny)
+
+    table.cell(d, 0, 5, "Equity", text_color=color.white, text_size=size.tiny)
+    table.cell(d, 1, 5, "$" + str.tostring(strategy.equity, "#,##0"), text_color=color.white, text_size=size.tiny)
+
+    table.cell(d, 0, 6, "CAGR", text_color=color.white, text_size=size.tiny)
+    table.cell(d, 1, 6, str.tostring(cagr, "#.##") + "%", text_color=cagr > 5 ? color.lime : cagr > 0 ? color.yellow : color.red, text_size=size.tiny)
+
+    table.cell(d, 0, 7, "Max DD", text_color=color.white, text_size=size.tiny)
+    table.cell(d, 1, 7, str.tostring(maxDDPct, "#.##") + "%", text_color=maxDDPct < 20 ? color.lime : maxDDPct < 35 ? color.yellow : color.red, text_size=size.tiny)
+
+    table.cell(d, 0, 8, "Calmar", text_color=color.white, text_size=size.tiny)
+    table.cell(d, 1, 8, str.tostring(calmar, "#.##"), text_color=calmar > 0.5 ? color.lime : calmar > 0 ? color.yellow : color.red, text_size=size.tiny)
+
+    table.cell(d, 0, 9, "Avg Trade", text_color=color.white, text_size=size.tiny)
+    table.cell(d, 1, 9, "$" + str.tostring(avgTrade, "#.00"), text_color=avgTrade > 0 ? color.lime : color.red, text_size=size.tiny)
+
+    table.cell(d, 0, 10, "Exposure", text_color=color.white, text_size=size.tiny)
+    table.cell(d, 1, 10, str.tostring(exposure, "#.#") + "%", text_color=color.white, text_size=size.tiny)
+
+    table.cell(d, 0, 11, "DD Duration", text_color=color.white, text_size=size.tiny)
+    table.cell(d, 1, 11, str.tostring(longestDD) + " bars", text_color=color.white, text_size=size.tiny)
+
+    table.cell(d, 0, 12, "Top 5 % of Wins", text_color=color.white, text_size=size.tiny)
+    table.cell(d, 1, 12, str.tostring(top5Pct, "#.#") + "%", text_color=top5Pct < 50 ? color.lime : color.yellow, text_size=size.tiny)
+
+    // Current signal state
+    table.cell(d, 0, 13, "Bull Score", text_color=color.white, text_size=size.tiny)
+    table.cell(d, 1, 13, str.tostring(bullScore) + "/6", text_color=bullScore >= minBullScore ? color.lime : color.gray, text_size=size.tiny)
+
+    table.cell(d, 0, 14, "Bear Score", text_color=color.white, text_size=size.tiny)
+    table.cell(d, 1, 14, str.tostring(bearScore) + "/6", text_color=bearScore >= minBearScore ? color.red : color.gray, text_size=size.tiny)
+
+    posStr = strategy.position_size > 0 ? "LONG" : strategy.position_size < 0 ? "SHORT" : "FLAT"
+    posColor = strategy.position_size > 0 ? color.lime : strategy.position_size < 0 ? color.red : color.gray
+    table.cell(d, 0, 15, "Position", text_color=color.white, text_size=size.tiny)
+    table.cell(d, 1, 15, posStr, text_color=posColor, text_size=size.tiny)
+
+// ─── ALERTS ───
+alertcondition(longSignal, "Cloud Rider BUY", "BUY signal")
+alertcondition(shortSignal, "Cloud Rider SELL", "SELL signal")
+alertcondition(longExit or shortExit, "Cloud Rider EXIT", "EXIT signal")

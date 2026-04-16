@@ -1,0 +1,221 @@
+//@version=6
+strategy("CLOUD RIDER v2", overlay=true,
+     default_qty_type=strategy.percent_of_equity, default_qty_value=95,
+     initial_capital=100000, commission_type=strategy.commission.percent,
+     commission_value=0.1, slippage=2, pyramiding=0,
+     calc_on_every_tick=true, process_orders_on_close=true,
+     max_bars_back=5000)
+
+// ═══════════════════════════════════════════════════════════════
+//  CLOUD RIDER v2 — Position Trading on Weekly & Monthly
+//  Ichimoku + RSI + MACD — Scoring System (not all-or-nothing)
+//  Goal: Few trades, high accuracy, massive winners
+// ═══════════════════════════════════════════════════════════════
+
+// ─── INPUTS ───
+grp_ichi = "☁️ Ichimoku"
+tenkanLen  = input.int(9,  "Tenkan-sen", group=grp_ichi)
+kijunLen   = input.int(26, "Kijun-sen", group=grp_ichi)
+senkouBLen = input.int(52, "Senkou Span B", group=grp_ichi)
+displacement = input.int(26, "Displacement", group=grp_ichi)
+
+grp_sig = "📊 Signal"
+minBullScore = input.int(4, "Min Bull Score to Enter (of 6)", minval=2, maxval=6, group=grp_sig)
+minBearScore = input.int(4, "Min Bear Score to Enter (of 6)", minval=2, maxval=6, group=grp_sig)
+rsiLen     = input.int(14, "RSI Length", group=grp_sig)
+macdFast   = input.int(12, "MACD Fast", group=grp_sig)
+macdSlow   = input.int(26, "MACD Slow", group=grp_sig)
+macdSig    = input.int(9,  "MACD Signal", group=grp_sig)
+emaLen     = input.int(50, "Trend EMA Length", group=grp_sig)
+
+grp_exit = "🚪 Exit"
+exitOnCloudEntry = input.bool(true, "Exit when price enters cloud", group=grp_exit)
+exitOnTKCross    = input.bool(true, "Exit on adverse TK cross", group=grp_exit)
+useKijunTrail    = input.bool(true, "Use Kijun as trailing stop", group=grp_exit)
+useATRStop       = input.bool(true, "Use ATR emergency stop", group=grp_exit)
+atrLen           = input.int(14, "ATR Length", group=grp_exit)
+atrMult          = input.float(3.0, "ATR Stop Multiplier", step=0.5, group=grp_exit)
+
+grp_visual = "🎨 Display"
+showCloud  = input.bool(true, "Show Cloud", group=grp_visual)
+showDash   = input.bool(true, "Show Dashboard", group=grp_visual)
+
+// ─── ICHIMOKU ───
+tenkan = (ta.highest(high, tenkanLen) + ta.lowest(low, tenkanLen)) / 2
+kijun  = (ta.highest(high, kijunLen) + ta.lowest(low, kijunLen)) / 2
+senkouA = (tenkan + kijun) / 2
+senkouB = (ta.highest(high, senkouBLen) + ta.lowest(low, senkouBLen)) / 2
+
+// Current cloud position (displaced)
+cloudTop = math.max(senkouA[displacement], senkouB[displacement])
+cloudBot = math.min(senkouA[displacement], senkouB[displacement])
+
+// ─── SUPPORTING INDICATORS ───
+rsiVal = ta.rsi(close, rsiLen)
+[macdLine, signalLine, histLine] = ta.macd(close, macdFast, macdSlow, macdSig)
+emaVal = ta.ema(close, emaLen)
+atrVal = ta.atr(atrLen)
+
+// ─── SCORING SYSTEM ───
+// Each condition scores 1 point. Need minScore to enter.
+// This allows trades even when not everything is perfect.
+
+// BULL CONDITIONS (6 possible points)
+bull1_aboveCloud = close > cloudTop                           // Price above cloud
+bull2_tkBull     = tenkan > kijun                             // Tenkan above Kijun
+bull3_chikou     = close > close[displacement]                // Chikou confirms
+bull4_rsiBull    = rsiVal > 50                                // RSI bullish
+bull5_macdBull   = macdLine > signalLine                      // MACD bullish
+bull6_emaBull    = close > emaVal                             // Above trend EMA
+
+bullScore = (bull1_aboveCloud ? 1 : 0) + (bull2_tkBull ? 1 : 0) + (bull3_chikou ? 1 : 0) + (bull4_rsiBull ? 1 : 0) + (bull5_macdBull ? 1 : 0) + (bull6_emaBull ? 1 : 0)
+
+// BEAR CONDITIONS (6 possible points)
+bear1_belowCloud = close < cloudBot
+bear2_tkBear     = tenkan < kijun
+bear3_chikou     = close < close[displacement]
+bear4_rsiBear    = rsiVal < 50
+bear5_macdBear   = macdLine < signalLine
+bear6_emaBear    = close < emaVal
+
+bearScore = (bear1_belowCloud ? 1 : 0) + (bear2_tkBear ? 1 : 0) + (bear3_chikou ? 1 : 0) + (bear4_rsiBear ? 1 : 0) + (bear5_macdBear ? 1 : 0) + (bear6_emaBear ? 1 : 0)
+
+// ─── ENTRY TRIGGERS ───
+// Need: score >= minScore AND a fresh trigger event (TK cross, MACD cross, or cloud breakout)
+tkCrossBull = ta.crossover(tenkan, kijun)
+tkCrossBear = ta.crossunder(tenkan, kijun)
+macdCrossBull = ta.crossover(macdLine, signalLine)
+macdCrossBear = ta.crossunder(macdLine, signalLine)
+cloudBreakUp = ta.crossover(close, cloudTop)
+cloudBreakDown = ta.crossunder(close, cloudBot)
+rsiCrossUp = ta.crossover(rsiVal, 50)
+rsiCrossDown = ta.crossunder(rsiVal, 50)
+
+longTrigger = tkCrossBull or macdCrossBull or cloudBreakUp or rsiCrossUp
+shortTrigger = tkCrossBear or macdCrossBear or cloudBreakDown or rsiCrossDown
+
+// Also trigger when score freshly reaches threshold
+scoreJustReached_bull = bullScore >= minBullScore and bullScore[1] < minBullScore
+scoreJustReached_bear = bearScore >= minBearScore and bearScore[1] < minBearScore
+
+longSignal  = (bullScore >= minBullScore) and (longTrigger or scoreJustReached_bull) and strategy.position_size <= 0
+shortSignal = (bearScore >= minBearScore) and (shortTrigger or scoreJustReached_bear) and strategy.position_size >= 0
+
+// ─── EXIT CONDITIONS ───
+priceInCloud = close <= cloudTop and close >= cloudBot
+
+// Long exits
+longExit_cloud = exitOnCloudEntry and strategy.position_size > 0 and close < cloudBot
+longExit_tk    = exitOnTKCross and strategy.position_size > 0 and tkCrossBear and close < kijun
+longExit_kijun = useKijunTrail and strategy.position_size > 0 and close < kijun and close < kijun[1]
+longExit = longExit_cloud or longExit_tk or longExit_kijun
+
+// Short exits
+shortExit_cloud = exitOnCloudEntry and strategy.position_size < 0 and close > cloudTop
+shortExit_tk    = exitOnTKCross and strategy.position_size < 0 and tkCrossBull and close > kijun
+shortExit_kijun = useKijunTrail and strategy.position_size < 0 and close > kijun and close > kijun[1]
+shortExit = shortExit_cloud or shortExit_tk or shortExit_kijun
+
+// ─── EXECUTE ───
+var float entryPrice = na
+var float stopPrice = na
+
+if longSignal
+    strategy.entry("LONG", strategy.long)
+    entryPrice := close
+    stopPrice := useATRStop ? close - atrVal * atrMult : na
+
+if shortSignal
+    strategy.entry("SHORT", strategy.short)
+    entryPrice := close
+    stopPrice := useATRStop ? close + atrVal * atrMult : na
+
+if longExit and not shortSignal
+    strategy.close("LONG", comment="Exit L")
+    entryPrice := na
+    stopPrice := na
+
+if shortExit and not longSignal
+    strategy.close("SHORT", comment="Exit S")
+    entryPrice := na
+    stopPrice := na
+
+// ATR emergency stop
+if strategy.position_size > 0 and useATRStop and not na(stopPrice)
+    strategy.exit("SL", "LONG", stop=stopPrice)
+if strategy.position_size < 0 and useATRStop and not na(stopPrice)
+    strategy.exit("SL", "SHORT", stop=stopPrice)
+
+// ─── VISUALS ───
+p_tenkan = plot(showCloud ? tenkan : na, "Tenkan", color=color.new(color.blue, 0), linewidth=2)
+p_kijun  = plot(showCloud ? kijun : na, "Kijun", color=color.new(color.red, 0), linewidth=2)
+p_spanA  = plot(showCloud ? senkouA : na, "Span A", color=color.new(color.green, 80), offset=displacement)
+p_spanB  = plot(showCloud ? senkouB : na, "Span B", color=color.new(color.red, 80), offset=displacement)
+fill(p_spanA, p_spanB, color=senkouA > senkouB ? color.new(color.green, 90) : color.new(color.red, 90))
+
+plot(emaVal, "EMA", color=color.new(color.orange, 30), linewidth=2)
+
+// BIG ARROWS — impossible to miss
+plotshape(longSignal, "🟢 BUY", shape.triangleup, location.belowbar,
+     color=color.new(color.lime, 0), size=size.large, text="BUY", textcolor=color.white)
+plotshape(shortSignal, "🔴 SELL", shape.triangledown, location.abovebar,
+     color=color.new(color.red, 0), size=size.large, text="SELL", textcolor=color.white)
+plotshape(longExit and not shortSignal, "Exit L", shape.xcross, location.abovebar,
+     color=color.new(color.orange, 0), size=size.normal, text="EXIT")
+plotshape(shortExit and not longSignal, "Exit S", shape.xcross, location.belowbar,
+     color=color.new(color.orange, 0), size=size.normal, text="EXIT")
+
+// Background for position
+bgcolor(strategy.position_size > 0 ? color.new(color.green, 93) : strategy.position_size < 0 ? color.new(color.red, 93) : na)
+
+// Stop line
+plot(strategy.position_size != 0 and useATRStop ? stopPrice : na, "Stop", color=color.red, style=plot.style_cross, linewidth=2)
+
+// ─── DASHBOARD ───
+if showDash and barstate.islast
+    var table d = table.new(position.top_right, 2, 12, bgcolor=color.new(color.black, 80), border_width=1)
+
+    table.cell(d, 0, 0, "☁️ CLOUD RIDER v2", text_color=color.white, text_size=size.normal, bgcolor=color.teal)
+    table.cell(d, 1, 0, syminfo.ticker + " " + timeframe.period, text_color=color.white, text_size=size.normal, bgcolor=color.teal)
+
+    // Score
+    table.cell(d, 0, 1, "Bull Score", text_color=color.white, text_size=size.small)
+    table.cell(d, 1, 1, str.tostring(bullScore) + " / 6", text_color=bullScore >= minBullScore ? color.lime : color.gray, text_size=size.small)
+    table.cell(d, 0, 2, "Bear Score", text_color=color.white, text_size=size.small)
+    table.cell(d, 1, 2, str.tostring(bearScore) + " / 6", text_color=bearScore >= minBearScore ? color.red : color.gray, text_size=size.small)
+
+    // Individual signals
+    table.cell(d, 0, 3, "Cloud", text_color=color.white, text_size=size.small)
+    table.cell(d, 1, 3, bull1_aboveCloud ? "ABOVE ✅" : bear1_belowCloud ? "BELOW 🔴" : "IN CLOUD ⚠️", text_color=bull1_aboveCloud ? color.lime : bear1_belowCloud ? color.red : color.yellow, text_size=size.small)
+
+    table.cell(d, 0, 4, "TK Cross", text_color=color.white, text_size=size.small)
+    table.cell(d, 1, 4, bull2_tkBull ? "BULL ✅" : "BEAR 🔴", text_color=bull2_tkBull ? color.lime : color.red, text_size=size.small)
+
+    table.cell(d, 0, 5, "Chikou", text_color=color.white, text_size=size.small)
+    table.cell(d, 1, 5, bull3_chikou ? "BULL ✅" : "BEAR 🔴", text_color=bull3_chikou ? color.lime : color.red, text_size=size.small)
+
+    table.cell(d, 0, 6, "RSI " + str.tostring(rsiVal, "#.#"), text_color=color.white, text_size=size.small)
+    table.cell(d, 1, 6, bull4_rsiBull ? "BULL ✅" : "BEAR 🔴", text_color=bull4_rsiBull ? color.lime : color.red, text_size=size.small)
+
+    table.cell(d, 0, 7, "MACD", text_color=color.white, text_size=size.small)
+    table.cell(d, 1, 7, bull5_macdBull ? "BULL ✅" : "BEAR 🔴", text_color=bull5_macdBull ? color.lime : color.red, text_size=size.small)
+
+    table.cell(d, 0, 8, "EMA " + str.tostring(emaLen), text_color=color.white, text_size=size.small)
+    table.cell(d, 1, 8, bull6_emaBull ? "ABOVE ✅" : "BELOW 🔴", text_color=bull6_emaBull ? color.lime : color.red, text_size=size.small)
+
+    // Position
+    posStr = strategy.position_size > 0 ? "🟢 LONG" : strategy.position_size < 0 ? "🔴 SHORT" : "⬜ FLAT"
+    table.cell(d, 0, 9, "Position", text_color=color.white, text_size=size.small)
+    table.cell(d, 1, 9, posStr, text_color=strategy.position_size > 0 ? color.lime : strategy.position_size < 0 ? color.red : color.gray, text_size=size.small)
+
+    // Performance
+    wr = strategy.closedtrades > 0 ? strategy.wintrades / strategy.closedtrades * 100 : 0
+    table.cell(d, 0, 10, "Net Profit", text_color=color.white, text_size=size.small)
+    table.cell(d, 1, 10, str.tostring(strategy.netprofit, "#,##0"), text_color=strategy.netprofit > 0 ? color.lime : color.red, text_size=size.small)
+    table.cell(d, 0, 11, "Win Rate", text_color=color.white, text_size=size.small)
+    table.cell(d, 1, 11, str.tostring(wr, "#.#") + "% (" + str.tostring(strategy.closedtrades) + " tr)", text_color=wr > 50 ? color.lime : color.yellow, text_size=size.small)
+
+// ─── ALERTS ───
+alertcondition(longSignal, "Cloud Rider BUY", "☁️ BUY {{ticker}} {{interval}} — Score " + str.tostring(bullScore) + "/6")
+alertcondition(shortSignal, "Cloud Rider SELL", "☁️ SELL {{ticker}} {{interval}} — Score " + str.tostring(bearScore) + "/6")
+alertcondition(longExit or shortExit, "Cloud Rider EXIT", "☁️ EXIT {{ticker}} {{interval}}")
