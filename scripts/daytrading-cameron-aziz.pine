@@ -325,7 +325,7 @@ alertcondition(xlong,           title="XLong",          message="OVEREXTENDED LO
 alertcondition(vwap_exhaust_dn, title="VWAP Exhaust DN", message="150% VWAP exhaustion below VWAP — mean reversion likely")
 
 // ─── MAIN DASHBOARD (top-right) ───────────────────────────────────────────────
-var table dash = table.new(position.top_right, 2, 14, border_width=1, bgcolor=color.new(color.black, 60))
+var table dash = table.new(position.top_right, 2, 15, border_width=1, bgcolor=color.new(color.black, 60))
 if barstate.islast
     hdr = color.new(color.gray,   20)
     g   = color.new(color.green,  40)
@@ -340,10 +340,10 @@ if barstate.islast
     table.cell(dash, 1, 1,  type_label,   bgcolor=neu, text_color=w, text_size=size.small)
     table.cell(dash, 0, 2,  "Session",    text_size=size.small, text_color=w)
     table.cell(dash, 1, 2,  session_active ? "OPEN" : "CLOSED", bgcolor=session_active ? g : neu, text_color=w, text_size=size.small)
-    table.cell(dash, 0, 3,  "VWAP Bias", text_size=size.small, text_color=w)
-    table.cell(dash, 1, 3,  above_vwap ? "Above" : "Below", bgcolor=above_vwap ? g : r, text_color=w, text_size=size.small)
-    table.cell(dash, 0, 4,  "EMA 9/20",  text_size=size.small, text_color=w)
-    table.cell(dash, 1, 4,  ema_bull ? "Bull" : "Bear", bgcolor=ema_bull ? g : r, text_color=w, text_size=size.small)
+    table.cell(dash, 0, 3,  "EMA 9/20",   text_size=size.small, text_color=w)
+    table.cell(dash, 1, 3,  ema_bull ? "Bull" : "Bear", bgcolor=ema_bull ? g : r, text_color=w, text_size=size.small)
+    table.cell(dash, 0, 4,  "VWAP Bias",  text_size=size.small, text_color=w)
+    table.cell(dash, 1, 4,  above_vwap ? "Above" : "Below", bgcolor=above_vwap ? g : r, text_color=w, text_size=size.small)
     table.cell(dash, 0, 5,  "Rel Volume", text_size=size.small, text_color=w)
     table.cell(dash, 1, 5,  str.tostring(math.round(rel_vol, 1)) + "x", bgcolor=high_vol ? g : r, text_color=w, text_size=size.small)
     table.cell(dash, 0, 6,  "RSI",        text_size=size.small, text_color=w)
@@ -358,12 +358,14 @@ if barstate.islast
     setup_txt = long_sig ? "LONG" : short_sig ? "SHORT" : xshort ? "XSHORT" : xlong ? "XLONG" : "WAIT"
     setup_clr = long_sig ? g : short_sig ? r : (xshort or xlong) ? ora : neu
     table.cell(dash, 1, 10, setup_txt,    bgcolor=setup_clr, text_color=w, text_size=size.small)
-    table.cell(dash, 0, 11, "1H Bias",    text_size=size.small, text_color=w)
-    table.cell(dash, 1, 11, mtf_bull_1h ? "Bullish" : "Bearish", bgcolor=mtf_bull_1h ? g : r, text_color=w, text_size=size.small)
-    table.cell(dash, 0, 12, "4H Bias",    text_size=size.small, text_color=w)
-    table.cell(dash, 1, 12, mtf_bull_4h ? "Bullish" : "Bearish", bgcolor=mtf_bull_4h ? g : r, text_color=w, text_size=size.small)
-    table.cell(dash, 0, 13, "1D Bias",    text_size=size.small, text_color=w)
-    table.cell(dash, 1, 13, mtf_bull_1d ? "Bullish" : "Bearish", bgcolor=mtf_bull_1d ? g : r, text_color=w, text_size=size.small)
+    table.cell(dash, 0, 11, "VWAP Exhaust", text_size=size.small, text_color=w)
+    table.cell(dash, 1, 11, vwap_exhaust_dn ? "ACTIVE" : "—", bgcolor=vwap_exhaust_dn ? ora : neu, text_color=w, text_size=size.small)
+    table.cell(dash, 0, 12, "1H Bias",    text_size=size.small, text_color=w)
+    table.cell(dash, 1, 12, mtf_bull_1h ? "Bullish" : "Bearish", bgcolor=mtf_bull_1h ? g : r, text_color=w, text_size=size.small)
+    table.cell(dash, 0, 13, "4H Bias",    text_size=size.small, text_color=w)
+    table.cell(dash, 1, 13, mtf_bull_4h ? "Bullish" : "Bearish", bgcolor=mtf_bull_4h ? g : r, text_color=w, text_size=size.small)
+    table.cell(dash, 0, 14, "1D Bias",    text_size=size.small, text_color=w)
+    table.cell(dash, 1, 14, mtf_bull_1d ? "Bullish" : "Bearish", bgcolor=mtf_bull_1d ? g : r, text_color=w, text_size=size.small)
 
 // ─── CANDLE PATTERN TABLE (bottom-right) ─────────────────────────────────────
 // Rows 1/2/3 mirror labels 1/2/3 — both read from the same accumulator arrays
