@@ -366,6 +366,8 @@ if barstate.islast
     table.cell(dash, 1, 13, mtf_bull_1d ? "Bullish" : "Bearish", bgcolor=mtf_bull_1d ? g : r, text_color=w, text_size=size.small)
 
 // ─── CANDLE PATTERN TABLE (bottom-right) ─────────────────────────────────────
+// Rows 1/2/3 mirror labels 1/2/3 — both read from the same accumulator arrays
+// so the table always shows the 3 most recent PATTERNED bars (never blank).
 var table pat_tbl = table.new(position.bottom_right, 4, 4, border_width=1, bgcolor=color.new(color.black, 60))
 if barstate.islast
     hdr = color.new(color.gray,  20)
@@ -377,15 +379,26 @@ if barstate.islast
     table.cell(pat_tbl, 1, 0, "1H",     bgcolor=hdr, text_color=w, text_size=size.small)
     table.cell(pat_tbl, 2, 0, "4H",     bgcolor=hdr, text_color=w, text_size=size.small)
     table.cell(pat_tbl, 3, 0, "1D",     bgcolor=hdr, text_color=w, text_size=size.small)
-    table.cell(pat_tbl, 0, 1, "1",      bgcolor=neu, text_color=w, text_size=size.small)
-    table.cell(pat_tbl, 1, 1, p1h_1,    bgcolor=p1h_1b ? g : p1h_1r ? r : neu, text_color=w, text_size=size.small)
-    table.cell(pat_tbl, 2, 1, p4h_1,    bgcolor=p4h_1b ? g : p4h_1r ? r : neu, text_color=w, text_size=size.small)
-    table.cell(pat_tbl, 3, 1, p1d_1,    bgcolor=p1d_1b ? g : p1d_1r ? r : neu, text_color=w, text_size=size.small)
-    table.cell(pat_tbl, 0, 2, "2",      bgcolor=neu, text_color=w, text_size=size.small)
-    table.cell(pat_tbl, 1, 2, p1h_2,    bgcolor=p1h_2b ? g : p1h_2r ? r : neu, text_color=w, text_size=size.small)
-    table.cell(pat_tbl, 2, 2, p4h_2,    bgcolor=p4h_2b ? g : p4h_2r ? r : neu, text_color=w, text_size=size.small)
-    table.cell(pat_tbl, 3, 2, p1d_2,    bgcolor=p1d_2b ? g : p1d_2r ? r : neu, text_color=w, text_size=size.small)
-    table.cell(pat_tbl, 0, 3, "3",      bgcolor=neu, text_color=w, text_size=size.small)
-    table.cell(pat_tbl, 1, 3, p1h_3,    bgcolor=p1h_3b ? g : p1h_3r ? r : neu, text_color=w, text_size=size.small)
-    table.cell(pat_tbl, 2, 3, p4h_3,    bgcolor=p4h_3b ? g : p4h_3r ? r : neu, text_color=w, text_size=size.small)
-    table.cell(pat_tbl, 3, 3, p1d_3,    bgcolor=p1d_3b ? g : p1d_3r ? r : neu, text_color=w, text_size=size.small)
+
+    n1h = array.size(rec1h_ts)
+    n4h = array.size(rec4h_ts)
+    n1d = array.size(rec1d_ts)
+
+    for row = 1 to 3
+        i = row - 1
+        table.cell(pat_tbl, 0, row, str.tostring(row), bgcolor=neu, text_color=w, text_size=size.small)
+
+        lbl1h = n1h > i ? array.get(rec1h_pat, i) : "—"
+        ib1h  = n1h > i ? array.get(rec1h_ib,  i) : false
+        ir1h  = n1h > i ? array.get(rec1h_ir,  i) : false
+        table.cell(pat_tbl, 1, row, lbl1h, bgcolor=ib1h ? g : ir1h ? r : neu, text_color=w, text_size=size.small)
+
+        lbl4h = n4h > i ? array.get(rec4h_pat, i) : "—"
+        ib4h  = n4h > i ? array.get(rec4h_ib,  i) : false
+        ir4h  = n4h > i ? array.get(rec4h_ir,  i) : false
+        table.cell(pat_tbl, 2, row, lbl4h, bgcolor=ib4h ? g : ir4h ? r : neu, text_color=w, text_size=size.small)
+
+        lbl1d = n1d > i ? array.get(rec1d_pat, i) : "—"
+        ib1d  = n1d > i ? array.get(rec1d_ib,  i) : false
+        ir1d  = n1d > i ? array.get(rec1d_ir,  i) : false
+        table.cell(pat_tbl, 3, row, lbl1d, bgcolor=ib1d ? g : ir1d ? r : neu, text_color=w, text_size=size.small)
