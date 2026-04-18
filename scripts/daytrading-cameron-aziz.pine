@@ -47,27 +47,20 @@ mtf_bull_4h = ema9_4h > ema20_4h
 mtf_bull_1d = ema9_1d > ema20_1d
 
 // ─── MTF OHLC — CONFIRMED CLOSED BARS ────────────────────────────────────────
-// Bars [1]–[6] per TF. [1]=most recent closed, [6]=context for pattern on bar 5.
 [o1h_1,h1h_1,l1h_1,c1h_1] = request.security(syminfo.tickerid,"60", [open[1],high[1],low[1],close[1]], lookahead=barmerge.lookahead_off)
 [o1h_2,h1h_2,l1h_2,c1h_2] = request.security(syminfo.tickerid,"60", [open[2],high[2],low[2],close[2]], lookahead=barmerge.lookahead_off)
 [o1h_3,h1h_3,l1h_3,c1h_3] = request.security(syminfo.tickerid,"60", [open[3],high[3],low[3],close[3]], lookahead=barmerge.lookahead_off)
 [o1h_4,h1h_4,l1h_4,c1h_4] = request.security(syminfo.tickerid,"60", [open[4],high[4],low[4],close[4]], lookahead=barmerge.lookahead_off)
-[o1h_5,h1h_5,l1h_5,c1h_5] = request.security(syminfo.tickerid,"60", [open[5],high[5],low[5],close[5]], lookahead=barmerge.lookahead_off)
-[o1h_6,h1h_6,l1h_6,c1h_6] = request.security(syminfo.tickerid,"60", [open[6],high[6],low[6],close[6]], lookahead=barmerge.lookahead_off)
 
 [o4h_1,h4h_1,l4h_1,c4h_1] = request.security(syminfo.tickerid,"240",[open[1],high[1],low[1],close[1]], lookahead=barmerge.lookahead_off)
 [o4h_2,h4h_2,l4h_2,c4h_2] = request.security(syminfo.tickerid,"240",[open[2],high[2],low[2],close[2]], lookahead=barmerge.lookahead_off)
 [o4h_3,h4h_3,l4h_3,c4h_3] = request.security(syminfo.tickerid,"240",[open[3],high[3],low[3],close[3]], lookahead=barmerge.lookahead_off)
 [o4h_4,h4h_4,l4h_4,c4h_4] = request.security(syminfo.tickerid,"240",[open[4],high[4],low[4],close[4]], lookahead=barmerge.lookahead_off)
-[o4h_5,h4h_5,l4h_5,c4h_5] = request.security(syminfo.tickerid,"240",[open[5],high[5],low[5],close[5]], lookahead=barmerge.lookahead_off)
-[o4h_6,h4h_6,l4h_6,c4h_6] = request.security(syminfo.tickerid,"240",[open[6],high[6],low[6],close[6]], lookahead=barmerge.lookahead_off)
 
 [o1d_1,h1d_1,l1d_1,c1d_1] = request.security(syminfo.tickerid,"D",  [open[1],high[1],low[1],close[1]], lookahead=barmerge.lookahead_off)
 [o1d_2,h1d_2,l1d_2,c1d_2] = request.security(syminfo.tickerid,"D",  [open[2],high[2],low[2],close[2]], lookahead=barmerge.lookahead_off)
 [o1d_3,h1d_3,l1d_3,c1d_3] = request.security(syminfo.tickerid,"D",  [open[3],high[3],low[3],close[3]], lookahead=barmerge.lookahead_off)
 [o1d_4,h1d_4,l1d_4,c1d_4] = request.security(syminfo.tickerid,"D",  [open[4],high[4],low[4],close[4]], lookahead=barmerge.lookahead_off)
-[o1d_5,h1d_5,l1d_5,c1d_5] = request.security(syminfo.tickerid,"D",  [open[5],high[5],low[5],close[5]], lookahead=barmerge.lookahead_off)
-[o1d_6,h1d_6,l1d_6,c1d_6] = request.security(syminfo.tickerid,"D",  [open[6],high[6],low[6],close[6]], lookahead=barmerge.lookahead_off)
 
 // HTF bar transition detection
 t_1h   = request.security(syminfo.tickerid, "60",  time, lookahead=barmerge.lookahead_off)
@@ -77,10 +70,10 @@ new_1h = ta.change(t_1h) != 0
 new_4h = ta.change(t_4h) != 0
 new_1d = ta.change(t_1d) != 0
 
-// HTF bar open timestamps for label placement — bars [1]–[5]
-[ts1h_1,ts1h_2,ts1h_3,ts1h_4,ts1h_5] = request.security(syminfo.tickerid,"60", [time[1],time[2],time[3],time[4],time[5]], lookahead=barmerge.lookahead_off)
-[ts4h_1,ts4h_2,ts4h_3,ts4h_4,ts4h_5] = request.security(syminfo.tickerid,"240",[time[1],time[2],time[3],time[4],time[5]], lookahead=barmerge.lookahead_off)
-[ts1d_1,ts1d_2,ts1d_3,ts1d_4,ts1d_5] = request.security(syminfo.tickerid,"D",  [time[1],time[2],time[3],time[4],time[5]], lookahead=barmerge.lookahead_off)
+// Timestamp of most recently closed HTF bar (for label accumulator)
+ts1h_1 = request.security(syminfo.tickerid, "60",  time[1], lookahead=barmerge.lookahead_off)
+ts4h_1 = request.security(syminfo.tickerid, "240", time[1], lookahead=barmerge.lookahead_off)
+ts1d_1 = request.security(syminfo.tickerid, "D",   time[1], lookahead=barmerge.lookahead_off)
 
 // ─── CANDLE PATTERN FUNCTION ─────────────────────────────────────────────────
 f_pat(o, c, h, l, po, pc) =>
@@ -120,30 +113,92 @@ f_pat(o, c, h, l, po, pc) =>
     is_r = bear_eng or bear_har or maru_bear or (hammer and is_bear) or (shooting and is_bear)
     [lbl, is_b, is_r]
 
-// ─── PATTERN DETECTION — 5 bars per TF ───────────────────────────────────────
-// Table uses rows 1–3 (most recent 3 closed bars by position).
-// Labels scan bars 1–5 to find the 3 most recent patterned bars.
+// ─── PATTERN DETECTION ───────────────────────────────────────────────────────
 [p1h_1, p1h_1b, p1h_1r] = f_pat(o1h_1, c1h_1, h1h_1, l1h_1, o1h_2, c1h_2)
 [p1h_2, p1h_2b, p1h_2r] = f_pat(o1h_2, c1h_2, h1h_2, l1h_2, o1h_3, c1h_3)
 [p1h_3, p1h_3b, p1h_3r] = f_pat(o1h_3, c1h_3, h1h_3, l1h_3, o1h_4, c1h_4)
-[p1h_4, p1h_4b, p1h_4r] = f_pat(o1h_4, c1h_4, h1h_4, l1h_4, o1h_5, c1h_5)
-[p1h_5, p1h_5b, p1h_5r] = f_pat(o1h_5, c1h_5, h1h_5, l1h_5, o1h_6, c1h_6)
 
 [p4h_1, p4h_1b, p4h_1r] = f_pat(o4h_1, c4h_1, h4h_1, l4h_1, o4h_2, c4h_2)
 [p4h_2, p4h_2b, p4h_2r] = f_pat(o4h_2, c4h_2, h4h_2, l4h_2, o4h_3, c4h_3)
 [p4h_3, p4h_3b, p4h_3r] = f_pat(o4h_3, c4h_3, h4h_3, l4h_3, o4h_4, c4h_4)
-[p4h_4, p4h_4b, p4h_4r] = f_pat(o4h_4, c4h_4, h4h_4, l4h_4, o4h_5, c4h_5)
-[p4h_5, p4h_5b, p4h_5r] = f_pat(o4h_5, c4h_5, h4h_5, l4h_5, o4h_6, c4h_6)
 
 [p1d_1, p1d_1b, p1d_1r] = f_pat(o1d_1, c1d_1, h1d_1, l1d_1, o1d_2, c1d_2)
 [p1d_2, p1d_2b, p1d_2r] = f_pat(o1d_2, c1d_2, h1d_2, l1d_2, o1d_3, c1d_3)
 [p1d_3, p1d_3b, p1d_3r] = f_pat(o1d_3, c1d_3, h1d_3, l1d_3, o1d_4, c1d_4)
-[p1d_4, p1d_4b, p1d_4r] = f_pat(o1d_4, c1d_4, h1d_4, l1d_4, o1d_5, c1d_5)
-[p1d_5, p1d_5b, p1d_5r] = f_pat(o1d_5, c1d_5, h1d_5, l1d_5, o1d_6, c1d_6)
+
+// ─── PATTERN HISTORY ACCUMULATORS ────────────────────────────────────────────
+// Every time a new HTF bar opens, the bar that just closed is checked for a
+// pattern. If found, it is prepended to the record (most recent first).
+// Pine replays every historical bar so these arrays build up automatically —
+// labels can always find 3 patterned bars no matter how far back they are.
+
+var array<int>    rec1h_ts  = array.new<int>()
+var array<float>  rec1h_h   = array.new<float>()
+var array<float>  rec1h_l   = array.new<float>()
+var array<bool>   rec1h_ib  = array.new<bool>()
+var array<bool>   rec1h_ir  = array.new<bool>()
+var array<string> rec1h_pat = array.new<string>()
+
+var array<int>    rec4h_ts  = array.new<int>()
+var array<float>  rec4h_h   = array.new<float>()
+var array<float>  rec4h_l   = array.new<float>()
+var array<bool>   rec4h_ib  = array.new<bool>()
+var array<bool>   rec4h_ir  = array.new<bool>()
+var array<string> rec4h_pat = array.new<string>()
+
+var array<int>    rec1d_ts  = array.new<int>()
+var array<float>  rec1d_h   = array.new<float>()
+var array<float>  rec1d_l   = array.new<float>()
+var array<bool>   rec1d_ib  = array.new<bool>()
+var array<bool>   rec1d_ir  = array.new<bool>()
+var array<string> rec1d_pat = array.new<string>()
+
+if new_1h and not na(p1h_1) and p1h_1 != "—"
+    array.unshift(rec1h_ts,  ts1h_1)
+    array.unshift(rec1h_h,   h1h_1)
+    array.unshift(rec1h_l,   l1h_1)
+    array.unshift(rec1h_ib,  p1h_1b)
+    array.unshift(rec1h_ir,  p1h_1r)
+    array.unshift(rec1h_pat, p1h_1)
+    if array.size(rec1h_ts) > 3
+        array.pop(rec1h_ts)
+        array.pop(rec1h_h)
+        array.pop(rec1h_l)
+        array.pop(rec1h_ib)
+        array.pop(rec1h_ir)
+        array.pop(rec1h_pat)
+
+if new_4h and not na(p4h_1) and p4h_1 != "—"
+    array.unshift(rec4h_ts,  ts4h_1)
+    array.unshift(rec4h_h,   h4h_1)
+    array.unshift(rec4h_l,   l4h_1)
+    array.unshift(rec4h_ib,  p4h_1b)
+    array.unshift(rec4h_ir,  p4h_1r)
+    array.unshift(rec4h_pat, p4h_1)
+    if array.size(rec4h_ts) > 3
+        array.pop(rec4h_ts)
+        array.pop(rec4h_h)
+        array.pop(rec4h_l)
+        array.pop(rec4h_ib)
+        array.pop(rec4h_ir)
+        array.pop(rec4h_pat)
+
+if new_1d and not na(p1d_1) and p1d_1 != "—"
+    array.unshift(rec1d_ts,  ts1d_1)
+    array.unshift(rec1d_h,   h1d_1)
+    array.unshift(rec1d_l,   l1d_1)
+    array.unshift(rec1d_ib,  p1d_1b)
+    array.unshift(rec1d_ir,  p1d_1r)
+    array.unshift(rec1d_pat, p1d_1)
+    if array.size(rec1d_ts) > 3
+        array.pop(rec1d_ts)
+        array.pop(rec1d_h)
+        array.pop(rec1d_l)
+        array.pop(rec1d_ib)
+        array.pop(rec1d_ir)
+        array.pop(rec1d_pat)
 
 // ─── CHART LABELS ─────────────────────────────────────────────────────────────
-// Labels 1/2/3 = the 3 most recent PATTERNED bars, scanning up to 5 bars back.
-// Skips "—" bars and labels the next patterned one instead.
 var label lbl1h_1 = na
 var label lbl1h_2 = na
 var label lbl1h_3 = na
@@ -154,8 +209,13 @@ var label lbl1d_1 = na
 var label lbl1d_2 = na
 var label lbl1d_3 = na
 
+f_lbl(ts, h, l, ib, ir, num, pat, atr) =>
+    lc  = ib ? color.new(color.green,20) : ir ? color.new(color.red,20) : color.new(color.gray,30)
+    sty = ib ? label.style_label_up : label.style_label_down
+    y   = ib ? l - atr * 0.4 : h + atr * 0.4
+    label.new(ts, y, num + "\n" + pat, xloc=xloc.bar_time, style=sty, color=lc, textcolor=color.white, size=size.small)
+
 if barstate.islast
-    // ── 1H labels ─────────────────────────────────────────────────────────────
     if timeframe.period == "60"
         label.delete(lbl1h_1)
         label.delete(lbl1h_2)
@@ -163,35 +223,14 @@ if barstate.islast
         lbl1h_1 := na
         lbl1h_2 := na
         lbl1h_3 := na
-        pats1h = array.from(p1h_1, p1h_2, p1h_3, p1h_4, p1h_5)
-        bull1h = array.from(p1h_1b, p1h_2b, p1h_3b, p1h_4b, p1h_5b)
-        bear1h = array.from(p1h_1r, p1h_2r, p1h_3r, p1h_4r, p1h_5r)
-        tss1h  = array.from(ts1h_1, ts1h_2, ts1h_3, ts1h_4, ts1h_5)
-        hs1h   = array.from(h1h_1, h1h_2, h1h_3, h1h_4, h1h_5)
-        ls1h   = array.from(l1h_1, l1h_2, l1h_3, l1h_4, l1h_5)
-        int cnt1h = 0
-        for i = 0 to 4
-            if cnt1h >= 3
-                break
-            if array.get(pats1h, i) != "—"
-                cnt1h += 1
-                ib   = array.get(bull1h, i)
-                ir   = array.get(bear1h, i)
-                ts   = array.get(tss1h, i)
-                h    = array.get(hs1h, i)
-                l    = array.get(ls1h, i)
-                lc   = ib ? color.new(color.green,20) : ir ? color.new(color.red,20) : color.new(color.gray,30)
-                sty  = ib ? label.style_label_up : label.style_label_down
-                y    = ib ? l - atr_val * 0.4 : h + atr_val * 0.4
-                lnew = label.new(ts, y, str.tostring(cnt1h), xloc=xloc.bar_time, style=sty, color=lc, textcolor=color.white, size=size.small)
-                if cnt1h == 1
-                    lbl1h_1 := lnew
-                else if cnt1h == 2
-                    lbl1h_2 := lnew
-                else
-                    lbl1h_3 := lnew
+        n1h = array.size(rec1h_ts)
+        if n1h >= 1
+            lbl1h_1 := f_lbl(array.get(rec1h_ts,0), array.get(rec1h_h,0), array.get(rec1h_l,0), array.get(rec1h_ib,0), array.get(rec1h_ir,0), "1", array.get(rec1h_pat,0), atr_val)
+        if n1h >= 2
+            lbl1h_2 := f_lbl(array.get(rec1h_ts,1), array.get(rec1h_h,1), array.get(rec1h_l,1), array.get(rec1h_ib,1), array.get(rec1h_ir,1), "2", array.get(rec1h_pat,1), atr_val)
+        if n1h >= 3
+            lbl1h_3 := f_lbl(array.get(rec1h_ts,2), array.get(rec1h_h,2), array.get(rec1h_l,2), array.get(rec1h_ib,2), array.get(rec1h_ir,2), "3", array.get(rec1h_pat,2), atr_val)
 
-    // ── 4H labels ─────────────────────────────────────────────────────────────
     if timeframe.period == "240"
         label.delete(lbl4h_1)
         label.delete(lbl4h_2)
@@ -199,35 +238,14 @@ if barstate.islast
         lbl4h_1 := na
         lbl4h_2 := na
         lbl4h_3 := na
-        pats4h = array.from(p4h_1, p4h_2, p4h_3, p4h_4, p4h_5)
-        bull4h = array.from(p4h_1b, p4h_2b, p4h_3b, p4h_4b, p4h_5b)
-        bear4h = array.from(p4h_1r, p4h_2r, p4h_3r, p4h_4r, p4h_5r)
-        tss4h  = array.from(ts4h_1, ts4h_2, ts4h_3, ts4h_4, ts4h_5)
-        hs4h   = array.from(h4h_1, h4h_2, h4h_3, h4h_4, h4h_5)
-        ls4h   = array.from(l4h_1, l4h_2, l4h_3, l4h_4, l4h_5)
-        int cnt4h = 0
-        for i = 0 to 4
-            if cnt4h >= 3
-                break
-            if array.get(pats4h, i) != "—"
-                cnt4h += 1
-                ib   = array.get(bull4h, i)
-                ir   = array.get(bear4h, i)
-                ts   = array.get(tss4h, i)
-                h    = array.get(hs4h, i)
-                l    = array.get(ls4h, i)
-                lc   = ib ? color.new(color.green,20) : ir ? color.new(color.red,20) : color.new(color.gray,30)
-                sty  = ib ? label.style_label_up : label.style_label_down
-                y    = ib ? l - atr_val * 0.4 : h + atr_val * 0.4
-                lnew = label.new(ts, y, str.tostring(cnt4h), xloc=xloc.bar_time, style=sty, color=lc, textcolor=color.white, size=size.small)
-                if cnt4h == 1
-                    lbl4h_1 := lnew
-                else if cnt4h == 2
-                    lbl4h_2 := lnew
-                else
-                    lbl4h_3 := lnew
+        n4h = array.size(rec4h_ts)
+        if n4h >= 1
+            lbl4h_1 := f_lbl(array.get(rec4h_ts,0), array.get(rec4h_h,0), array.get(rec4h_l,0), array.get(rec4h_ib,0), array.get(rec4h_ir,0), "1", array.get(rec4h_pat,0), atr_val)
+        if n4h >= 2
+            lbl4h_2 := f_lbl(array.get(rec4h_ts,1), array.get(rec4h_h,1), array.get(rec4h_l,1), array.get(rec4h_ib,1), array.get(rec4h_ir,1), "2", array.get(rec4h_pat,1), atr_val)
+        if n4h >= 3
+            lbl4h_3 := f_lbl(array.get(rec4h_ts,2), array.get(rec4h_h,2), array.get(rec4h_l,2), array.get(rec4h_ib,2), array.get(rec4h_ir,2), "3", array.get(rec4h_pat,2), atr_val)
 
-    // ── 1D labels ─────────────────────────────────────────────────────────────
     if timeframe.period == "D"
         label.delete(lbl1d_1)
         label.delete(lbl1d_2)
@@ -235,33 +253,13 @@ if barstate.islast
         lbl1d_1 := na
         lbl1d_2 := na
         lbl1d_3 := na
-        pats1d = array.from(p1d_1, p1d_2, p1d_3, p1d_4, p1d_5)
-        bull1d = array.from(p1d_1b, p1d_2b, p1d_3b, p1d_4b, p1d_5b)
-        bear1d = array.from(p1d_1r, p1d_2r, p1d_3r, p1d_4r, p1d_5r)
-        tss1d  = array.from(ts1d_1, ts1d_2, ts1d_3, ts1d_4, ts1d_5)
-        hs1d   = array.from(h1d_1, h1d_2, h1d_3, h1d_4, h1d_5)
-        ls1d   = array.from(l1d_1, l1d_2, l1d_3, l1d_4, l1d_5)
-        int cnt1d = 0
-        for i = 0 to 4
-            if cnt1d >= 3
-                break
-            if array.get(pats1d, i) != "—"
-                cnt1d += 1
-                ib   = array.get(bull1d, i)
-                ir   = array.get(bear1d, i)
-                ts   = array.get(tss1d, i)
-                h    = array.get(hs1d, i)
-                l    = array.get(ls1d, i)
-                lc   = ib ? color.new(color.green,20) : ir ? color.new(color.red,20) : color.new(color.gray,30)
-                sty  = ib ? label.style_label_up : label.style_label_down
-                y    = ib ? l - atr_val * 0.4 : h + atr_val * 0.4
-                lnew = label.new(ts, y, str.tostring(cnt1d), xloc=xloc.bar_time, style=sty, color=lc, textcolor=color.white, size=size.small)
-                if cnt1d == 1
-                    lbl1d_1 := lnew
-                else if cnt1d == 2
-                    lbl1d_2 := lnew
-                else
-                    lbl1d_3 := lnew
+        n1d = array.size(rec1d_ts)
+        if n1d >= 1
+            lbl1d_1 := f_lbl(array.get(rec1d_ts,0), array.get(rec1d_h,0), array.get(rec1d_l,0), array.get(rec1d_ib,0), array.get(rec1d_ir,0), "1", array.get(rec1d_pat,0), atr_val)
+        if n1d >= 2
+            lbl1d_2 := f_lbl(array.get(rec1d_ts,1), array.get(rec1d_h,1), array.get(rec1d_l,1), array.get(rec1d_ib,1), array.get(rec1d_ir,1), "2", array.get(rec1d_pat,1), atr_val)
+        if n1d >= 3
+            lbl1d_3 := f_lbl(array.get(rec1d_ts,2), array.get(rec1d_h,2), array.get(rec1d_l,2), array.get(rec1d_ib,2), array.get(rec1d_ir,2), "3", array.get(rec1d_pat,2), atr_val)
 
 // ─── OPENING RANGE ────────────────────────────────────────────────────────────
 var float or_high = na
@@ -362,7 +360,6 @@ if barstate.islast
     table.cell(dash, 1, 13, mtf_bull_1d ? "Bullish" : "Bearish", bgcolor=mtf_bull_1d ? g : r, text_color=w, text_size=size.small)
 
 // ─── CANDLE PATTERN TABLE (bottom-right) ─────────────────────────────────────
-// Rows 1/2/3 = last 3 closed bars by position (independent of whether patterned)
 var table pat_tbl = table.new(position.bottom_right, 4, 4, border_width=1, bgcolor=color.new(color.black, 60))
 if barstate.islast
     hdr = color.new(color.gray,  20)
