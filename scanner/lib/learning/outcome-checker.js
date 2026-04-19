@@ -1,0 +1,484 @@
+/**
+ * Outcome Checker — tracks open signals against current prices.
+ * Determines if SL/TP levels were hit, computes MFE/MAE.
+ *
+ * FIXED: Sets correct timeframe per signal, validates prices,
+ * uses getQuote for reliable current price.
+ */
+
+import { getOpenSignals, updateSignal, removeOpenSignal, diffIndicators } from './signal-tracker.js';
+import { appendToArchive } from './persistence.js';
+import { recordOutcome as recordLadderOutcome } from './ladder-engine.js';
+import * as bridge from '../tv-bridge.js';
+import { acquireScanLock, releaseScanLock } from '../scanner-engine.js';
+import { resolveSymbol, inferCategory } from '../symbol-resolver.js';
+
+/**
+ * Ayni 5m bar icinde hem SL hem TP1 dokundu mu? — tie-break 1m gerekir.
+ * Sadece entry aktif ve henuz SL/TP kapanmamis sinyaller icin.
+ */
+export function detectBothHitOnBar(signal, bar) {
+  if (!signal || !bar) return false;
+  if (signal.slHit || signal.tp1Hit) return false;
+  if (!signal.sl || !signal.tp1 || !signal.entry) return false;
+  const isSmartEntry = signal.entrySource && signal.entrySource !== 'quote_price' && signal.entrySource !== 'lastbar_close';
+  const entryActive = signal.entryHit || !isSmartEntry;
+  if (!entryActive) return false;
+  const { high, low } = bar;
+  const dir = signal.direction;
+  const slHit = (dir === 'long' && low <= signal.sl) || (dir === 'short' && high >= signal.sl);
+  const tpHit = (dir === 'long' && high >= signal.tp1) || (dir === 'short' && low <= signal.tp1);
+  return slHit && tpHit;
+}
+
+/**
+ * Check a single signal against a current price bar.
+ * Returns outcome updates (pure function, no side effects).
+ */
+export function evaluateSignalOutcome(signal, currentBar) {
+  if (!signal || !currentBar) return null;
+
+  const { high, low, close } = currentBar;
+  const dir = signal.direction;
+  const now = new Date().toISOString();
+
+  // Sanity check: current price should be in the same ballpark as entry
+  if (signal.entry && close) {
+    const deviation = Math.abs(close - signal.entry) / signal.entry;
+    if (deviation > 0.5) {
+      // Price is 50%+ away from entry — likely wrong symbol/data
+      return {
+        lastCheckedAt: now,
+        checkCount: (signal.checkCount || 0) + 1,
+        warnings: [`Fiyat sapmasi cok yuksek: entry=${signal.entry}, current=${close}, sapma=%${(deviation * 100).toFixed(1)}`],
+      };
+    }
+  }
+
+  const updates = {
+    lastCheckedPrice: close,
+    lastCheckedAt: now,
+    checkCount: (signal.checkCount || 0) + 1,
+  };
+
+  // Determine if entry needs to be "reached" before tracking SL/TP
+  // Legacy signals (no entrySource) or quote_price entries are always considered reached
+  const isSmartEntry = signal.entrySource && signal.entrySource !== 'quote_price' && signal.entrySource !== 'lastbar_close';
+  const alreadyReached = signal.entryHit || !isSmartEntry;
+
+  // Track whether smart entry price was actually reached
+  // Tolerance band: 0.25 * ATR yaklasma yeterli (kil payi kacirmayi onler)
+  if (isSmartEntry && !signal.entryHit) {
+    const tol = (signal.atr || 0) * 0.25;
+    const entryReached = (dir === 'long' && low <= signal.entry + tol)
+      || (dir === 'short' && high >= signal.entry - tol);
+    if (entryReached) {
+      updates.entryHit = true;
+      updates.entryHitAt = now;
+    } else {
+      // Pre-entry MFE: sinyal yonunde ama entry dolmadan ne kadar kacirdik?
+      // entry_expired sonrasi "bu sinyal hakliymis ama giremedik" istatistigi.
+      if (dir === 'long' && signal.entry) {
+        const missed = high - signal.entry; // + = fiyat yukari gitti, pullback olmadi
+        if (missed > (signal.preEntryMFE || 0)) updates.preEntryMFE = missed;
+      } else if (dir === 'short' && signal.entry) {
+        const missed = signal.entry - low;
+        if (missed > (signal.preEntryMFE || 0)) updates.preEntryMFE = missed;
+      }
+
+      // Entry deadline dolduysa sinyali kapat
+      if (signal.entryDeadline && new Date(now) >= new Date(signal.entryDeadline)) {
+        updates.status = 'entry_expired';
+        updates.entryExpiredAt = now;
+        return updates;
+      }
+    }
+  }
+
+  const entryActive = alreadyReached || updates.entryHit;
+
+  // Compute favorable/adverse excursion (only after entry is reached)
+  if (entryActive && dir === 'long' && signal.entry) {
+    const favorable = high - signal.entry;
+    const adverse = signal.entry - low;
+    if (signal.highestFavorable == null || favorable > (signal.highestFavorable || 0)) updates.highestFavorable = favorable;
+    if (signal.lowestAdverse == null || adverse > (signal.lowestAdverse || 0)) updates.lowestAdverse = adverse;
+  } else if (entryActive && dir === 'short' && signal.entry) {
+    const favorable = signal.entry - low;
+    const adverse = high - signal.entry;
+    if (signal.highestFavorable == null || favorable > (signal.highestFavorable || 0)) updates.highestFavorable = favorable;
+    if (signal.lowestAdverse == null || adverse > (signal.lowestAdverse || 0)) updates.lowestAdverse = adverse;
+  }
+
+  // Check SL/TP only if entry has been reached (or not a smart entry)
+  if (entryActive) {
+    // Check SL hit (priority over TP on same bar — conservative).
+    // Ayni bar icinde hem SL hem TP dokunmasi durumunda caller 1m barlarla
+    // tie-break yapar; burada SL-priority default olarak kalir.
+    if (signal.sl && !signal.slHit) {
+      if ((dir === 'long' && low <= signal.sl) || (dir === 'short' && high >= signal.sl)) {
+        updates.slHit = true;
+        updates.slHitAt = now;
+        updates.slHitPrice = signal.sl;
+        // "sl_hit_high_mfe": TP1 hic dolmadi ama yon dogruydu — fiyat TP1
+        // mesafesinin en az %70'ine kadar gitti. Ladder bunu loss saymaz
+        // (nötr), aksi halde 1.5R TP ile haksiz demote tetiklenir.
+        const tp1Dist = (signal.tp1 != null && signal.entry != null)
+          ? Math.abs(signal.tp1 - signal.entry) : null;
+        const mfeSoFar = Math.max(
+          Number(signal.highestFavorable) || 0,
+          Number(updates.highestFavorable) || 0
+        );
+        if (!signal.tp1Hit && tp1Dist != null && tp1Dist > 0 && mfeSoFar >= tp1Dist * 0.7) {
+          updates.status = 'sl_hit_high_mfe';
+          updates.highMfeFlag = true;
+        } else {
+          updates.status = 'sl_hit';
+        }
+
+        // --- Faulty trade analizi ---
+        // SL tetiklendiginde acikken gelen zit yon sinyalleri (reverseAttempts)
+        // hakli cikmis demektir. Bu sinyali "hatali trade" olarak isaretle ki
+        // otonom ogrenme indikator agirliklarini ayarlayabilsin.
+        const reverseAttempts = Array.isArray(signal.reverseAttempts) ? signal.reverseAttempts : [];
+        if (reverseAttempts.length > 0) {
+          updates.faultyTrade = true;
+          updates.faultyTradeReason = `${reverseAttempts.length} zit yon sinyal acikken geldi, SL tetiklendi`;
+          const first = reverseAttempts[0];
+          updates.faultyTradeAnalysis = {
+            openedWithGrade: signal.grade,
+            openedWithTF: signal.timeframe,
+            openedWithIndicators: signal.indicators || null,
+            ignoredReverseCount: reverseAttempts.length,
+            ignoredReverseGrades: reverseAttempts.map(r => r.grade),
+            ignoredReverseTFs: reverseAttempts.map(r => r.timeframe),
+            firstReverseAt: first.at,
+            firstReverseLagMinutes: Math.round(
+              (new Date(first.at) - new Date(signal.createdAt)) / 60000
+            ),
+            indicatorDrift: diffIndicators(signal.indicators, first.indicatorSnapshot),
+          };
+          console.log(`[Outcome] FAULTY TRADE: ${signal.symbol} ${signal.direction} ${signal.grade} — ${reverseAttempts.length} ignored reverse, SL hit`);
+        }
+        return updates;
+      }
+    }
+
+    // Check TP levels (highest first)
+    if (signal.tp3 && !signal.tp3Hit) {
+      if ((dir === 'long' && high >= signal.tp3) || (dir === 'short' && low <= signal.tp3)) {
+        updates.tp3Hit = true;
+        updates.tp3HitAt = now;
+        updates.tp3HitPrice = signal.tp3;
+        updates.tp2Hit = true;
+        updates.tp2HitAt = updates.tp2HitAt || now;
+        updates.tp2HitPrice = signal.tp2 || null;
+        updates.tp1Hit = true;
+        updates.tp1HitAt = updates.tp1HitAt || now;
+        updates.tp1HitPrice = signal.tp1 || null;
+        updates.status = 'tp3_hit';
+        return updates;
+      }
+    }
+
+    if (signal.tp2 && !signal.tp2Hit) {
+      if ((dir === 'long' && high >= signal.tp2) || (dir === 'short' && low <= signal.tp2)) {
+        updates.tp2Hit = true;
+        updates.tp2HitAt = now;
+        updates.tp2HitPrice = signal.tp2;
+        updates.tp1Hit = true;
+        updates.tp1HitAt = updates.tp1HitAt || now;
+        updates.tp1HitPrice = signal.tp1 || null;
+        updates.status = 'tp2_hit';
+        // 2-TP modu (signal.tp3 == null): TP2 terminal, TP3 beklenmez.
+        if (signal.tp3 == null) return updates;
+        // Don't return — continue tracking for TP3
+      }
+    }
+
+    if (signal.tp1 && !signal.tp1Hit) {
+      if ((dir === 'long' && high >= signal.tp1) || (dir === 'short' && low <= signal.tp1)) {
+        updates.tp1Hit = true;
+        updates.tp1HitAt = now;
+        updates.tp1HitPrice = signal.tp1;
+        updates.status = 'tp1_hit';
+        // Trailing stop aktiflestir: SL'yi break-even'e cek
+        updates.trailingStopActive = true;
+        updates.trailingStopLevel = signal.entry;
+        updates.sl = signal.entry;
+        // Continue tracking for TP2/TP3
+      }
+    }
+
+    // --- Trailing stop ilerletme (zaten aktifse) ---
+    // TP1 hit olmus ve trailing aktif. Karda ilerledikce SL'yi yukari (long) /
+    // asagi (short) tasi. Zararda ASLA trailing yapilmaz — tp1Hit olmadan blok
+    // calismaz.
+    if ((signal.trailingStopActive || updates.trailingStopActive) && (signal.tp1Hit || updates.tp1Hit)) {
+      const currentTrail = updates.trailingStopLevel ?? signal.trailingStopLevel ?? signal.entry;
+      const tp1Distance = Math.abs(signal.tp1 - signal.entry);
+      const lockDistance = tp1Distance * 0.5; // TP1 mesafesinin yarisi kadar kilitle
+      if (dir === 'long') {
+        const newTrail = high - lockDistance;
+        if (newTrail > currentTrail) {
+          updates.trailingStopLevel = newTrail;
+          updates.sl = newTrail;
+        }
+      } else {
+        const newTrail = low + lockDistance;
+        if (newTrail < currentTrail) {
+          updates.trailingStopLevel = newTrail;
+          updates.sl = newTrail;
+        }
+      }
+    }
+  }
+
+  // NOT: Expiry kontrolu kaldirildi. Pozisyonlar sadece SL/TP/manuel/supersede ile kapanir.
+  // BEKLE (sanal) sinyaller icin symbol bazli cap (signal-tracker.js) balloning'i engeller.
+
+  return updates;
+}
+
+/**
+ * Determine if a signal is fully resolved (terminal state).
+ */
+function isTerminal(status, signal = null) {
+  const alwaysTerminal = [
+    'sl_hit', 'sl_hit_high_mfe', 'tp3_hit', 'invalid_data',
+    'superseded', 'superseded_by_tf', 'superseded_by_cleanup', 'superseded_by_cap',
+    'manual_close',
+  ];
+  if (alwaysTerminal.includes(status)) return true;
+  // 2-TP modu: TP2 terminal kabul edilir (signal.tp3 == null).
+  if (status === 'tp2_hit' && signal && signal.tp3 == null) return true;
+  return false;
+}
+
+/**
+ * Compute the actual R:R for a resolved signal.
+ */
+function computeActualRR(signal) {
+  if (!signal.entry || !signal.sl) return null;
+  const risk = Math.abs(signal.entry - signal.sl);
+  if (risk === 0) return null;
+
+  let reward = 0;
+  if (signal.tp3Hit && signal.tp3) reward = Math.abs(signal.tp3 - signal.entry);
+  else if (signal.tp2Hit && signal.tp2) reward = Math.abs(signal.tp2 - signal.entry);
+  else if (signal.tp1Hit && signal.tp1) reward = Math.abs(signal.tp1 - signal.entry);
+  else if (signal.slHit) reward = -risk;
+  else if (signal.lastCheckedPrice) reward = signal.direction === 'long'
+    ? signal.lastCheckedPrice - signal.entry
+    : signal.entry - signal.lastCheckedPrice;
+
+  return Math.round((reward / risk) * 100) / 100;
+}
+
+/**
+ * Build an archive record from a resolved signal.
+ */
+function buildArchiveRecord(signal) {
+  const resolvedAt = new Date().toISOString();
+  const holdingMs = new Date(resolvedAt) - new Date(signal.createdAt);
+  const holdingMinutes = Math.round(holdingMs / 60000);
+  const actualRR = computeActualRR(signal);
+  const win = !!signal.tp1Hit;
+
+  return {
+    ...signal,
+    resolvedAt,
+    outcome: signal.status,
+    actualRR,
+    holdingPeriodMinutes: holdingMinutes,
+    maxFavorableExcursion: signal.highestFavorable,
+    maxAdverseExcursion: signal.lowestAdverse,
+    win,
+  };
+}
+
+/**
+ * Get the timeframe for OHLCV that best covers the check interval.
+ * We use 5m bars to capture intra-check price extremes.
+ */
+function getCheckTimeframe(signalTF) {
+  // Use 5m for most signals to catch wicks between 5-min checks
+  // For daily/weekly signals, 1h is sufficient
+  const tf = String(signalTF);
+  if (['1D', '3D', '1W', '1M'].includes(tf)) return '60';
+  if (['240'].includes(tf)) return '15';
+  return '5'; // Use 5m for all short-term signals
+}
+
+/**
+ * Check all open signals against current prices.
+ * FIXED: Sets correct timeframe per signal, validates prices.
+ * Groups by symbol to minimize chart switching.
+ * Returns { checked, resolved, errors }.
+ */
+export async function checkAllOpenSignals(options = {}) {
+  const signals = getOpenSignals();
+  if (signals.length === 0) return { checked: 0, resolved: 0, errors: 0 };
+
+  // Acquire chart lock with 30s timeout — if a scan is running, skip this cycle
+  try {
+    await acquireScanLock('outcome-checker', 30000);
+  } catch (e) {
+    console.log(`[Outcome] Chart kilidi alinamadi, bu tur atlaniyor: ${e.message}`);
+    return { checked: 0, resolved: 0, errors: 0, skipped: true };
+  }
+
+  try {
+    return await _checkAllOpenSignalsInner(signals);
+  } finally {
+    releaseScanLock();
+  }
+}
+
+async function _checkAllOpenSignalsInner(signals) {
+  // Group signals by symbol
+  const bySymbol = {};
+  for (const sig of signals) {
+    if (!bySymbol[sig.symbol]) bySymbol[sig.symbol] = [];
+    bySymbol[sig.symbol].push(sig);
+  }
+
+  let checked = 0;
+  let resolved = 0;
+  let errors = 0;
+  const resolvedSignals = [];
+
+  for (const [symbol, symbolSignals] of Object.entries(bySymbol)) {
+    try {
+      // Switch chart to this symbol (borsa prefix'i ile cozumle)
+      const chartSymbol = symbol.includes(':') ? symbol : resolveSymbol(symbol, inferCategory(symbol));
+      await bridge.setSymbol(chartSymbol);
+
+      // For each signal, set the appropriate check TF and get bars
+      for (const sig of symbolSignals) {
+        try {
+          // Validate signal has required data
+          if (!sig.entry || sig.entry <= 0 || !sig.sl) {
+            const updates = { status: 'invalid_data', lastCheckedAt: new Date().toISOString() };
+            const updated = updateSignal(sig.id, updates);
+            if (updated) {
+              const archiveRecord = buildArchiveRecord({ ...updated, win: false });
+              const yearMonth = new Date().toISOString().slice(0, 7);
+              appendToArchive(yearMonth, archiveRecord);
+              try {
+                recordLadderOutcome(sig.symbol, sig.grade, {
+                  status: updated.status,
+                  resolvedAt: archiveRecord.resolvedAt || updates.lastCheckedAt,
+                  signalId: sig.id,
+                });
+              } catch (e) { console.log(`[Outcome] ladder.recordOutcome hatasi (${sig.id}): ${e.message}`); }
+              removeOpenSignal(sig.id);
+              resolved++;
+            }
+            continue;
+          }
+
+          // Set appropriate check timeframe
+          const checkTF = getCheckTimeframe(sig.timeframe);
+          await bridge.setTimeframe(checkTF);
+          await new Promise(r => setTimeout(r, 1500));
+
+          // Get last few bars to capture price extremes since last check
+          const barsToGet = 3; // ~15 minutes at 5m TF
+          const ohlcv = await bridge.getOhlcv(barsToGet, false);
+          const bars = ohlcv?.bars || [];
+          if (bars.length === 0) { errors++; continue; }
+
+          const lastClose = bars[bars.length - 1].close;
+
+          // Sanity check: son fiyat entry'den %50+ uzaksa yanlis sembol/veri
+          const priceDeviation = Math.abs(lastClose - sig.entry) / sig.entry;
+          if (priceDeviation > 0.5) {
+            console.log(`[Outcome] ${symbol}: fiyat sapmasi cok yuksek (entry=${sig.entry}, current=${lastClose}, sapma=%${(priceDeviation * 100).toFixed(1)}) — atlaniyor`);
+            errors++;
+            continue;
+          }
+
+          // Barlari SIRAYLA degerlendir — bir syntetic barda birlestirmek
+          // SL'yi TP'den once kontrol edildigi icin yanli sonuc verirdi (ornegin
+          // bar1'de TP1, bar2'de SL olsa bile evaluateSignalOutcome tek bakista
+          // SL hit diyordu). Artik her bar ayri asamalidir ve terminale erisen
+          // ilk bar kesin sonucu belirler.
+          let updated = sig;
+          let anyUpdate = false;
+          for (const bar of bars) {
+            // Tie-break: ayni barda hem SL hem TP dokunduysa 1m barlarla sirayi
+            // kesin olarak cozumle. Aksi halde SL-onceligi pesimist onyargi
+            // yaratir. Cozumleme sirasinda TF 1m'e alinir ve bar penceresi
+            // kadar 1m bar okunur; sonrasinda TF check TF'sine geri donulur.
+            if (detectBothHitOnBar(updated, bar)) {
+              try {
+                await bridge.setTimeframe('1');
+                await new Promise(r => setTimeout(r, 1200));
+                const tfMinutes = parseInt(checkTF, 10) || 5;
+                const oneMin = await bridge.getOhlcv(tfMinutes + 5, false);
+                const oneBars = (oneMin?.bars || []).filter(b => {
+                  const t = typeof b.time === 'number' ? b.time * (b.time < 1e12 ? 1000 : 1) : new Date(b.time).getTime();
+                  const barT = typeof bar.time === 'number' ? bar.time * (bar.time < 1e12 ? 1000 : 1) : new Date(bar.time).getTime();
+                  return t >= barT && t < barT + tfMinutes * 60000;
+                });
+                for (const m of oneBars) {
+                  const updates = evaluateSignalOutcome(updated, m);
+                  if (!updates) continue;
+                  const afterUpdate = updateSignal(updated.id, updates);
+                  if (afterUpdate) {
+                    updated = afterUpdate;
+                    anyUpdate = true;
+                    if (isTerminal(afterUpdate.status, afterUpdate)) break;
+                  }
+                }
+                // TF'yi 5m check TF'sine geri al
+                await bridge.setTimeframe(checkTF);
+                await new Promise(r => setTimeout(r, 800));
+                if (isTerminal(updated.status, updated)) break;
+                continue;
+              } catch (e) {
+                console.log(`[Outcome] ${sig.symbol} 1m tie-break hatasi: ${e.message} — 5m bar ile SL-onceligi fallback`);
+                // fall through: eski 5m davranis
+              }
+            }
+            const updates = evaluateSignalOutcome(updated, bar);
+            if (!updates) continue;
+            const afterUpdate = updateSignal(updated.id, updates);
+            if (afterUpdate) {
+              updated = afterUpdate;
+              anyUpdate = true;
+              if (isTerminal(afterUpdate.status, afterUpdate)) break;
+            }
+          }
+          if (anyUpdate) checked++;
+
+          // If terminal, archive and remove from open
+          if (anyUpdate && isTerminal(updated.status, updated)) {
+            const archiveRecord = buildArchiveRecord(updated);
+            const yearMonth = new Date().toISOString().slice(0, 7);
+            appendToArchive(yearMonth, archiveRecord);
+            try {
+              recordLadderOutcome(sig.symbol, sig.grade, {
+                status: updated.status,
+                resolvedAt: archiveRecord.resolvedAt || updated.lastCheckedAt,
+                signalId: sig.id,
+              });
+            } catch (e) { console.log(`[Outcome] ladder.recordOutcome hatasi (${sig.id}): ${e.message}`); }
+            removeOpenSignal(sig.id);
+            resolved++;
+            resolvedSignals.push(archiveRecord);
+          }
+        } catch (e) {
+          console.log(`[Outcome] ${symbol} sinyal kontrol hatasi: ${e.message}`);
+          errors++;
+        }
+      }
+    } catch (e) {
+      console.log(`[Outcome] ${symbol} sembol degistirme hatasi: ${e.message}`);
+      errors += symbolSignals.length;
+    }
+  }
+
+  return { checked, resolved, errors, resolvedSignals };
+}

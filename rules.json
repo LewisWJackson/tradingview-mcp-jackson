@@ -1,0 +1,471 @@
+{
+  "watchlist": {
+    "kripto": [
+      "BTCUSD",
+      "ETHUSDC",
+      "XRPUSDC",
+      "SOLUSDC",
+      "SUIUSDC",
+      "LINKUSDC",
+      "HYPEUSDT",
+      "BTCXAU",
+      "ETHXAU",
+      "USDT.D",
+      "DOTUSDC",
+      "MONUSD",
+      "PEPEUSDC",
+      "RENDERUSDC"
+    ],
+    "forex": [
+      "EURUSD",
+      "EURCHF"
+    ],
+    "abd_hisse": [
+      "BA",
+      "NFLX",
+      "AVGO",
+      "HON",
+      "ARM",
+      "DXYZ",
+      "RKLB",
+      "LLY",
+      "GOOGL",
+      "KTOS",
+      "COST",
+      "D",
+      "ISRG",
+      "FSLR",
+      "PG",
+      "CRCL"
+    ],
+    "bist": [
+      "PEKGY",
+      "MERKO",
+      "AEFES",
+      "AKBNK",
+      "ASELS",
+      "ASTOR",
+      "BIMAS",
+      "DSTKF",
+      "EKGYO",
+      "ENKAI",
+      "EREGL",
+      "FROTO",
+      "GARAN",
+      "GUBRF",
+      "ISCTR",
+      "KCHOL",
+      "KRDMD",
+      "MGROS",
+      "PETKM",
+      "PGSUS",
+      "SAHOL",
+      "SASA",
+      "SISE",
+      "TAVHL",
+      "TCELL",
+      "THYAO",
+      "TOASO",
+      "TRALT",
+      "TTKOM",
+      "TUPRS",
+      "VAKBN",
+      "YKBNK"
+    ],
+    "emtia": [
+      "XAUUSD",
+      "XAGUSD",
+      "COPPER"
+    ]
+  },
+  "default_timeframes": [
+    "15",
+    "30",
+    "45",
+    "60",
+    "240",
+    "1D",
+    "3D",
+    "1W"
+  ],
+  "korelasyon_filtreleri": {
+    "aciklama": "Her tarama baslamadan once kontrol edilecek makro semboller",
+    "semboller": {
+      "USDT.D": {
+        "kontrol": "Supertrend yonu",
+        "kural": "ST yesil → kripto long sinyallerini 1 kademe dusur"
+      },
+      "BTC.D": {
+        "kontrol": "Supertrend yonu",
+        "kural": "ST yesil → altcoin long dikkat, BTC oncelikli"
+      },
+      "DXY": {
+        "kontrol": "Supertrend yonu",
+        "kural": "ST yesil → major forex short guclu, altin long dikkat"
+      },
+      "VIX": {
+        "kontrol": "fiyat seviyesi",
+        "kural": ">25 dikkat, >35 sadece hedge"
+      },
+      "US10Y": {
+        "kontrol": "Supertrend yonu",
+        "kural": "ST kirmizi + DXY kirmizi → altin long cok guclu"
+      }
+    }
+  },
+  "volatilite_rejimi": {
+    "aciklama": "ADX bazli strateji secimi — her sembolde sinyal degerlendirmeden once kontrol et",
+    "trend": {
+      "kosul": "ADX > 25",
+      "strateji": "KhanSaab momentum sinyalleri guclu, Supertrend guvenilir"
+    },
+    "gecis": {
+      "kosul": "ADX 20-25",
+      "strateji": "Her iki sinyal dikkatli degerlendir"
+    },
+    "range": {
+      "kosul": "ADX < 20",
+      "strateji": "KhanSaab momentum sinyallerini YOKSAY, sadece SMC OB bounce kullan"
+    }
+  },
+  "adx_volume_cift_filtre": {
+    "aciklama": "ADX ve Volume birlikte degerlendirilir, ayri ayri degil",
+    "guclu": {
+      "kosul": "ADX > 26 VE Volume > 20-SMA x 1.8",
+      "sonuc": "Sinyal guvenilir, kaliteyi koru"
+    },
+    "orta": {
+      "kosul": "ADX > 26 ama Volume dusuk",
+      "sonuc": "Sinyal orta guvenilir, kaliteyi 1 kademe dusur"
+    },
+    "zayif": {
+      "kosul": "ADX < 26",
+      "sonuc": "Trend sinyali zayif, Volume ne olursa olsun"
+    }
+  },
+  "hesaplama_bazli_filtreler": {
+    "aciklama": "Bu filtreler ek indikator GEREKTIRMEZ — mevcut verilerden hesaplanir",
+    "squeeze_volatilite": {
+      "veri_kaynagi": "KhanSaab ATR(14) + data_get_ohlcv son 20 bar",
+      "hesaplama": "ATR / 20-bar ATR ortalamasi yuzdelik dilim",
+      "kurallar": {
+        "squeeze": "ATR < ortalamanin %60'i → BEKLE, giris yapma",
+        "yuksek_vol": "ATR > ortalamanin %140'i → SL carpanini 2.0 yap",
+        "normal": "Standart kurallar"
+      }
+    },
+    "rsi_divergence": {
+      "veri_kaynagi": "KhanSaab RSI(14) + data_get_ohlcv son 20 bar fiyat",
+      "hesaplama": "Fiyat swing low/high vs RSI swing low/high karsilastirmasi",
+      "kurallar": {
+        "bullish_div": "Fiyat yeni low + RSI oncekinden yukarda",
+        "bearish_div": "Fiyat yeni high + RSI oncekinden dusuk",
+        "choch_uyumlu": "Sinyal kalitesini 1 kademe yukselt"
+      }
+    },
+    "hacim_yonu": {
+      "veri_kaynagi": "data_get_ohlcv son 5 bar + KhanSaab Vol Status",
+      "hesaplama": "Close vs Open yonu + hacim buyuklugu",
+      "kurallar": {
+        "uyumlu": "Mum yonu + hacim sinyal yonunde → dogrulama",
+        "uyumsuz": "Mum yonu + hacim sinyal tersine → sahte sinyal riski, kaliteyi 1 kademe dusur"
+      }
+    },
+    "formasyon_tespiti": {
+      "veri_kaynagi": "data_get_ohlcv son 50-100 bar OHLC verisi (summary=false)",
+      "hesaplama": "Swing High/Low tespiti + trend cizgisi birlesimi + mum formasyonu analizi",
+      "devam_formasyonlari": [
+        "Yukselen Ucgen (Ascending Triangle): Yatay direnc + yukari kaldiran dipler, en az 3 temas",
+        "Alcalan Ucgen (Descending Triangle): Yatay destek + asagi inen tepeler",
+        "Boga Bayragi (Bull Flag): Sert yukselis sonrasi asagi egimli dar kanal",
+        "Ayi Bayragi (Bear Flag): Sert dusus sonrasi yukari egimli dar kanal",
+        "Simetrik Ucgen: Daralan tepeler ve dipler — kirilim yonunu bekle",
+        "Yukselen Kama (Rising Wedge): Bearish donus sinyali",
+        "Alcalan Kama (Falling Wedge): Bullish donus sinyali"
+      ],
+      "donus_formasyonlari": [
+        "Cift Tepe (Double Top): Iki benzer yuksek + boyun cizgisi kirilimi = short",
+        "Cift Dip (Double Bottom): Iki benzer dusuk + boyun cizgisi kirilimi = long",
+        "Omuz-Bas-Omuz (H&S): Sol omuz + bas + sag omuz + boyun cizgisi kirilimi = short",
+        "Ters OBO (Inverse H&S): Tersi — boyun kirilimi = long",
+        "Uclu Tepe/Dip: Uc kez test edilen seviye kirilirsa guclu hareket"
+      ],
+      "mum_formasyonlari": [
+        "Hammer/Inverted Hammer: Uzun alt/ust fitil, kucuk govde — dip/tepe sinyali",
+        "Engulfing (Yutan Mum): Onceki mumun tamamen icerisinde — guclu donus",
+        "Doji: Acilis ≈ kapanis — trend sonunda karar verilemezlik",
+        "Morning Star/Evening Star: 3 mumlu donus formasyonu",
+        "Pin Bar: Cok uzun fitil + kucuk govde — reddedilen seviye"
+      ],
+      "olgunluk_degerlendirmesi": {
+        "yuzde_100": "Kirilim gerceklesmis → GIRIS sinyali",
+        "yuzde_70_99": "Formasyon olgunlasmis → HAZIRLIK, kirilim bekle",
+        "yuzde_70_alti": "Erken asama → IZLE"
+      },
+      "kurallar": {
+        "kirilim_teyidi": "Kirilim aninda hacim ortalamanin 1.5x uzerinde olmali",
+        "sahte_kirilim": "Dusuk hacimli kirilim = sahte kirilim riski yuksek",
+        "hedef_fiyat": "Formasyon yuksekligi kadar kirilim noktasindan hesaplanir",
+        "indikator_uyum": "Formasyon kirilimi + indikator ayni yonde = sinyal kalitesi 1 kademe yukselir",
+        "indikator_celismeli": "Formasyon kirilimi + indikator karsi yonde = UYARI: sahte kirilim riski"
+      },
+      "zorunluluk": "HER taramada (kisa + uzun vade) formasyon kontrolu yapilir"
+    }
+  },
+  "sl_volatilite_adaptif": {
+    "aciklama": "ATR carpani volatiliteye gore degisir",
+    "yuksek_vol": {
+      "kosul": "ADX > 35 veya ATR spike",
+      "carpan": 2,
+      "not": "Genis SL, kucuk pozisyon"
+    },
+    "normal_vol": {
+      "kosul": "ADX 20-35",
+      "carpan": 1.5,
+      "not": "Varsayilan"
+    },
+    "dusuk_vol": {
+      "kosul": "ADX < 20",
+      "carpan": 1,
+      "not": "Siki SL, buyuk pozisyon"
+    },
+    "ob_kurali": {
+      "siki_ob": "OB genisligi < ATR x 0.5 → OB SL kullan",
+      "genis_ob": "OB genisligi > ATR x 2 → OB guvenilmez, ATR bazli SL kullan"
+    }
+  },
+  "stratejiler": {
+    "kisa_vade": {
+      "aciklama": "KhanSaab Sniper V.02 (momentum/skor) + LuxAlgo Smart Money Concepts (yapi/dogrulama) birlikte kullanilir",
+      "indikatorler": [
+        "Sniper Entry/Exit with SL&TP by KhanSaab V.02",
+        "Smart Money Concepts [LuxAlgo]"
+      ],
+      "zaman_dilimleri": [
+        "15",
+        "30",
+        "60"
+      ],
+      "sinyal_mantigi": {
+        "buy": "EMA 9, EMA 21 uzerini kestigi zaman (crossover) + Bull Score >= %57 (4/7)",
+        "sell": "EMA 9, EMA 21 altini kestigi zaman (crossunder) + Bear Score >= %57 (4/7)"
+      },
+      "skor_bilesenleri": [
+        "Fiyat VWAP uzerinde/altinda",
+        "RSI(14) 50 uzerinde/altinda",
+        "MACD > Signal / MACD < Signal",
+        "EMA 9 > EMA 21 / EMA 9 < EMA 21",
+        "ADX > 25 ve fiyat EMA 9 uzerinde/altinda",
+        "Hacim > 20-bar ortalama ve mum yonu",
+        "5m RSI > 50 / < 50"
+      ],
+      "bias_yorumu": {
+        "STRONG_BULL": "Bull-Bear fark >= %40 → agresif long aranabilir",
+        "MILD_BULL": "Bull > Bear ama fark < %40 → dikkatli long",
+        "MILD_BEAR": "Bear > Bull ama fark < %40 → dikkatli short",
+        "STRONG_BEAR": "Bear-Bull fark >= %40 → agresif short aranabilir"
+      },
+      "sl_hesaplama": "ATR(14) x 1.5 (KhanSaab default) veya en yakin OB altina/uzerine (SMC bazli) — hangisi daha sikiysa",
+      "tp_seviyeleri": "TP1=1R, TP2=2R, TP3=3R, TP4=4R, TP5=5R (R = ATR x 1.5)",
+      "smc_dogrulama": {
+        "indikator_adi": "Smart Money Concepts [LuxAlgo]",
+        "study_filter": [
+          "Smart Money",
+          "LuxAlgo"
+        ],
+        "bilesenleri": {
+          "BOS": "Break of Structure — trend devami. Ayni yonde BOS = sinyal dogrulama",
+          "CHoCH": "Change of Character — trend degisimi. Ayni yonde CHoCH = guclu ters donus sinyali",
+          "OB": "Order Blocks — kurumsal alis/satis bolgeleri. Entry yakininda bullish OB = destek, bearish OB = direnc",
+          "FVG": "Fair Value Gaps — likidite boslugu. Fiyat FVG icindeyse geri cekilme beklenir",
+          "EQH_EQL": "Equal Highs/Lows — likidite havuzu. Kirilirsa manipulasyon sonrasi hareket beklenir",
+          "Strong_Weak_HL": "Strong High/Low korunmasi beklenir, Weak High/Low kirilmasi beklenir",
+          "Premium_Discount": "Premium bolgede short, Discount bolgede long tercih edilir"
+        },
+        "sinyal_kalitesi": {
+          "A_sinyal": "KhanSaab 5+/7 skor + SMC ayni yonde BOS/CHoCH + OB destegi + uygun bolge → tam pozisyon",
+          "B_sinyal": "KhanSaab 4+/7 skor + SMC en az bir dogrulama (BOS veya OB) → %70 pozisyon",
+          "C_sinyal": "KhanSaab 4+/7 skor + SMC notr → %50 pozisyon",
+          "iptal": "KhanSaab ve SMC celiskili (orn: KhanSaab BUY + SMC Bearish CHoCH + premium bolge) → islem YAPMA"
+        }
+      }
+    },
+    "orta_vade": {
+      "aciklama": "Supertrend + Inverse Fisher Transform on CCI ile orta vadeli trend takibi",
+      "indikatorler": [
+        {
+          "ad": "Supertrend",
+          "ayarlar": {
+            "ATR_Period": 10,
+            "ATR_Multiplier": 5,
+            "Change_ATR_Method": true,
+            "Show_Signals": true
+          },
+          "sinyal": "Trend degisimi: yesil=bullish, kirmizi=bearish"
+        },
+        {
+          "ad": "Inverse Fisher Transform on CCI V2",
+          "kaynak": "https://www.tradingview.com/v/nJnz4FX3/",
+          "ayarlar": {
+            "CCI_Length": 89
+          },
+          "sinyal": "IFCCI +0.5 uzerinde = asiri alim bolgesi, -0.5 altinda = asiri satim bolgesi. Kesisimler giris/cikis sinyali"
+        }
+      ],
+      "zaman_dilimleri": [
+        "240",
+        "1D",
+        "1W"
+      ],
+      "kombinasyon_kurallari": [
+        "Supertrend yesil + IFCCI yukari kesisim = guclü long sinyali",
+        "Supertrend kirmizi + IFCCI asagi kesisim = guclü short sinyali",
+        "Supertrend ve IFCCI celiskili ise → bekle veya pozisyon kucult"
+      ]
+    }
+  },
+  "bias_criteria": {
+    "bullish": [
+      "KhanSaab Bull Score >= %57 (en az 4/7 kriter saglanmali)",
+      "Fiyat VWAP ve EMA 21 uzerinde",
+      "MACD ana cizgi sinyal cizgisi uzerinde",
+      "ADX > 25 (guclu trend var)",
+      "Supertrend yesil (4H veya Daily bazinda)",
+      "IFCCI(89) yukari kesisim yapmis veya pozitif bolgede"
+    ],
+    "bearish": [
+      "KhanSaab Bear Score >= %57 (en az 4/7 kriter saglanmali)",
+      "Fiyat VWAP ve EMA 21 altinda",
+      "MACD ana cizgi sinyal cizgisi altinda",
+      "ADX > 25 (guclu trend var)",
+      "Supertrend kirmizi (4H veya Daily bazinda)",
+      "IFCCI(89) asagi kesisim yapmis veya negatif bolgede"
+    ],
+    "notr": [
+      "Bull ve Bear skoru birbirine yakin (fark < %28)",
+      "Fiyat EMA 9 ve EMA 21 arasinda sikisik",
+      "ADX < 20 (zayif trend / yatay piyasa)",
+      "Supertrend renk degistirmeye yakin veya yeni degistirmis",
+      "IFCCI sifir civari → net yon yok, islem YAPMA"
+    ]
+  },
+  "risk_kurallari": {
+    "genel": {
+      "risk_profili": "ORTA",
+      "islem_basi_risk": "Hesabin %1.5'i (kesinlikle %2'yi gecmez)",
+      "max_gunluk_kayip": "Hesabin %4'u — bu sinira ulasildiginda gun icin islem durur",
+      "max_haftalik_kayip": "Hesabin %8'i — bu sinira ulasildiginda hafta boyunca sadece izleme",
+      "max_acik_pozisyon": 3,
+      "max_ayni_yonde_pozisyon": 2,
+      "min_rr_orani": "1:2 (R:R 1:2'nin altinda islem ALINMAZ)",
+      "hedef_rr_orani": "1:3 (ideal)",
+      "ust_ust_kayip_limiti": "3 kayip → gun icin islem DURUR",
+      "haftalik_ust_ust_kayip": "5 kayip → haftalik mola, strateji gozden gecir"
+    },
+    "kripto": {
+      "max_pozisyon_buyuklugu": "Portfoyun %5'i tek bir kripto pozisyonunda",
+      "kaldırac": "Spot veya max 3x (demo trading icin 5x kabul edilebilir)",
+      "not": "USDT.D yukseliyorsa kripto long pozisyonlarda dikkatli ol"
+    },
+    "forex": {
+      "max_pozisyon_buyuklugu": "Portfoyun %3'u tek bir forex pozisyonunda",
+      "kaldırac": "Max 10x"
+    },
+    "hisse": {
+      "max_pozisyon_buyuklugu": "Portfoyun %5'i tek bir hissede",
+      "not": "Earnings oncesi pozisyon kucult veya kapat"
+    },
+    "emtia": {
+      "max_pozisyon_buyuklugu": "Portfoyun %5'i tek bir emtia pozisyonunda"
+    }
+  },
+  "pozisyon_yonetimi": {
+    "giris": "Sinyalde tum pozisyonu birden acma, 2-3 kademeli giris yap",
+    "tp_mesafeleri_R": {
+      "normal_vol": { "tp1": 1.0, "tp2": 2.2, "tp3": 3.5 },
+      "high_vol":   { "tp1": 1.2, "tp2": 2.5, "tp3": 4.0 },
+      "aciklama": "2026-04 backtest (simulate-tp1.js) ile dogrulandi: TP1=1.0R hit orani 1.5R'a gore +%33, sl_hit rescue orani %3.6 -> %12.0."
+    },
+    "dinamik_tp_sayisi": {
+      "3_tp": "Varsayilan — ATR(14) 20-bar ortalamasinin %70-%140 araliginda",
+      "2_tp": "ATR(14) < 20-bar ort. %70 (dusuk vol / squeeze) → TP3 = null, pozisyon %50/%50 TP1/TP2 ile kapanir",
+      "amac": "Sakin piyasada uzak TP3'e bosuna umut baglamamak, TP1/TP2 ile erken realize"
+    },
+    "tp_stratejisi": [
+      "3-TP modu (normal/yuksek vol): TP1'de %30 kapat + SL break-even, TP2'de %30 daha, TP3 full-close",
+      "2-TP modu (dusuk vol): TP1'de %50 kapat + SL break-even, TP2'de full-close (TP3 yok)",
+      "TP1 dolmadan SL olup MFE TP1 mesafesinin %70+'ine ulastiysa: status=sl_hit_high_mfe (ladder icin neutral, demote tetiklemez)"
+    ],
+    "sl_kurallari": [
+      "SL kesinlikle konulur, SL'siz islem YOKTUR",
+      "KhanSaab indikatoru: ATR(14) x 1.5 mesafe",
+      "Supertrend: Supertrend cizgisi SL olarak kullanilabilir",
+      "SL asagi cekilmez (kaybi buyutmek yasak), sadece yukari (kari korumak icin)"
+    ]
+  },
+  "okx_demo_entegrasyonu": {
+    "aktif": true,
+    "aciklama": "OKX demo trading botu burada uretilen sinyalleri kullanarak islem acar",
+    "kurallari": [
+      "Sadece kripto watchlist'teki enstrumanlar icin sinyal uretilir",
+      "Her sinyal icin entry, SL, TP1-TP3 seviyeleri belirtilir",
+      "Bot otomatik islem acmadan once bias en az MILD seviyede olmali",
+      "STRONG BULL/BEAR sinyallerinde tam pozisyon, MILD'de yarim pozisyon",
+      "Demo hesapta risk kurallari gercek hesapla ayni uygulanir (disiplin icin)"
+    ]
+  },
+  "seans_filtreleri": {
+    "forex": {
+      "londra": {
+        "saat_utc": "08:00-16:00",
+        "ozellik": "Yuksek volatilite, trend",
+        "sinyal": "Tum sinyaller aktif"
+      },
+      "new_york": {
+        "saat_utc": "13:00-21:00",
+        "ozellik": "Yuksek volatilite, reversal",
+        "sinyal": "Trend + reversal"
+      },
+      "london_ny_overlap": {
+        "saat_utc": "13:00-16:00",
+        "ozellik": "Maksimum volatilite",
+        "sinyal": "A-sinyal firsatlari burada yogunlasir"
+      },
+      "asya": {
+        "saat_utc": "00:00-08:00",
+        "ozellik": "Dusuk volatilite, range",
+        "sinyal": "Sadece OB bounce, breakout yoksay"
+      },
+      "kapanis_sonrasi": {
+        "saat_utc": "21:00-00:00",
+        "ozellik": "Cok dusuk volatilite",
+        "sinyal": "Islem YAPMA"
+      }
+    },
+    "kripto": {
+      "en_iyi_saatler_utc": "08:00-20:00",
+      "dikkat": "Pazar gecesi/Pazartesi sabahi Asya acilisinda gap riski",
+      "not": "CME Bitcoin Futures acilis/kapanis saatlerinde manipulasyon riski"
+    },
+    "abd_hisse": {
+      "pre_market": "13:30-14:30 UTC (16:00-16:30 TSI)",
+      "market_open": "14:30 UTC (16:30 TSI)",
+      "en_iyi_saatler": "14:30-18:00 UTC (ilk 3.5 saat)",
+      "dikkat": "Ilk 15dk acilis volatilitesi — bekle"
+    },
+    "bist": {
+      "seans_1": "07:00-10:00 UTC (10:00-13:00 TSI)",
+      "seans_2": "11:00-15:00 UTC (14:00-18:00 TSI)",
+      "dikkat": "Ilk 15dk acilis volatilitesi — bekle"
+    }
+  },
+  "notlar": [
+    "Bu MCP sunucusu tamamen ucretsizdir — acik kaynak, API anahtari gerektirmez",
+    "pine_check araci Pine Script kodunu TradingView sunucularina gonderir; hassas stratejilerde KULLANMA",
+    "USDT.D (Tether dominans) yukseliyorsa → kripto piyasasinda risk-off, long'larda dikkatli ol",
+    "BTCXAU ve ETHXAU paritelerini altin karsisinda kripto performansini olcmek icin kullan",
+    "BIST islemleri icin Turk piyasasi saatlerine dikkat et (10:00-18:00 TSI)",
+    "ABD hisseleri icin pre-market (16:00-16:30 TSI) ve market open (16:30 TSI) zamanlamasi onemli",
+    "Buyuk makro olay gunlerinde (FOMC, NFP, CPI) pozisyon kucult veya islem yapma"
+  ]
+}
