@@ -28,10 +28,30 @@ const KNOWN_PATHS = {
 
 export { KNOWN_PATHS };
 
+// Errors that mean the bound CDP target is gone (tab closed/navigated/detached).
+// When we see these, drop the cached client and rebind.
+const STALE_TARGET_RE = /No target with given id|Target closed|Inspector .* disconnected|Session .* not found|WebSocket is not open|WebSocket connection closed/i;
+
 export async function getClient() {
   if (client) {
     try {
-      // Quick liveness check
+      // Freshness check: if the user switched tabs in TV Desktop, the frontmost
+      // chart target changes but our cached client is still bound to the old one.
+      // Rebind proactively so the next call operates on the tab the user is actually on.
+      let current = null;
+      try {
+        current = await findChartTarget();
+      } catch {
+        // If /json/list is unreachable, fall through to the liveness check below —
+        // the existing client may still be usable.
+      }
+      if (current && targetInfo && current.id !== targetInfo.id) {
+        try { await client.close(); } catch {}
+        client = null;
+        targetInfo = null;
+        return connect();
+      }
+      // Liveness check
       await client.Runtime.evaluate({ expression: '1', returnByValue: true });
       return client;
     } catch {
@@ -84,7 +104,7 @@ export async function getTargetInfo() {
   return targetInfo;
 }
 
-export async function evaluate(expression, opts = {}) {
+async function runEvaluate(expression, opts) {
   const c = await getClient();
   const result = await c.Runtime.evaluate({
     expression,
@@ -99,6 +119,21 @@ export async function evaluate(expression, opts = {}) {
     throw new Error(`JS evaluation error: ${msg}`);
   }
   return result.result?.value;
+}
+
+export async function evaluate(expression, opts = {}) {
+  try {
+    return await runEvaluate(expression, opts);
+  } catch (err) {
+    // If the bound CDP target died mid-call (tab closed/navigated), rebind and retry once.
+    if (STALE_TARGET_RE.test(err?.message || '')) {
+      try { if (client) await client.close(); } catch {}
+      client = null;
+      targetInfo = null;
+      return runEvaluate(expression, opts);
+    }
+    throw err;
+  }
 }
 
 export async function evaluateAsync(expression) {
