@@ -308,15 +308,31 @@
         }
       },
       "procedimento_zona_sd": {
-        "descricao": "Como identificar e definir uma zona Supply/Demand com rigor",
+        "descricao": "Como identificar e definir uma zona Supply/Demand com rigor. NÃO usar conceito de Order Block (OB) — terminologia proibida nesta estratégia.",
+        "conceito_supply": "Zona Supply = BASE DE CONSOLIDAÇÃO antes do impulso bearish. A zona abrange as velas de consolidação (base) antes da vela de impulso descendente. Proximal = fundo da base (lado mais próximo do preço quando este sobe). Distal = topo da base.",
+        "conceito_demand": "Zona Demand = BASE DE CONSOLIDAÇÃO antes do impulso bullish. A zona abrange as velas de consolidação (base) antes da vela de impulso ascendente. Proximal = topo da base (lado mais próximo do preço quando este desce). Distal = fundo da base.",
         "passos": [
-          "1. Screenshot para identificar visualmente a vela candidata (estrutura, contexto)",
-          "2. data_get_ohlcv para obter os valores OHLCV exactos dessa vela",
-          "3. Identificar: corpo da vela (open/close) = limites da zona",
-          "4. Confirmar FVG: verificar se existe gap entre high/low de velas consecutivas",
+          "1. Screenshot para identificar visualmente a BASE (consolidação antes do impulso) — nunca uma vela isolada",
+          "2. data_get_ohlcv para obter os valores OHLCV exactos das velas da base",
+          "3. Identificar: Low da base = distal (demand) ou proximal (supply) | High da base = proximal (demand) ou distal (supply)",
+          "4. Confirmar FVG: verificar se existe gap entre high/low de velas consecutivas na zona",
           "5. Confirmar Unmitigated: o preço nunca voltou a tocar a zona depois de a criar",
-          "6. Definir zona com valores precisos: 'Supply: open X.XXXXX → close X.XXXXX'"
-        ]
+          "6. Definir zona com valores precisos: 'Supply [TF]: proximal X.XXXXX → distal X.XXXXX'"
+        ],
+        "nota_critica": "PROIBIDO identificar zonas S&D em 15M ou 5M — esses TF são exclusivamente para entradas (CHoCH/MSS trigger). Zonas S&D identificam-se do Weekly até ao 1H."
+      },
+      "tf_cascade_sd": {
+        "descricao": "Cascata obrigatória para identificação e validação de zonas Supply/Demand. Sempre especificar o TF de cada zona.",
+        "cascata": "Weekly → Daily → 4H → 1H",
+        "regra_cascata": "As zonas validam em cascata top-down. Uma zona 1H só é relevante se alinhada com a narrativa HTF. O 1H é o TF mínimo para identificar zonas S&D.",
+        "limite_inferior": "Abaixo do 1H (15M, 5M) = APENAS entradas. CHoCH/MSS para trigger. NUNCA identificar zonas S&D em 15M ou 5M.",
+        "zonas_por_tf": {
+          "weekly": "Zonas macro — contexto e bias direcional HTF. Definem o range principal (Range H / Range L).",
+          "daily": "Zonas de confluência — confirmam o bias semanal e identificam alvos intermédios.",
+          "4H": "Zonas de setup — POIs de entrada principais. Alinhadas com Daily+Weekly.",
+          "1H": "Zonas de refinamento — entrada mais precisa. Último TF onde se identificam zonas S&D. Deve estar alinhada com 4H+Daily+Weekly."
+        },
+        "regra_apresentacao": "SEMPRE incluir o TF na designação da zona. Correto: 'Zona Supply 1H', 'Zona Demand 4H', 'Zona Supply Daily'. PROIBIDO: apresentar uma zona sem TF identificado."
       },
       "procedimento_analise_semanal": {
         "descricao": "Ordem e ferramentas para análise de início de semana. Claude faz o trabalho completo — utilizador valida.",
@@ -369,13 +385,31 @@
         "deriva_8": {
           "risco": "Mudar o procedimento em resposta a pedidos de rapidez, simplificação ou pressão implícita",
           "correcao": "Qualquer alteração ao procedimento requer pedido explícito do utilizador e confirmação. Pressão implícita ou percepcionada não é autorização."
+        },
+        "deriva_9": {
+          "risco": "Usar terminologia 'Order Block (OB)' ou 'OB' em vez de zona Supply/Demand",
+          "correcao": "PROIBIDO usar 'OB', 'Order Block', 'Bullish OB', 'Bearish OB' ou qualquer terminologia alheia à estratégia JEAFX. A estratégia usa exclusivamente 'Zona Supply [TF]' e 'Zona Demand [TF]'. Qualquer referência a OB deve ser imediatamente substituída pela terminologia correcta."
+        },
+        "deriva_10": {
+          "risco": "Apresentar uma zona S&D sem especificar o TF de onde foi identificada",
+          "correcao": "PROIBIDO apresentar zonas sem TF. Toda a zona deve incluir o TF na designação: 'Zona Supply 1H', 'Zona Demand 4H', etc. Se o TF não está claro — identificar antes de apresentar."
+        },
+        "deriva_11": {
+          "risco": "Identificar zona S&D a partir de uma vela isolada (comportamento de OB) em vez da base de consolidação antes do impulso",
+          "correcao": "Zona S&D é sempre definida pela BASE (consolidação antes do impulso). Pode ser uma ou várias velas de consolidação. Nunca usar uma vela bearish/bullish isolada como definição da zona — isso é OB, não S&D."
         }
       },
       "formato_obrigatorio_zona": {
-        "descricao": "Formato obrigatório para apresentar qualquer zona S/D identificada",
-        "template": "Zona [Supply/Demand] [TF]: [Tipo de zona] | Vela: [data/hora] | Open: X.XXXXX | Close: X.XXXXX | High: X.XXXXX | Low: X.XXXXX | FVG: [Sim/Não — gap de X.XXXXX a X.XXXXX] | Unmitigated: [Sim/Não]",
-        "exemplo": "Zona Supply W: Decisão bearish | Vela: 2026-03-10 | Open: 1.18420 | Close: 1.17650 | High: 1.18920 | Low: 1.17280 | FVG: Sim — gap 1.17650 a 1.17900 | Unmitigated: Sim",
-        "regra": "Nunca apresentar uma zona sem este formato completo. Se algum campo não está confirmado, escrever 'pendente — a verificar' e correr data_get_ohlcv antes de continuar."
+        "descricao": "Formato obrigatório para apresentar qualquer zona S/D identificada. TF é sempre obrigatório.",
+        "template": "Zona [Supply/Demand] [TF] | Base: [data/hora vela(s) da base] | Proximal: X.XXXXX | Distal: X.XXXXX | FVG: [Sim/Não — gap de X.XXXXX a X.XXXXX] | Unmitigated: [Sim/Não]",
+        "exemplo": "Zona Supply 1H | Base: 2026-04-16 | Proximal: 1.17720 | Distal: 1.18080 | FVG: Não | Unmitigated: Sim",
+        "regras": [
+          "Nunca apresentar uma zona sem este formato completo",
+          "TF é SEMPRE obrigatório na designação da zona",
+          "Proximal = lado mais próximo do preço atual | Distal = lado mais afastado",
+          "Se algum campo não está confirmado, escrever 'pendente — a verificar' e correr data_get_ohlcv antes de continuar",
+          "PROIBIDO usar 'OB' em qualquer parte da apresentação da zona"
+        ]
       },
       "auto_verificacao": {
         "descricao": "Antes de apresentar qualquer nível ou zona, o Claude verifica internamente:",
@@ -627,7 +661,11 @@
       "Perseguir o retracement depois do trade principal já ter disparado — cada oportunidade tem o seu momento no range",
       "Descer a 15M/5M em ativos de Nível 2 ou Nível 3 — entrada máxima no 30M nesses níveis",
       "Analisar N2 ou N3 quando ainda existe setup válido em N1 — foco total no nível mais alto com oportunidade",
-      "Sacrificar qualidade de análise do N1 para cobrir mais ativos — sniper, não metralhadora"
+      "Sacrificar qualidade de análise do N1 para cobrir mais ativos — sniper, não metralhadora",
+      "Usar terminologia 'Order Block (OB)' ou 'OB' — a estratégia JEAFX usa exclusivamente zonas Supply e Demand",
+      "Apresentar uma zona S&D sem especificar o TF — toda a zona inclui sempre o TF na designação (ex: 'Zona Supply 1H')",
+      "Identificar zonas S&D em 15M ou 5M — esses TF são exclusivamente para entradas (CHoCH/MSS trigger)",
+      "Definir uma zona S&D a partir de uma vela isolada — a zona é sempre definida pela base de consolidação antes do impulso"
     ]
   }
 }
