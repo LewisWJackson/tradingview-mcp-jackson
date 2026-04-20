@@ -274,6 +274,58 @@
       },
       "rule": "Proibido entrar sem Cenário A e Cenário B definidos. O mercado não nos apanha de surpresa — ou estava no plano ou não se entra."
     },
+    "retracement_opportunities": {
+      "description": "Em toda a análise identificar SEMPRE duas camadas de oportunidade dentro do range: o trade principal (com o HTF) e o retracement (contra-tendência entre supply e demand). Capitalizar o range completo.",
+      "concept": "O preço oscila entre Supply e Demand. Dentro desse range existem duas oportunidades: vender a Supply para alimentar a Demand (retracement), e comprar a Demand para subir à Supply (trade principal). Identificar ambas em cada análise.",
+      "structure": {
+        "trade_principal": {
+          "prioridade": "🥇 1ª oportunidade — alinhado com HTF bias",
+          "direcao": "Com a tendência macro (DXY confirma)",
+          "entrada": "CE obrigatório — CHoCH/MSS no LTF após sweep da zona",
+          "tamanho": "Tamanho normal conforme regras de risco",
+          "rr_minimo": "1:3 preferencial"
+        },
+        "retracement": {
+          "prioridade": "🥈 2ª oportunidade — contra-tendência dentro do range",
+          "direcao": "Contra o HTF bias — de Supply para Demand ou vice-versa",
+          "entrada": "CE OBRIGATÓRIO — nunca RE em trade contra-tendência",
+          "tamanho": "Tamanho reduzido (50% do normal) — risco acrescido por ser contra HTF",
+          "condicao_extra": "Só válido se o trade principal ainda não tiver disparado. Se o trade principal já correu, não perseguir o retracement.",
+          "rr_minimo": "1:2 mínimo — range tem de compensar o risco contra-tendência"
+        }
+      },
+      "formato_analise_obrigatorio": {
+        "descricao": "Formato padrão de apresentação para cada ativo em toda a análise",
+        "template": [
+          "📍 ASSET — Semana XX",
+          "HTF Bias: [Bullish/Bearish] | Range: [Supply nível] ↔ [Demand nível]",
+          "",
+          "🥈 RETRACEMENT (2ª oportunidade — contra-tendência):",
+          "  Zona: [nível supply ou demand de partida]",
+          "  Direção: [SHORT/LONG]",
+          "  Condição: CE obrigatório + CHoCH [TF de confirmação]",
+          "  SL: [nível] | TP: [zona oposta do range]",
+          "  ⚠️ Tamanho reduzido — contra HTF | Só se trade principal ainda não disparou",
+          "",
+          "🥇 TRADE PRINCIPAL (1ª oportunidade — com tendência):",
+          "  Zona: [nível demand ou supply principal]",
+          "  Direção: [LONG/SHORT]",
+          "  Condição: CE — CHoCH [TF] + CVD confirma",
+          "  SL: [nível] | TP1: [parcial] | TP2: [alvo final]",
+          "  ✅ Tamanho normal — alinhado com HTF",
+          "",
+          "Invalidação: [nível que cancela toda a análise]"
+        ]
+      },
+      "regras": [
+        "Toda a análise apresentada ao utilizador DEVE incluir sempre as duas camadas — retracement E trade principal",
+        "O retracement é sempre de 2ª prioridade — nunca sacrificar o trade principal por perseguir o retracement",
+        "CE é mandatório no retracement — RE contra-tendência é proibido",
+        "Se o trade principal já disparou e o retracement ainda não ocorreu → ignorar o retracement",
+        "Tamanho reduzido no retracement — o risco é real por ser contra o HTF",
+        "O retracement só faz sentido se o range for suficientemente amplo para RR mínimo 1:2"
+      ]
+    },
     "execution_checklist": [
       "1. DXY: Qual é o bias macro? Correlação inversa com o ativo confirmada?",
       "2. CONTEXTO: Premium (potencial short) ou Discount (potencial long)?",
@@ -293,6 +345,7 @@
         "PASSO 2 — CORRELAÇÃO: DXY em zona supply → EURUSD/XAUUSD em zona demand? Correlação inversa confirmada? Narrativa dos dois alinhada?",
         "PASSO 3 — ATIVO (MTF): Estrutura 4H. Qual o range MTF (swing high/low atuais)? Premium ou Discount? Volume Profile — POC/VAH/VAL? Weekly VWAP acima/abaixo?",
         "PASSO 4 — ZONA: Unmitigated com FVG no 4H. POI significativo identificado? É demand em Discount ou supply em Premium?",
+        "PASSO 4B — RETRACEMENT: Identificar a oportunidade de retracement dentro do range. SE o trade principal é LONG da demand → existe SHORT da supply para alimentar a demand? SE o trade principal é SHORT da supply → existe LONG da demand para alimentar a supply? Apresentar SEMPRE as duas camadas.",
         "PASSO 5 — LIQUIDEZ: EQH/EQL visíveis? Quem vai ser estopado? SSL/BSL identificado? Inducement vs True Demand/Supply?",
         "PASSO 6 — AGUARDAR SWEEP: Price faz sweep da liquidez? Confirmar que o sweep aconteceu antes de agir.",
         "PASSO 7 — GATILHO (LTF): CHoCH/MSS no 15M após sweep? CVD confirma divergência/spike? Daily VWAP como confluência? Esta é a assinatura do Smart Money.",
@@ -412,7 +465,10 @@
       "Usar indicadores de retalho — análise visual + Volume Profile + CVD + VWAP",
       "Entrar sem ter Cenário A e Cenário B definidos previamente",
       "Entrar sem responder às 4 perguntas JFX: narrativa, POIs, gatilho, stop/alvo com justificação",
-      "Ignorar o range MTF — saber sempre entre que swing high/low o preço está a trabalhar"
+      "Ignorar o range MTF — saber sempre entre que swing high/low o preço está a trabalhar",
+      "Apresentar análise sem identificar a oportunidade de retracement — as duas camadas (trade principal + retracement) são sempre obrigatórias",
+      "Fazer RE num trade de retracement (contra-tendência) — CE é sempre obrigatório quando se vai contra o HTF",
+      "Perseguir o retracement depois do trade principal já ter disparado — cada oportunidade tem o seu momento no range"
     ]
   }
 }
