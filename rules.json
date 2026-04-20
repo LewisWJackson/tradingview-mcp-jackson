@@ -1,65 +1,418 @@
 {
-  "watchlist": ["BTCUSDT"],
-  "default_timeframe": "1",
-
-  "strategy": {
-    "name": "10-Second Momentum Scalper",
-    "sources": [
-      "Price momentum — buy if last close > previous close (green candle)",
-      "RSI filter — only trade when RSI is not at an extreme (30–70 range)"
+  "rules": {
+    "method_name": "JEAFX Sapa de Sniper — Rasto Institucional",
+    "philosophy": "O foco não é o retalho — é o Rasto Institucional. O objetivo é validar cenários onde o Smart Money está a atuar, ignorando o ruído e focando na eficiência do preço. O dinheiro é um subproduto de sistemas vencedores. Só entrar quando o setup é válido — nunca forçar.",
+    "mindset": [
+      "Foco no processo, não no lucro — o dinheiro é um subproduto de sistemas vencedores",
+      "Sou responsável por todos os resultados — bons e maus",
+      "Sigo os meus sistemas com disciplina absoluta e sem exceções",
+      "Aplico paciência — sou seletivo com as minhas entradas",
+      "Estudo, faço backtest e journal consistentemente, sem exceções",
+      "Corto as perdas com uma mente neutra — não sou mais inteligente que o mercado",
+      "Abraço os erros e uso-os para otimizar os meus sistemas",
+      "Foco no resultado do trimestre/ano, não apenas do dia",
+      "Não apanho facas a cair — sigo o dinheiro pesado",
+      "Sem setup válido = sem trade. Nunca forçar uma entrada."
     ],
-    "primary_timeframes": [
-      "1-minute (signal source)",
-      "10-second execution loop"
+    "assets": {
+      "primary": [
+        "DXY",
+        "EURUSD",
+        "XAUUSD",
+        "BTCUSD"
+      ],
+      "secondary": [
+        "GBPUSD",
+        "EURGBP",
+        "US30"
+      ],
+      "note": "Analisar sempre os primários. Secundários apenas se não houver oportunidade nos primários."
+    },
+    "dxy_correlation": {
+      "description": "O DXY é o ponto de partida de toda a análise. Define o bias macro para os restantes ativos.",
+      "rules": [
+        "Começar SEMPRE pelo DXY antes de qualquer outro ativo",
+        "DXY bullish (BOS para cima) = EURUSD bearish = XAUUSD bearish (tendencialmente)",
+        "DXY bearish (BOS para baixo) = EURUSD bullish = XAUUSD bullish (tendencialmente)",
+        "Se zona supply no DXY coincide inversamente com zona demand no EURUSD = confluência de alta probabilidade",
+        "Correlação inversa DXY/EURUSD confirmada = probabilidade de sucesso aumenta significativamente",
+        "BTCUSD tem correlação mais independente mas monitorizar contexto macro do DXY"
+      ]
+    },
+    "trading_style": {
+      "primary": "daytrading",
+      "secondary": "swing",
+      "note": "Aproveitar oportunidades diárias (London/NY) e semanais (HTF bias). Sem mínimo nem máximo de trades — só entrar quando o setup é válido."
+    },
+    "sessions": {
+      "primary": [
+        "London",
+        "New York"
+      ],
+      "asia_range": "Monitorizar para Asia Liquidity Run (ALS) — oportunidade diária recorrente",
+      "transition_filter": "1H usado para ver transição entre sessões e encontrar FVGs"
+    },
+    "risk_management": {
+      "objective_monthly_eur": 5000,
+      "note_objective": "Objetivo de €5.000/mês mas sem limite de lucro — se o setup for válido continuar. Nunca parar por excesso de lucro.",
+      "entry_risk": {
+        "description": "Risco por trade entre €50 e €150 conforme o setup e convicção",
+        "minimo_eur": 50,
+        "maximo_eur": 150,
+        "EURUSD": {
+          "entrada_1_RE_instinto": "€50 a €100",
+          "entrada_2_CE_confirmacao": "€100 a €150",
+          "note": "Valor dentro do range conforme convicção no setup"
+        },
+        "XAUUSD": {
+          "entrada_1_RE_instinto": "€50 a €100",
+          "entrada_2_CE_confirmacao": "€100 a €150",
+          "note": "Valor dentro do range conforme convicção no setup"
+        },
+        "BTCUSD": {
+          "entrada_unica_CE": "€100 a €150",
+          "note": "BTC apenas uma entrada — sempre CE confirmado"
+        }
+      },
+      "daily_limits": {
+        "stop_emocional_eur": 650,
+        "note": "Se atingir €650 de perda num dia — parar imediatamente sem exceções",
+        "maximo_simultaneo": "€650 = os 3 ativos primários com risco total ao mesmo tempo",
+        "prop_firm_daily_limit_pct": 4,
+        "prop_firm_daily_limit_usd": 2000
+      },
+      "weekly_limits": {
+        "stop_semanal_eur": 1500,
+        "note": "Equivale a aproximadamente 2 dias maus consecutivos",
+        "trailing_profit_rule": "Se a semana estiver em lucro, nunca deixar o lucro semanal descer mais de 50%. Ex: €2.000 de lucro → parar se descer a €1.000."
+      },
+      "monthly_limits": {
+        "stop_mensal_eur": 3000,
+        "note": "Protege a conta FXIFY e mantém margem para recuperar",
+        "prop_firm_max_drawdown_pct": 10,
+        "prop_firm_max_drawdown_usd": 5000
+      },
+      "scaling_by_performance": {
+        "description": "Aumentar risco conforme a conta cresce. Reduzir automaticamente se descer um nível.",
+        "base": {
+          "condicao": "Início ou após drawdown",
+          "RE_eur": 100,
+          "CE_eur": 150,
+          "BTC_eur": 150,
+          "max_dia_eur": 650
+        },
+        "nivel_1": {
+          "condicao": "+10% de lucro na conta",
+          "RE_eur": 200,
+          "CE_eur": 300,
+          "BTC_eur": 300,
+          "max_dia_eur": 1300
+        },
+        "nivel_2": {
+          "condicao": "+20% de lucro na conta",
+          "RE_eur": 300,
+          "CE_eur": 450,
+          "BTC_eur": 450,
+          "max_dia_eur": 1950
+        },
+        "nivel_3": {
+          "condicao": "+30% de lucro na conta",
+          "RE_eur": 400,
+          "CE_eur": 600,
+          "BTC_eur": 600,
+          "max_dia_eur": 2600
+        },
+        "protecao": "Se descer um nível de profit → voltar ao risco do nível anterior automaticamente"
+      },
+      "rr_minimo": 1.5
+    },
+    "entry_system": {
+      "description": "Sistema de entrada split — duas entradas por setup (exceto BTC)",
+      "entrada_1": {
+        "tipo": "RE (Risk Entry) ou instinto",
+        "timing": "Na extremidade da zona supply/demand",
+        "risco_eur": 100,
+        "quando": "Liquidez muito clara, zona forte, contexto óbvio"
+      },
+      "entrada_2": {
+        "tipo": "CE (Confirmation Entry)",
+        "timing": "Após CHoCH/MSS confirmado no 15M/5M",
+        "risco_eur": 150,
+        "quando": "Sempre que possível — é a entrada preferida e de maior risco por ter mais probabilidade"
+      },
+      "btc_entrada_unica": {
+        "tipo": "CE sempre",
+        "risco_eur": 150,
+        "note": "BTC é mais volátil — nunca RE, sempre aguardar confirmação"
+      },
+      "gestao_sl": {
+        "regra": "Mover ambas as entradas para BE logo que a estrutura permita",
+        "gatilho": "Novo HH/HL (long) ou novo LL/LH (short) formado após entrada",
+        "abordagem": "Não mecânico — depende do que o preço está a fazer"
+      }
+    },
+    "timeframe_hierarchy": {
+      "weekly_daily": "Bias direcional principal. DXY primeiro. Grandes zonas Smart Money. Premium vs Discount. Volume Profile semanal.",
+      "4H": "Gráfico de trabalho principal. Validar BOS e narrativa semanal. Supply/Demand + FVG. Weekly VWAP.",
+      "1H": "Filtro de transição entre sessões. FVGs intermédios. Daily VWAP como referência de bias intraday.",
+      "15m_10m": "Timeframe de execução. BOS local + CHoCH/MSS após sweep. CVD para confirmar gatilho.",
+      "5m_1m": "Refinamento de entrada. Pinpoint entry. Daily VWAP + CVD para confirmar absorção institucional."
+    },
+    "pillars": {
+      "structure_is_king": "Tendência definida por BOS no 4H e Diário. HH+HL = uptrend. LL+LH = downtrend. Nunca contra a estrutura macro.",
+      "liquidity_as_fuel": "O preço move-se de liquidez em liquidez. Identificar EQH/EQL, SSL e BSL. Saber quem vai ser estopado antes do preço andar.",
+      "supply_demand_real": "Zonas têm de ser frescas (Unmitigated) e ter causado movimento forte com FVG. Zona retestada = efficient = não usar.",
+      "the_trigger": "Não entrar no toque. Esperar MSS/CHoCH em M15/M5 após Sweep. Confirmar com CVD. Esta é a assinatura do Smart Money."
+    },
+    "volume_profile": {
+      "concepts": {
+        "POC": "Point of Control — zona de maior volume. Ímã de preço e confluência forte com zonas supply/demand.",
+        "VAH": "Value Area High — extremo superior. Confluência com supply em Premium.",
+        "VAL": "Value Area Low — extremo inferior. Confluência com demand em Discount.",
+        "LVN": "Low Volume Node — preço passa rapidamente. Ideal para alvos.",
+        "HVN": "High Volume Node — zona de consolidação. Possível obstáculo — ajustar alvos."
+      },
+      "usage": [
+        "Usar no Daily e 4H como confluência adicional às zonas JEAFX",
+        "Zona Unmitigated + POC ou VAH/VAL = probabilidade muito elevada",
+        "LVN entre entrada e alvo = caminho limpo — setup favorável",
+        "HVN entre entrada e alvo = obstáculo — ajustar alvo ou evitar",
+        "Premium = preço acima do VAH. Discount = preço abaixo do VAL."
+      ]
+    },
+    "vwap": {
+      "daily_vwap": {
+        "timeframe": "Intraday 15M/5M/1M",
+        "usage": [
+          "Acima = buyers no controlo = bias long intraday",
+          "Abaixo = sellers no controlo = bias short intraday",
+          "Zona supply/demand + Daily VWAP = entrada forte",
+          "Preço tende a regredir ao VWAP — usar como alvo intermédio"
+        ]
+      },
+      "weekly_vwap": {
+        "timeframe": "Swing 4H/1H",
+        "usage": [
+          "Referência de valor justo para a semana",
+          "Confluência com zonas 4H supply/demand",
+          "Acima = bias swing bullish. Abaixo = bias swing bearish."
+        ]
+      },
+      "anchored_vwap": {
+        "timeframe": "Flexível",
+        "usage": [
+          "Ancorar a swing highs ou swing lows relevantes",
+          "Ancorar ao início de uma tendência",
+          "Ancorar a eventos de grande volume ou notícias macro",
+          "Funciona como suporte/resistência dinâmica"
+        ]
+      }
+    },
+    "order_flow_cvd": {
+      "cvd": {
+        "usage": [
+          "CVD sobe com o preço = confirmação do movimento",
+          "Preço sobe mas CVD desce = divergência bearish = fraqueza = possível reversão",
+          "Preço desce mas CVD sobe = divergência bullish = fraqueza dos vendedores",
+          "CVD spike no CHoCH/MSS = confirmação com volume institucional"
+        ]
+      },
+      "delta_volume": {
+        "usage": [
+          "Delta negativo em zona demand = absorção institucional = sinal bullish forte",
+          "Delta positivo em zona supply = absorção institucional = sinal bearish forte",
+          "Não entrar em delta neutro — aguardar absorção clara"
+        ]
+      }
+    },
+    "narrative_questions": {
+      "description": "As 4 perguntas obrigatórias JFX antes de qualquer análise ou entrada. Responder a todas antes de abrir qualquer trade.",
+      "questions": [
+        "1. NARRATIVA: O que é que o mercado está a contar? Quem controla — compradores ou vendedores? Smart Money está a acumular ou a distribuir? Qual o próximo objetivo lógico do preço?",
+        "2. POIs SIGNIFICATIVOS: Onde estão os pontos de interesse relevantes? Supply/Demand unmitigated, SSL/BSL, FVG, EQH/EQL — o que é que o preço ainda precisa de tocar?",
+        "3. GATILHO ESPECÍFICO: O que me faz entrar? RE na zona? CE após CHoCH/MSS? Qual o sinal exato que confirma a entrada — não uma vaga sensação, um evento técnico preciso.",
+        "4. STOP E ALVO — PORQUÊ: Onde está o SL e porquê (sweep inválido? estrutura quebrada?)? Onde está o TP e porquê (próxima liquidez? zona oposta? POC?)? R:R justifica o trade?"
+      ],
+      "rule": "Sem resposta clara às 4 perguntas = sem trade. Nunca entrar com ambiguidade na narrativa."
+    },
+    "mtf_framework": {
+      "description": "Estrutura de análise multi-timeframe JFX. Para CADA nível identificar: Bias + Range + POIs. HTF dá contexto, MTF dá o setup, LTF dá a entrada.",
+      "HTF": {
+        "timeframes": "Weekly + Daily",
+        "role": "Contexto — não se tradeiam zonas aqui, apenas se define a direção macro",
+        "bias": "Bullish (HH+HL) ou Bearish (LL+LH)? BOS confirmado em que direção?",
+        "range": "Qual o high e low significativo atual? Entre que níveis está o preço a oscilar no semanal/diário?",
+        "pois": "Grandes zonas Supply/Demand, SSL/BSL macro, FVGs diários não preenchidos"
+      },
+      "MTF": {
+        "timeframes": "4H + 1H",
+        "role": "Setup — aqui se identifica a zona de entrada e se valida o contexto",
+        "bias": "Estrutura 4H alinhada com HTF? Premium ou Discount? VWAP Weekly acima/abaixo?",
+        "range": "Qual o range atual do 4H? Entre que swing high e swing low está o preço a trabalhar?",
+        "pois": "Zonas Supply/Demand 4H unmitigated, FVGs 4H/1H, EQH/EQL intermédios, POC/VAH/VAL"
+      },
+      "LTF": {
+        "timeframes": "15M + 5M",
+        "role": "Execução — confirmação do gatilho e pinpoint entry",
+        "bias": "CHoCH/MSS formado após sweep? CVD confirma pressão institucional? Daily VWAP como referência?",
+        "range": "Qual o micro-range do 15M após o sweep? Onde está o fractal de entrada?",
+        "pois": "Fractal CE, IMB 15M, Daily VWAP, CVD spike"
+      },
+      "rule": "Nunca saltar níveis. HTF define o campo, MTF define a zona, LTF define o momento."
+    },
+    "scenario_building": {
+      "description": "Obrigação de construir cenários 'if this then that' antes de qualquer entrada. Nunca reagir ao mercado — antecipar com lógica.",
+      "format": {
+        "cenario_A": "SE o preço fizer X → ENTÃO eu farei Y (entry/espera/alerta)",
+        "cenario_B": "SE o preço fizer Z → ENTÃO eu farei W (entry alternativo/espera/invalidar)",
+        "invalidacao": "SE acontecer Q → o setup está inválido e saio/não entro"
+      },
+      "exemplo": {
+        "cenario_A": "SE EUR cai à TRUE DEMAND 1.16700-1.16998 E forma CHoCH 15M → ENTÃO CE Long com €150 risco, SL 1.16450, TP 1.18300",
+        "cenario_B": "SE EUR rejeita no SSL 1.17550 sem chegar à TRUE DEMAND E DXY vira bearish → ENTÃO CE Long mais cedo no CHOC 4H 1.17800 com €100 risco",
+        "invalidacao": "SE EUR quebra abaixo de 1.16450 com vela de fecho → setup inválido, esperar nova estrutura"
+      },
+      "rule": "Proibido entrar sem Cenário A e Cenário B definidos. O mercado não nos apanha de surpresa — ou estava no plano ou não se entra."
+    },
+    "execution_checklist": [
+      "1. DXY: Qual é o bias macro? Correlação inversa com o ativo confirmada?",
+      "2. CONTEXTO: Premium (potencial short) ou Discount (potencial long)?",
+      "3. VOLUME PROFILE: POC/VAH/VAL confluente com a zona?",
+      "4. VWAP: Daily/Weekly VWAP confirma o bias?",
+      "5. LIQUIDEZ: EQH/EQL/SSL/BSL identificado?",
+      "6. ZONA: Unmitigated com FVG/IMB forte?",
+      "7. SWEEP: Price fez sweep da liquidez?",
+      "8. CONFIRMAÇÃO: CHoCH/MSS no 15M/5M confirmado?",
+      "9. CVD: Divergência ou spike confirma pressão institucional?",
+      "10. RISCO: SL definido? Risco dentro dos limites? Stop diário atingido?"
+    ],
+    "full_process": {
+      "steps": [
+        "PASSO 0 — NARRATIVA (JFX): Quem controla o mercado agora? O que está a mover o preço? Qual o próximo objetivo lógico do Smart Money? Construir Cenário A e Cenário B antes de continuar.",
+        "PASSO 1 — DXY (HTF): Estrutura Daily/4H. Bullish ou bearish? Qual o range atual? Zonas IMB? SSL/BSL macro? DXY em Premium ou Discount?",
+        "PASSO 2 — CORRELAÇÃO: DXY em zona supply → EURUSD/XAUUSD em zona demand? Correlação inversa confirmada? Narrativa dos dois alinhada?",
+        "PASSO 3 — ATIVO (MTF): Estrutura 4H. Qual o range MTF (swing high/low atuais)? Premium ou Discount? Volume Profile — POC/VAH/VAL? Weekly VWAP acima/abaixo?",
+        "PASSO 4 — ZONA: Unmitigated com FVG no 4H. POI significativo identificado? É demand em Discount ou supply em Premium?",
+        "PASSO 5 — LIQUIDEZ: EQH/EQL visíveis? Quem vai ser estopado? SSL/BSL identificado? Inducement vs True Demand/Supply?",
+        "PASSO 6 — AGUARDAR SWEEP: Price faz sweep da liquidez? Confirmar que o sweep aconteceu antes de agir.",
+        "PASSO 7 — GATILHO (LTF): CHoCH/MSS no 15M após sweep? CVD confirma divergência/spike? Daily VWAP como confluência? Esta é a assinatura do Smart Money.",
+        "PASSO 8 — ENTRADA 1 (RE €100): Na extremidade da zona. SL atrás do sweep. Apenas se narrativa e zona forem óbvias.",
+        "PASSO 9 — ENTRADA 2 (CE €150): Após CHoCH confirmado. SL atrás do fractal. Entrada preferida — maior probabilidade.",
+        "PASSO 10 — ALVOS (porquê?): Próxima liquidez oposta. LVN no caminho? Zona supply/demand oposta? Justificar o alvo — não usar números arbitrários.",
+        "PASSO 11 — GESTÃO: Novo HH/HL → ambas as entradas para BE. Trailing SL estrutural. Fechar por POI técnico — nunca parciais fixas.",
+        "PASSO 12 — LIMITE: Atingi €650 de perda hoje? Parar. Lucro semanal desceu 50%? Parar a semana."
+      ]
+    },
+    "trade_management": {
+      "description": "Gestão determinada pela análise técnica — não por regras fixas de parciais",
+      "risco_por_trade_eur": "€50 a €150 conforme setup e convicção",
+      "rr_minimo": "1:1.5 — abaixo não entrar",
+      "entrada_stop": "SL atrás do sweep de liquidez ou estrutura invalidada",
+      "saida": "Fecho determinado pelo próximo POI tecnicamente válido",
+      "poi_alvos": [
+        "EQH/EQL — próxima liquidez",
+        "Zona supply/demand oposta Unmitigated",
+        "POC/VAH/VAL do Volume Profile",
+        "VWAP Daily ou Weekly no caminho",
+        "LVN — Low Volume Node (caminho limpo)"
+      ],
+      "gestao_sl": {
+        "regra": "Mover para BE quando a estrutura permitir — novo HH/HL formado",
+        "abordagem": "Não mecânico — depende do que o preço está a fazer"
+      },
+      "fechar_trade": "Quando o preço atinge o POI alvo OU quando a estrutura invalida o trade",
+      "ny_close": "Fechar posições intraday no NY close salvo confluência HTF clara para swing",
+      "nunca": "Parciais fixas por R:R — o mercado dita a saída"
+    },
+    "setups_continuation": {
+      "C1_standard": "Retest demand/supply em efficient range após BOS. RE + CE válidos.",
+      "C2_inducement": "Sweep EQL/EQH + fill IMB extrema. RE válido com liquidez clara.",
+      "C3_trend_liquidity": "Sweep trendline + reação demand/supply na tendência. RE e CE válidos.",
+      "C4_eql_eqh_sweep": "Sweep EQL/EQH + zona IMB. RE frequentemente melhor.",
+      "C5_hs_trap": "H&S como armadilha = C4. EQL floor no neckline. RE válido.",
+      "C6_momentum": "Supply/demand fail em mercados fortemente direcionais. Scale-ins. CE por natureza."
+    },
+    "setups_reversal": {
+      "R1_basic": "Shift de tendência + follow through. CE por natureza. Fractal CE opcional.",
+      "R2_rebalance_extreme": "Reversão + BOS de corpo para IMB. Entrar da zona extrema. CE.",
+      "R3_rebalance_ztbs": "Igual R2 mas zona mid-range do IMB. CE.",
+      "R4_liquidity_sweep_ce": "Distribution após shift. IMB supply/demand acima/abaixo EQH/EQL. CE.",
+      "R5_range_liquidity": "Sweep EQH/EQL + BOS obrigatório. Puro CE — nunca RE aqui."
+    },
+    "als_process": {
+      "steps": [
+        "Step 1: Marcar range asiático. Identificar SSL (low) e BSL (high).",
+        "Step 2: Aguardar sweep do high ou low asiático.",
+        "Step 3: Aguardar CHoCH/BOS de volta para dentro do range.",
+        "Step 4: CVD — divergência após sweep?",
+        "Step 5: Entrada 1 RE €100 na zona. Entrada 2 CE €150 após CHoCH. Alvo = lado oposto do range."
+      ]
+    },
+    "schedule": {
+      "manha_8h15": {
+        "descricao": "Análise conjunta diária com Claude",
+        "tarefas": [
+          "Analisar DXY — bias macro do dia",
+          "Analisar ativos primários: EURUSD, XAUUSD, BTCUSD",
+          "Identificar zonas, liquidez, bias intraday",
+          "Colocar alertas no TradingView nos níveis chave",
+          "Definir Plano A e Plano B para cada ativo"
+        ]
+      },
+      "durante_o_dia": {
+        "descricao": "Monitorização a pedido — não contínua",
+        "tarefas": [
+          "Quando alerta TradingView disparar → pedir verificação ao Claude",
+          "Quando setup estiver perto → pedir monitorização 15M ou 1H",
+          "Fora disso → continuar o trabalho normalmente"
+        ]
+      },
+      "apos_trade": {
+        "descricao": "Claude gera entrada no journal automaticamente",
+        "tarefas": [
+          "Informar Claude: ativo, direção, entrada, SL, TP, resultado",
+          "Claude preenche o journal com todos os campos",
+          "Claude gera resumo diário no final do dia"
+        ]
+      },
+      "sessao": {
+        "inicio": "08h15 Lisboa",
+        "fecho": "17h00 Lisboa",
+        "sessoes_cobertas": [
+          "Pré-London",
+          "London",
+          "NY Open"
+        ],
+        "no_trade": "High impact news releases"
+      }
+    },
+    "journal_process": {
+      "daily": "Trades, DXY bias correto?, correlação confirmada?, checklist seguida?, risco respeitado?, processo /10, mindset /10.",
+      "weekly": "Review completo. Forças, fraquezas, melhorias. Verificar nível de scaling. Realinhar foco.",
+      "cycle": "Journal → Review → Otimizar → Repetir"
+    },
+    "forbidden": [
+      "Analisar qualquer ativo sem ver o DXY primeiro",
+      "Forçar uma entrada quando não há setup válido",
+      "Entrar sem CHoCH/MSS após sweep — nunca no toque direto da zona",
+      "Ignorar correlação DXY quando contradiz o setup",
+      "Negociar contra a estrutura macro (4H/D)",
+      "Entrar com IMB por preencher",
+      "Usar zonas já retestadas (efficient)",
+      "Entrar com R:R abaixo de 1:1.5 — mínimo obrigatório",
+      "Usar parciais fixas por R:R — saída sempre por POI técnico",
+      "Negociar em consolidação pura sem setup ALS ou range liquidity",
+      "Negociar em high impact news",
+      "Ultrapassar €650 de perda num dia",
+      "Ultrapassar €1.500 de perda numa semana",
+      "Ultrapassar €3.000 de perda num mês",
+      "Deixar lucro semanal descer mais de 50%",
+      "Fazer RE em BTC — sempre CE",
+      "Deixar intraday aberto além do NY close sem confluência HTF",
+      "Usar indicadores de retalho — análise visual + Volume Profile + CVD + VWAP",
+      "Entrar sem ter Cenário A e Cenário B definidos previamente",
+      "Entrar sem responder às 4 perguntas JFX: narrativa, POIs, gatilho, stop/alvo com justificação",
+      "Ignorar o range MTF — saber sempre entre que swing high/low o preço está a trabalhar"
     ]
-  },
-
-  "indicators": {
-    "rsi_14": "Momentum filter. Only trade when RSI is between 30–70 (avoid extremes).",
-    "price_momentum": "Compare last close vs previous close. Up = long signal. Down = short signal."
-  },
-
-  "bias_criteria": {
-    "bullish": [
-      "Last 1-min candle closed higher than the one before it",
-      "RSI is between 30 and 70"
-    ],
-    "bearish": [
-      "Last 1-min candle closed lower than the one before it",
-      "RSI is between 30 and 70"
-    ],
-    "neutral": [
-      "RSI is above 70 (overbought — skip)",
-      "RSI is below 30 (oversold — skip)",
-      "Candle close change is less than 0.05% (chop — skip)"
-    ]
-  },
-
-  "entry_rules": {
-    "long": [
-      "Last close > previous close by at least 0.05%",
-      "RSI between 30 and 70",
-      "Enter market buy immediately"
-    ],
-    "short": [
-      "Last close < previous close by at least 0.05%",
-      "RSI between 30 and 70",
-      "Enter market sell immediately"
-    ]
-  },
-
-  "exit_rules": [
-    "Exit automatically after 10 seconds (next loop tick closes previous position)",
-    "No manual exit management — pure time-based scalp"
-  ],
-
-  "risk_rules": [
-    "Fixed trade size: 1% of portfolio per trade",
-    "Maximum trade size: $3.00",
-    "Maximum 6 trades per 60-second run",
-    "No stop loss — exit is time-based at next tick",
-    "For demo purposes only — minimum BitGet order size may apply"
-  ],
-
-  "notes": "Demo strategy for YouTube video. Runs 6 trades over 60 seconds, one every 10 seconds. Signal is simple price momentum on 1-min candles with RSI sanity check."
+  }
 }
