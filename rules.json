@@ -326,7 +326,59 @@
           "6. Para cada zona: confirmar se ainda é Unmitigated com quote_get"
         ]
       },
-      "regra_imutavel": "Este procedimento não pode ser simplificado, acelerado ou substituído por estimativas visuais, mesmo que a análise demore mais. Velocidade nunca justifica falta de rigor. Se o utilizador não tiver dado permissão explícita para alterar qualquer ponto deste procedimento, ele mantém-se intacto."
+      "pontos_deriva_e_correcao": {
+        "descricao": "Pontos específicos onde o rigor pode ser comprometido e as correcções obrigatórias",
+        "deriva_1": {
+          "risco": "Fazer afirmações de nível baseadas em screenshot antes de usar data_get_ohlcv",
+          "correcao": "PROIBIDO afirmar qualquer nível de preço sem ter corrido data_get_ohlcv primeiro. Screenshot só serve para localizar a vela candidata."
+        },
+        "deriva_2": {
+          "risco": "Usar linguagem vaga: 'aproximadamente', 'em torno de', 'cerca de', 'perto de' para definir zonas",
+          "correcao": "PROIBIDO usar linguagem vaga para níveis. Toda a zona tem de ter valores exactos confirmados por data_get_ohlcv. Se não tenho os dados, digo 'ainda não confirmado — vou verificar' antes de continuar."
+        },
+        "deriva_3": {
+          "risco": "Saltar data_get_ohlcv quando a zona 'parece óbvia' visualmente",
+          "correcao": "Não existe zona óbvia que não precise de confirmação. Quanto mais óbvia parece, mais importante é confirmar. Sem excepções."
+        },
+        "deriva_4": {
+          "risco": "Identificar CHoCH, BOS, FVG, ou swing high/low apenas por leitura visual",
+          "correcao": "Qualquer estrutura (CHoCH, BOS, FVG) tem de ser verificada com os valores OHLCV reais das velas envolvidas. Afirmar 'existe CHoCH' requer identificar a vela exacta e os seus valores."
+        },
+        "deriva_5": {
+          "risco": "Ceder à velocidade — responder rápido com estimativas para não atrasar a conversa",
+          "correcao": "Velocidade nunca justifica falta de rigor. Se precisar de tempo para correr as ferramentas, digo 'vou verificar os dados' e aguardo. O utilizador prefere esperar por precisão do que receber estimativas rápidas."
+        },
+        "deriva_6": {
+          "risco": "Definir range HTF (Range H / Range L) sem verificar os valores exactos dos swing points",
+          "correcao": "Range H e Range L requerem data_get_ohlcv para confirmar o high/low exacto das velas que os constituem."
+        },
+        "deriva_7": {
+          "risco": "Confirmar FVG visualmente sem verificar que high de vela N e low de vela N+2 não se sobrepõem",
+          "correcao": "FVG = high da vela anterior < low da vela seguinte (para demand) ou low da vela anterior > high da vela seguinte (para supply). Verificar com valores OHLCV exactos das duas velas."
+        },
+        "deriva_8": {
+          "risco": "Mudar o procedimento em resposta a pedidos de rapidez, simplificação ou pressão implícita",
+          "correcao": "Qualquer alteração ao procedimento requer pedido explícito do utilizador e confirmação. Pressão implícita ou percepcionada não é autorização."
+        }
+      },
+      "formato_obrigatorio_zona": {
+        "descricao": "Formato obrigatório para apresentar qualquer zona S/D identificada",
+        "template": "Zona [Supply/Demand] [TF]: [Tipo de zona] | Vela: [data/hora] | Open: X.XXXXX | Close: X.XXXXX | High: X.XXXXX | Low: X.XXXXX | FVG: [Sim/Não — gap de X.XXXXX a X.XXXXX] | Unmitigated: [Sim/Não]",
+        "exemplo": "Zona Supply W: Decisão bearish | Vela: 2026-03-10 | Open: 1.18420 | Close: 1.17650 | High: 1.18920 | Low: 1.17280 | FVG: Sim — gap 1.17650 a 1.17900 | Unmitigated: Sim",
+        "regra": "Nunca apresentar uma zona sem este formato completo. Se algum campo não está confirmado, escrever 'pendente — a verificar' e correr data_get_ohlcv antes de continuar."
+      },
+      "auto_verificacao": {
+        "descricao": "Antes de apresentar qualquer nível ou zona, o Claude verifica internamente:",
+        "checklist": [
+          "✓ Corri data_get_ohlcv para esta vela específica?",
+          "✓ Os valores que vou apresentar vêm de dados reais, não de estimativa visual?",
+          "✓ Confirmei o FVG com valores OHLCV e não apenas visualmente?",
+          "✓ A zona é Unmitigated — o preço não regressou a ela?",
+          "✓ Estou a usar linguagem precisa (valores exactos) e não vaga ('cerca de', 'perto de')?"
+        ],
+        "regra": "Se a resposta a qualquer ponto for NÃO — parar, correr as ferramentas necessárias, e só então apresentar os resultados."
+      },
+      "regra_imutavel": "Este procedimento não pode ser simplificado, acelerado ou substituído por estimativas visuais, mesmo que a análise demore mais. Velocidade nunca justifica falta de rigor. Se o utilizador não tiver dado permissão explícita para alterar qualquer ponto deste procedimento, ele mantém-se intacto. Qualquer deriva detectada pelo utilizador deve ser corrigida imediatamente e o motivo da deriva explicado."
     },
     "mtf_framework": {
       "description": "Estrutura de análise multi-timeframe JFX. Para CADA nível identificar: Bias + Range + POIs. HTF dá contexto, MTF dá o setup, LTF dá a entrada.",
