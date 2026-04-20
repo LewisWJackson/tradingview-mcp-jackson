@@ -74,14 +74,17 @@
       ]
     },
     "dxy_correlation": {
-      "description": "O DXY é o ponto de partida de toda a análise. Define o bias macro para os restantes ativos.",
+      "description": "O DXY é o ponto de partida de toda a análise. Define o bias macro para os restantes ativos. É um INPUT, não uma conclusão — a estrutura própria de cada ativo prevalece sempre.",
+      "regra_critica": "O DXY é um input de confirmação, não uma conclusão automática. A estrutura HTF do próprio ativo (CHoCH, BOS, HH+HL, LL+LH) SEMPRE prevalece sobre a correlação DXY. Se o DXY diz bullish EUR mas o EUR/USD semanal mostra CHoCH bearish — a estrutura do EUR/USD prevalece. Nunca sobrepor correlação DXY a estrutura confirmada do ativo.",
       "rules": [
         "Começar SEMPRE pelo DXY antes de qualquer outro ativo",
-        "DXY bullish (BOS para cima) = EURUSD bearish = XAUUSD bearish (tendencialmente)",
-        "DXY bearish (BOS para baixo) = EURUSD bullish = XAUUSD bullish (tendencialmente)",
+        "DXY bullish (BOS para cima) = EURUSD bearish = XAUUSD bearish (tendencialmente) — confirmar com estrutura do ativo",
+        "DXY bearish (BOS para baixo) = EURUSD bullish = XAUUSD bullish (tendencialmente) — confirmar com estrutura do ativo",
         "Se zona supply no DXY coincide inversamente com zona demand no EURUSD = confluência de alta probabilidade",
         "Correlação inversa DXY/EURUSD confirmada = probabilidade de sucesso aumenta significativamente",
-        "BTCUSD tem correlação mais independente mas monitorizar contexto macro do DXY"
+        "BTCUSD e NAS100 têm correlação de risco — DXY fraco = risk-on = ambos tendem a subir",
+        "USDJPY é expressão directa do DXY — DXY cai = USDJPY cai (correlação positiva directa)",
+        "CONFLITO: Se DXY e estrutura do ativo contradizem-se → estrutura do ativo prevalece → reportar o conflito antes de definir bias"
       ]
     },
     "trading_style": {
@@ -316,14 +319,21 @@
         ]
       },
       "procedimento_analise_semanal": {
-        "descricao": "Ordem e ferramentas para análise de início de semana",
-        "passos": [
-          "1. DXY: screenshot W+D+4H → quote_get preço actual → narrativa bias",
-          "2. Para cada ativo N1 (EUR, XAU, NAS): screenshot W+D+4H → narrativa HTF → range com valores reais",
-          "3. Identificação de zonas: screenshot para localizar candidatos → data_get_ohlcv para valores exactos",
-          "4. Utilizador valida ou corrige as zonas propostas",
-          "5. Construção de cenários com níveis precisos (não estimados)",
-          "6. Para cada zona: confirmar se ainda é Unmitigated com quote_get"
+        "descricao": "Ordem e ferramentas para análise de início de semana. Claude faz o trabalho completo — utilizador valida.",
+        "workflow_conjunto": {
+          "passo_1_claude": "Narrativa HTF — quem controla, range, bias, para onde vai o preço. Verificar estrutura própria do ativo ANTES de aplicar correlação DXY.",
+          "passo_2_claude": "Identificar zonas S/D com rigor total: screenshot para localizar candidato → data_get_ohlcv para OHLCV exacto → confirmar FVG → confirmar Unmitigated → apresentar zona no formato obrigatório",
+          "passo_3_utilizador": "Utilizador VALIDA ou CORRIGE as zonas identificadas pelo Claude. O utilizador não propõe zonas — apenas confirma ou corrige o trabalho do Claude.",
+          "passo_4_claude": "Com zonas validadas: construir cenários A/B, definir CE/RE, SL/TP justificados por POI técnico",
+          "passo_5_conjunto": "Quando uma zona é tomada pelo preço → utilizador informa → Claude actualiza o setup para a próxima zona relevante"
+        },
+        "passos_tecnicos": [
+          "1. DXY: screenshot W+D+4H → quote_get preço actual → narrativa bias com estrutura verificada",
+          "2. Para cada ativo N1 (EUR, XAU, NAS): screenshot W+D+4H → estrutura própria do ativo → range H/L com data_get_ohlcv",
+          "3. Identificação de zonas: screenshot localiza candidato → data_get_ohlcv confirma OHLCV → formato obrigatório de zona",
+          "4. Utilizador valida as zonas — não propõe",
+          "5. Cenários e níveis de entrada com valores precisos confirmados por dados",
+          "6. Alertas nos níveis chave identificados"
         ]
       },
       "pontos_deriva_e_correcao": {
@@ -487,7 +497,8 @@
       "steps": [
         "PASSO 0 — NARRATIVA (JFX): Quem controla o mercado agora? O que está a mover o preço? Qual o próximo objetivo lógico do Smart Money? Construir Cenário A e Cenário B antes de continuar.",
         "PASSO 1 — DXY (HTF): Estrutura Daily/4H. Bullish ou bearish? Qual o range atual? Zonas IMB? SSL/BSL macro? DXY em Premium ou Discount?",
-        "PASSO 2 — CORRELAÇÃO: DXY em zona supply → EURUSD/XAUUSD em zona demand? Correlação inversa confirmada? Narrativa dos dois alinhada?",
+        "PASSO 2 — ESTRUTURA DO ATIVO: Verificar estrutura HTF própria do ativo (W+D) ANTES de aplicar correlação DXY. CHoCH confirmado? BOS em que direcção? HH+HL ou LL+LH? A estrutura do ativo define o bias primário.",
+        "PASSO 2B — CORRELAÇÃO DXY: Após verificar estrutura do ativo — DXY confirma ou contradiz? Se confirma = alta confluência. Se contradiz = estrutura do ativo prevalece, reportar conflito ao utilizador.",
         "PASSO 3 — ATIVO (MTF): Estrutura 4H. Qual o range MTF (swing high/low atuais)? Premium ou Discount? Volume Profile — POC/VAH/VAL? Weekly VWAP acima/abaixo?",
         "PASSO 4 — ZONA: Unmitigated com FVG no 4H. POI significativo identificado? É demand em Discount ou supply em Premium?",
         "PASSO 4B — RETRACEMENT: Identificar a oportunidade de retracement dentro do range. SE o trade principal é LONG da demand → existe SHORT da supply para alimentar a demand? SE o trade principal é SHORT da supply → existe LONG da demand para alimentar a supply? Apresentar SEMPRE as duas camadas.",
@@ -551,7 +562,7 @@
         "descricao": "Análise conjunta diária com Claude",
         "tarefas": [
           "Analisar DXY — bias macro do dia",
-          "Analisar ativos primários: EURUSD, XAUUSD, BTCUSD",
+          "Analisar ativos N1: EURUSD, XAUUSD, NAS100",
           "Identificar zonas, liquidez, bias intraday",
           "Colocar alertas no TradingView nos níveis chave",
           "Definir Plano A e Plano B para cada ativo"
