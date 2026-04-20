@@ -15,18 +15,63 @@
       "Sem setup válido = sem trade. Nunca forçar uma entrada."
     ],
     "assets": {
-      "primary": [
-        "DXY",
-        "EURUSD",
-        "XAUUSD",
-        "BTCUSD"
-      ],
-      "secondary": [
-        "GBPUSD",
-        "EURGBP",
-        "US30"
-      ],
-      "note": "Analisar sempre os primários. Secundários apenas se não houver oportunidade nos primários."
+      "anchor": {
+        "symbol": "DXY",
+        "note": "Analisar SEMPRE primeiro, independentemente do nível que se vai trabalhar. É o ponto de partida de toda a análise."
+      },
+      "nivel_1": {
+        "description": "🥇 Nível 1 — Sniper Intraday + Swing. Foco principal diário. Os 3 têm correlação máxima com DXY e cobrem 3 classes de ativos distintas: Forex + Commodity + Índice. Confirmação tripla quando DXY cai.",
+        "symbols": ["EURUSD", "XAUUSD", "NAS100"],
+        "execucao": {
+          "bias_tf": "Weekly + Daily",
+          "setup_tf": "4H + 1H",
+          "entrada_tf": "15M + 5M (regras completas JEAFX)",
+          "nota": "Regras totais do sistema — CHoCH/MSS 15M, CE obrigatório, CVD, SL/TP por POI técnico"
+        },
+        "prioridade": "Foco total se houver setup em N1. Só avançar para N2 se N1 não tiver setup válido OU se houver tempo disponível."
+      },
+      "nivel_2": {
+        "description": "🥈 Nível 2 — Swing HTF. Só analisar se N1 sem setup ou com tempo disponível. Ativos complementares ao N1 — confirmam a narrativa macro e oferecem oportunidades de swing.",
+        "symbols": ["BTCUSD", "USDJPY", "XAGUSD"],
+        "simbolos_descricao": {
+          "BTCUSD": "Ativo de risco — confirma NAS100. DXY fraco = BTC tende a subir. Mais independente mas parte do contexto macro.",
+          "USDJPY": "Expressão direta do DXY — quando DXY cai, USDJPY cai. Leitura muito limpa e direta.",
+          "XAGUSD": "Companheiro do ouro com mais volatilidade — mesma análise do XAU, moves maiores."
+        },
+        "execucao": {
+          "bias_tf": "Weekly + Daily",
+          "setup_tf": "4H",
+          "entrada_tf": "30M máximo — nunca descer a 15M/5M neste nível",
+          "nota": "Zonas maiores, SL maior, TP maior. Trades de swing de dias a semanas. Menos monitorização necessária."
+        },
+        "prioridade": "Só após verificar N1. Se N2 tiver setup — tratar como swing HTF com entrada máxima no 30M."
+      },
+      "nivel_3": {
+        "description": "🥉 Nível 3 — Swing Puro. Só com muito tempo disponível ou quando N1 e N2 não têm setup. Análise semanal, posições de dias a semanas.",
+        "symbols": ["GBPUSD", "EURGBP", "US30"],
+        "simbolos_descricao": {
+          "GBPUSD": "Segue EUR mas com ruído UK — secundário natural do N1.",
+          "EURGBP": "Mostra força relativa EUR vs GBP sem influência DXY direta — útil como filtro de confluência.",
+          "US30": "Índice mais lento que NAS — quando NAS tem setup, US30 confirma a narrativa de índices."
+        },
+        "execucao": {
+          "bias_tf": "Weekly + Daily",
+          "setup_tf": "Daily + 4H",
+          "entrada_tf": "30M máximo — swing puro",
+          "nota": "Análise semanal apenas. Gestão mais relaxada. Posições de dias a semanas."
+        },
+        "prioridade": "Último recurso. Nunca sacrificar foco em N1 por analisar N3."
+      },
+      "progressao_regras": [
+        "1. Analisar DXY sempre — âncora universal independente do nível",
+        "2. Analisar Nível 1 (EUR + XAU + NAS) — foco principal",
+        "3. SE setup em N1 → foco total em N1, não dispersar para outros níveis",
+        "4. SE sem setup em N1 OU tempo disponível → avançar para N2 (BTC + USDJPY + XAGUSD)",
+        "5. SE setup em N2 → tratar como swing HTF com entrada máxima 30M",
+        "6. SE sem setup em N2 OU ainda com tempo → avançar para N3 (GBP + EURGBP + US30)",
+        "7. N3 é swing puro — análise semanal, entrada máxima 30M",
+        "8. Nunca analisar N2 ou N3 em detrimento da qualidade de análise do N1"
+      ]
     },
     "dxy_correlation": {
       "description": "O DXY é o ponto de partida de toda a análise. Define o bias macro para os restantes ativos.",
@@ -468,7 +513,10 @@
       "Ignorar o range MTF — saber sempre entre que swing high/low o preço está a trabalhar",
       "Apresentar análise sem identificar a oportunidade de retracement — as duas camadas (trade principal + retracement) são sempre obrigatórias",
       "Fazer RE num trade de retracement (contra-tendência) — CE é sempre obrigatório quando se vai contra o HTF",
-      "Perseguir o retracement depois do trade principal já ter disparado — cada oportunidade tem o seu momento no range"
+      "Perseguir o retracement depois do trade principal já ter disparado — cada oportunidade tem o seu momento no range",
+      "Descer a 15M/5M em ativos de Nível 2 ou Nível 3 — entrada máxima no 30M nesses níveis",
+      "Analisar N2 ou N3 quando ainda existe setup válido em N1 — foco total no nível mais alto com oportunidade",
+      "Sacrificar qualidade de análise do N1 para cobrir mais ativos — sniper, não metralhadora"
     ]
   }
 }
