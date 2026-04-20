@@ -280,6 +280,54 @@
       ],
       "rule": "Sem resposta clara às 4 perguntas = sem trade. Nunca entrar com ambiguidade na narrativa."
     },
+    "claude_analysis_procedure": {
+      "description": "Procedimento obrigatório e imutável para toda a análise feita pelo Claude. Não pode ser alterado sem consulta e aprovação explícita do utilizador.",
+      "principles": [
+        "Rigor máximo em todos os momentos — nunca estimativas visuais para definir níveis",
+        "Usar sempre as ferramentas MCP disponíveis com o máximo detalhe possível",
+        "Screenshots servem APENAS para leitura visual de estrutura e contexto — NUNCA para definir níveis exactos de zonas",
+        "Nunca alterar este procedimento sem consultar o utilizador primeiro",
+        "Se uma ferramenta falhar, reportar ao utilizador e aguardar instrução — nunca substituir por estimativa"
+      ],
+      "tools_obrigatorios": {
+        "data_get_ohlcv": {
+          "quando": "SEMPRE que se identifica uma zona S/D, BOS, CHoCH, ou qualquer nível relevante",
+          "para_que": "Ler os valores exactos OHLCV da vela de decisão — open, high, low, close — para definir os limites precisos da zona",
+          "nunca_substituir_por": "Estimativa visual do screenshot"
+        },
+        "quote_get": {
+          "quando": "No início de cada análise e sempre que o preço actual é relevante para o contexto",
+          "para_que": "Confirmar preço actual em tempo real — não estimar pelo screenshot"
+        },
+        "capture_screenshot": {
+          "quando": "Para leitura de estrutura, contexto macro, identificar padrões visuais e confirmar o estado geral do gráfico",
+          "limitacao": "NÃO usar para definir níveis exactos — apenas para contexto visual"
+        }
+      },
+      "procedimento_zona_sd": {
+        "descricao": "Como identificar e definir uma zona Supply/Demand com rigor",
+        "passos": [
+          "1. Screenshot para identificar visualmente a vela candidata (estrutura, contexto)",
+          "2. data_get_ohlcv para obter os valores OHLCV exactos dessa vela",
+          "3. Identificar: corpo da vela (open/close) = limites da zona",
+          "4. Confirmar FVG: verificar se existe gap entre high/low de velas consecutivas",
+          "5. Confirmar Unmitigated: o preço nunca voltou a tocar a zona depois de a criar",
+          "6. Definir zona com valores precisos: 'Supply: open X.XXXXX → close X.XXXXX'"
+        ]
+      },
+      "procedimento_analise_semanal": {
+        "descricao": "Ordem e ferramentas para análise de início de semana",
+        "passos": [
+          "1. DXY: screenshot W+D+4H → quote_get preço actual → narrativa bias",
+          "2. Para cada ativo N1 (EUR, XAU, NAS): screenshot W+D+4H → narrativa HTF → range com valores reais",
+          "3. Identificação de zonas: screenshot para localizar candidatos → data_get_ohlcv para valores exactos",
+          "4. Utilizador valida ou corrige as zonas propostas",
+          "5. Construção de cenários com níveis precisos (não estimados)",
+          "6. Para cada zona: confirmar se ainda é Unmitigated com quote_get"
+        ]
+      },
+      "regra_imutavel": "Este procedimento não pode ser simplificado, acelerado ou substituído por estimativas visuais, mesmo que a análise demore mais. Velocidade nunca justifica falta de rigor. Se o utilizador não tiver dado permissão explícita para alterar qualquer ponto deste procedimento, ele mantém-se intacto."
+    },
     "mtf_framework": {
       "description": "Estrutura de análise multi-timeframe JFX. Para CADA nível identificar: Bias + Range + POIs. HTF dá contexto, MTF dá o setup, LTF dá a entrada.",
       "HTF": {
