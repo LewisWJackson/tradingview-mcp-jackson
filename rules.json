@@ -1,65 +1,90 @@
 {
-  "watchlist": ["BTCUSDT"],
-  "default_timeframe": "1",
-
+  "watchlist": [
+    "BTCUSD",
+    "ETHUSD",
+    "SOLUSD",
+    "XRPUSD",
+    "MNTUSD"
+  ],
+  "default_timeframe": "1W",
   "strategy": {
-    "name": "10-Second Momentum Scalper",
+    "name": "BTC Weekly Composite — Public Trader Consensus",
     "sources": [
-      "Price momentum — buy if last close > previous close (green candle)",
-      "RSI filter — only trade when RSI is not at an extreme (30–70 range)"
+      "Rekt Capital",
+      "Tone Vays",
+      "Michael van de Poppe",
+      "Benjamin Cowen",
+      "Scott Melker"
     ],
     "primary_timeframes": [
-      "1-minute (signal source)",
-      "10-second execution loop"
-    ]
+      "1W (bias + signals)",
+      "1D (entry timing)"
+    ],
+    "notes": "Consensus from 5 top public traders. Weekly closes are the only clean signal — ignore intraday wicks. All 3 MAs are combined in one Pine Script overlay to stay within the free-plan 3-indicator limit."
   },
-
   "indicators": {
-    "rsi_14": "Momentum filter. Only trade when RSI is between 30–70 (avoid extremes).",
-    "price_momentum": "Compare last close vs previous close. Up = long signal. Down = short signal."
+    "ma_stack_pine": "Single Pine Script overlay: EMA 21 (green) + EMA 50 (purple) + SMA 200 (black). Counts as 1 indicator slot.",
+    "rsi_14": "RSI 14 weekly. Used for divergence and overbought/oversold extremes.",
+    "macd_12_26_9": "MACD 12/26/9 weekly. Primary momentum direction and divergence confirmation."
   },
-
   "bias_criteria": {
     "bullish": [
-      "Last 1-min candle closed higher than the one before it",
-      "RSI is between 30 and 70"
+      "Weekly close above EMA 50",
+      "Weekly close above EMA 21",
+      "RSI 14 above 50",
+      "Strong bull: all three MAs in order — EMA 21 > EMA 50 > SMA 200"
     ],
     "bearish": [
-      "Last 1-min candle closed lower than the one before it",
-      "RSI is between 30 and 70"
+      "Weekly close below EMA 50",
+      "EMA 50 acting as resistance on retest",
+      "RSI 14 below 50",
+      "Strong bear: weekly close below SMA 200 AND bounce fails to reclaim it"
     ],
     "neutral": [
-      "RSI is above 70 (overbought — skip)",
-      "RSI is below 30 (oversold — skip)",
-      "Candle close change is less than 0.05% (chop — skip)"
+      "Price between EMA 21 and EMA 50",
+      "RSI 14 between 45 and 55",
+      "MACD histogram near zero with no divergence"
     ]
   },
-
   "entry_rules": {
     "long": [
-      "Last close > previous close by at least 0.05%",
-      "RSI between 30 and 70",
-      "Enter market buy immediately"
+      "Weekly candle wicks below EMA 21 or EMA 50 but CLOSES above it (deviation + recovery)",
+      "RSI 14 below 45 and turning up",
+      "MACD showing bullish divergence (price lower low, MACD higher low)",
+      "Confirmation: volume spike on the wick candle + following candle closes above EMA 21",
+      "Note (Rekt Capital): after daily RSI prints sub-28, actual price low is 0.32–8.44% lower — wait for price structure, don't chase the RSI print"
     ],
-    "short": [
-      "Last close < previous close by at least 0.05%",
-      "RSI between 30 and 70",
-      "Enter market sell immediately"
+    "short_or_reduce": [
+      "Weekly close below EMA 50 after being above it",
+      "Failed retest of EMA 50 as new resistance",
+      "MACD line crosses below signal line on weekly",
+      "Strongest setup: bearish MACD divergence + RSI above 70 turning down + price fails retest of EMA 50"
     ]
   },
-
-  "exit_rules": [
-    "Exit automatically after 10 seconds (next loop tick closes previous position)",
-    "No manual exit management — pure time-based scalp"
-  ],
-
+  "exit_rules": {
+    "long_exit_stop": "Weekly close below EMA 50 — invalidation per Tone Vays and Rekt Capital",
+    "long_exit_target_signals": [
+      "RSI 14 reaches 75–80 on weekly and begins diverging downward",
+      "MACD histogram peaks and turns negative while price still rising (bearish divergence)",
+      "Price crosses prior all-time high AND crosses the 200-week SMA from below — Cowen cycle top signal"
+    ],
+    "short_exit_stop": "Weekly close back above EMA 50",
+    "short_exit_target_signals": [
+      "RSI 14 reaches sub-30 on weekly",
+      "MACD bullish divergence (price lower low, MACD higher low)",
+      "Price touches EMA 200 weekly as historical support"
+    ]
+  },
+  "cycle_phase_model": {
+    "accumulation": "Price near or below SMA 200, RSI sub-40, MACD flat or turning up",
+    "bull_run": "Price above EMA 21 + EMA 50 + SMA 200 in sequence, RSI 50–75, MACD positive",
+    "distribution": "RSI above 75 weekly, price above prior ATH + crosses 200w SMA, MACD bearish divergence",
+    "bear": "Price below EMA 50, SMA 200 acting as resistance, RSI below 45, MACD negative"
+  },
   "risk_rules": [
-    "Fixed trade size: 1% of portfolio per trade",
-    "Maximum trade size: $3.00",
-    "Maximum 6 trades per 60-second run",
-    "No stop loss — exit is time-based at next tick",
-    "For demo purposes only — minimum BitGet order size may apply"
+    "Weekly close is the signal — never react to intraday wicks",
+    "Stop loss: weekly close below EMA 50 from a long position",
+    "Do not chase RSI prints — wait for price structure to confirm"
   ],
-
-  "notes": "Demo strategy for YouTube video. Runs 6 trades over 60 seconds, one every 10 seconds. Signal is simple price momentum on 1-min candles with RSI sanity check."
+  "_watchlist_updated": "2026-04-21T05:00:03.729Z"
 }
