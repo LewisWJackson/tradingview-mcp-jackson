@@ -169,3 +169,26 @@ test('returns { ...dims, mergerPending, recentNewsCount24h, overallRiskBand }', 
   assert.ok('recentNewsCount24h' in r);
   assert.ok('overallRiskBand' in r);
 });
+
+test('shortFloat null → yellow (never silently green)', () => {
+  const ctx = base();
+  delete ctx.scannerRow.details.shortFloat;
+  const r = evaluateRiskFlags(ctx);
+  assert.strictEqual(r.shortFloat.flag, 'yellow');
+  assert.ok(r.shortFloat.reason.includes('short float unavailable'));
+});
+
+test('shortFloat NaN → yellow (never silently green)', () => {
+  const ctx = base();
+  ctx.scannerRow.details.shortFloat = NaN;
+  const r = evaluateRiskFlags(ctx);
+  assert.strictEqual(r.shortFloat.flag, 'yellow');
+});
+
+test('negative earnings (e.g. -5 past date) routes to yellow, not green', () => {
+  const ctx = base();
+  ctx.scannerRow.details.earningsDaysOut = -5;
+  const r = evaluateRiskFlags(ctx);
+  assert.strictEqual(r.earnings.flag, 'yellow');
+  assert.ok(r.earnings.reason.includes('unverified'));
+});

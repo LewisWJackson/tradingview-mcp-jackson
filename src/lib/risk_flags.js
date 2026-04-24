@@ -7,7 +7,7 @@
 
 function flagEarnings(daysOut) {
   // Corrupt sentinel (like ITT's -20547) → yellow with "unverified"
-  if (daysOut == null || daysOut < -30 || Number.isNaN(daysOut)) {
+  if (daysOut == null || daysOut < 0 || Number.isNaN(daysOut)) {
     return { flag: 'yellow', daysUntil: null, reason: 'earnings date unverified — check broker' };
   }
   if (daysOut >= 0 && daysOut <= 2) return { flag: 'red',    daysUntil: daysOut, reason: `earnings in ${daysOut}d` };
@@ -43,7 +43,9 @@ function flagNewsGap(quote, atr14, newsCount24h) {
 }
 
 function flagShortFloat(sfPct) {
-  if (sfPct == null) return { flag: 'green', pct: null };
+  if (sfPct == null || Number.isNaN(sfPct)) {
+    return { flag: 'yellow', pct: null, reason: 'short float unavailable' };
+  }
   if (sfPct >= 20) return { flag: 'red',    pct: sfPct, reason: `short float ${sfPct}%` };
   if (sfPct >= 10) return { flag: 'yellow', pct: sfPct };
   return { flag: 'green', pct: sfPct };
