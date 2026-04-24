@@ -1,31 +1,34 @@
 {
-  "watchlist": ["BTCUSD", "ETHUSD", "SOLUSD"],
-  "default_timeframe": "240",
+  "watchlist": ["XAUUSD", "BTCUSD", "ETHUSD"],
+  "default_timeframe": "60",
 
   "bias_criteria": {
     "bullish": [
-      "Ribbon direction is up (bullish colour)",
-      "Price is above the 20 EMA on the 4H",
-      "RSI is below 60 (room to run)"
+      "1H structure is bullish or recently reclaimed a key level",
+      "Price is holding above a meaningful support or reclaim zone",
+      "4H context supports the 1H read or at minimum does not oppose it",
+      "Momentum (EMA alignment, RSI) is not fully exhausted"
     ],
     "bearish": [
-      "Ribbon direction is down (bearish colour)",
-      "Price is below the 20 EMA on the 4H",
-      "RSI is above 40 (room to drop)"
+      "1H structure is bearish or recently broke a key level",
+      "Price is holding below a meaningful resistance or breakdown zone",
+      "4H context supports the 1H read or at minimum does not oppose it",
+      "Momentum (EMA alignment, RSI) has room to extend lower"
     ],
     "neutral": [
-      "Ribbon is flat or mixed",
-      "Price is chopping around the 20 EMA",
-      "RSI is between 45 and 55"
+      "1H is chopping between nearby levels with no clean bias",
+      "4H context disagrees with the 1H read and no tie-break appears",
+      "The setup is too extended to chase or high-impact news is pending"
     ]
   },
 
   "risk_rules": [
-    "Only take trades where R:R is at least 1:2",
-    "No trading in the first 15 minutes of the NY session open",
-    "Maximum 2 open positions at once",
-    "If I have 2 losing trades in a row, stop for the day"
+    "Only take trades where the invalidation level is clear before entry",
+    "Do not take setups with poor reward relative to the nearest opposing level",
+    "Avoid forcing trades during major scheduled news unless the plan explicitly accounts for it",
+    "If 1H and 4H disagree and no tie-break confirmation appears, default to wait",
+    "Replace these starter rules with your own playbook before relying on morning_brief"
   ],
 
-  "notes": "Add any other context you want Claude to factor in — e.g. macro events this week, key dates, anything that should affect your bias."
+  "notes": "Starter mentor profile: 1H as the primary bias timeframe, 4H as optional context. No auto-execution inside morning_brief — the goal is bias and setup quality. Edit watchlist, criteria, and risk rules to match your actual playbook before using for live decisions."
 }
