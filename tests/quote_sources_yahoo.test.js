@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { buildQuoteUrl, parseQuoteResponse, normalizeQuoteRow } from '../src/lib/quote_sources/yahoo.js';
+import { buildQuoteUrl, parseQuoteResponse, normalizeQuoteRow, classifyHttpKind } from '../src/lib/quote_sources/yahoo.js';
 
 test('buildQuoteUrl encodes symbols and crumb', () => {
   const url = buildQuoteUrl(['AAPL', 'MSFT', '^GSPC'], 'abc=def');
@@ -43,22 +43,23 @@ test('timeout errors carry kind=timeout for chain introspection', async () => {
   assert.strictEqual(err.timeoutMs, 15000);
 });
 
-test('status 429 response produces error with kind=rate_limit and source=yahoo', () => {
-  // Simulate the error construction path — the fetchQuotes behavior is covered via integration
-  const err = new Error('Yahoo status 429');
-  err.status = 429;
-  err.kind = err.status === 429 ? 'rate_limit' : err.status >= 500 ? 'server_error' : 'http_error';
-  err.source = 'yahoo';
-  assert.strictEqual(err.kind, 'rate_limit');
-  assert.strictEqual(err.source, 'yahoo');
+test('classifyHttpKind: status 429 → rate_limit', () => {
+  assert.strictEqual(classifyHttpKind(429), 'rate_limit');
 });
 
-test('status 500 response produces error with kind=server_error and source=yahoo', () => {
-  const err = new Error('Yahoo status 500');
-  err.status = 500;
-  err.kind = err.status === 429 ? 'rate_limit' : err.status >= 500 ? 'server_error' : 'http_error';
-  err.source = 'yahoo';
-  assert.strictEqual(err.kind, 'server_error');
+test('classifyHttpKind: status 500 → server_error', () => {
+  assert.strictEqual(classifyHttpKind(500), 'server_error');
+});
+
+test('classifyHttpKind: status 502/503/504 → server_error', () => {
+  assert.strictEqual(classifyHttpKind(502), 'server_error');
+  assert.strictEqual(classifyHttpKind(503), 'server_error');
+  assert.strictEqual(classifyHttpKind(504), 'server_error');
+});
+
+test('classifyHttpKind: status 403/418 (non-429, non-5xx) → http_error', () => {
+  assert.strictEqual(classifyHttpKind(403), 'http_error');
+  assert.strictEqual(classifyHttpKind(418), 'http_error');
 });
 
 test('parseQuoteResponse silently drops rows with no symbol key (do not fabricate)', () => {
@@ -66,4 +67,16 @@ test('parseQuoteResponse silently drops rows with no symbol key (do not fabricat
   const map = parseQuoteResponse(body);
   assert.strictEqual(Object.keys(map).length, 1);
   assert.strictEqual(map.OK.price, 2);
+});
+
+test('parseQuoteResponse throws typed parse_error on non-JSON body', () => {
+  try {
+    parseQuoteResponse('<html>rate limited</html>');
+    assert.fail('should have thrown');
+  } catch (err) {
+    assert.strictEqual(err.kind, 'parse_error');
+    assert.strictEqual(err.source, 'yahoo');
+    assert.strictEqual(err.status, null);
+    assert.ok(err.cause instanceof Error);
+  }
 });

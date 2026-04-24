@@ -28,19 +28,27 @@ const CRUMB_URL = 'https://query2.finance.yahoo.com/v1/test/getcrumb';
 const FC_URL = 'https://fc.yahoo.com';
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36';
 
-function classifyHttpKind(status) {
+export function classifyHttpKind(status) {
   if (status === 429) return 'rate_limit';
   if (status >= 500) return 'server_error';
   return 'http_error';
 }
 
-function httpGet(url, { cookies } = {}) {
+function httpGet(url, { cookies } = {}, _redirectDepth = 0) {
   return new Promise((resolve, reject) => {
+    if (_redirectDepth > 5) {
+      const err = new Error(`Yahoo redirect loop exceeded 5 hops`);
+      err.kind = 'http_error';
+      err.source = 'yahoo';
+      err.status = null;
+      reject(err);
+      return;
+    }
     const headers = { 'User-Agent': UA };
     if (cookies) headers.Cookie = cookies;
     const req = https.get(url, { headers }, (res) => {
       if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-        httpGet(res.headers.location, { cookies }).then(resolve, reject);
+        httpGet(res.headers.location, { cookies }, _redirectDepth + 1).then(resolve, reject);
         res.resume();
         return;
       }
@@ -108,7 +116,17 @@ export function normalizeQuoteRow(r) {
 }
 
 export function parseQuoteResponse(body) {
-  const parsed = JSON.parse(body);
+  let parsed;
+  try {
+    parsed = JSON.parse(body);
+  } catch (cause) {
+    const err = new Error('Yahoo returned non-JSON body');
+    err.kind = 'parse_error';
+    err.source = 'yahoo';
+    err.status = null;
+    err.cause = cause;
+    throw err;
+  }
   const rows = parsed?.quoteResponse?.result || [];
   const map = {};
   for (const r of rows) {
