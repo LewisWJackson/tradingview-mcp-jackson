@@ -92,9 +92,13 @@ export function createFireDetector({
 
   function restoreState(persistedTickers) {
     for (const [symbol, state] of Object.entries(persistedTickers)) {
+      // Defensive coalesce: legacy snapshots may have fireStrength/lastFireLevel
+      // explicitly undefined; empty state's nulls should win in that case.
       tickers.set(symbol, {
         ...emptyState(symbol, state.trigger),
         ...state,
+        fireStrength: state.fireStrength ?? null,
+        lastFireLevel: state.lastFireLevel ?? null,
       });
     }
   }
