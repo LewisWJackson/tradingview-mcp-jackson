@@ -74,14 +74,6 @@ export function createLivePoller({
         continue;
       }
 
-      onTick?.({
-        symbol: cand.symbol,
-        price: quote.price,
-        trigger: cand.trigger,
-        source: quote.quoteSource,
-        state: detector.getState(cand.symbol)?.state,
-      });
-
       // Evaluate risk flags BEFORE observing, so we can pass `strengthContext`
       // to the detector (riskBand affects whether a fire is Level 2 or Level 3).
       const risk = evaluateRiskFlags({
@@ -106,6 +98,17 @@ export function createLivePoller({
         fireSuppressed: quote.fireSuppressed,
         timestamp: now,
         strengthContext,
+      });
+
+      // Emit the post-observe snapshot so consumers see the state AFTER this tick,
+      // not the prior tick's state.
+      onTick?.({
+        symbol: cand.symbol,
+        price: quote.price,
+        trigger: cand.trigger,
+        source: quote.quoteSource,
+        state: detector.getState(cand.symbol)?.state,
+        fireStrength: result.fireStrength,
       });
 
       if (result.fired) {
@@ -139,7 +142,9 @@ export function createLivePoller({
             firstCrossObservedAt: result.firstCrossObservedAt,
             confirmedAt: result.confirmedAt,
             latencyFromFirstCrossMs:
-              new Date(result.confirmedAt) - new Date(result.firstCrossObservedAt),
+              result.firstCrossObservedAt && result.confirmedAt
+                ? new Date(result.confirmedAt) - new Date(result.firstCrossObservedAt)
+                : null,
           },
           setup: {
             confidence: cand.confidence,
