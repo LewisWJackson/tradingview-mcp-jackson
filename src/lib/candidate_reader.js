@@ -32,7 +32,7 @@ export function readCandidates(resultsPath, { topN = 15 } = {}) {
   const out = [];
   for (const row of list) {
     const trigger = parseTrigger(row.entry_trigger);
-    if (trigger == null) continue;
+    if (trigger == null || trigger <= 0) continue;
     out.push({
       symbol: row.symbol || row.ticker,
       trigger,

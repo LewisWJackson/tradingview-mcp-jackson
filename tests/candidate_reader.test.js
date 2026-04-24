@@ -63,3 +63,35 @@ test('respects topN limit when specified', () => {
   const p = writeTempResults({ generated_at: 't', results: rows });
   assert.strictEqual(readCandidates(p, { topN: 5 }).candidates.length, 5);
 });
+
+test('scanRunId reads generatedAt (camelCase) when generated_at absent', () => {
+  const p = writeTempResults({
+    generatedAt: '2026-04-24T18:00:00Z',
+    results: [
+      { symbol: 'X', price: 10, entry_trigger: 'alert at 11', setup_type: 'building_base', rank: 1 },
+    ],
+  });
+  assert.strictEqual(readCandidates(p).scanRunId, '2026-04-24T18:00:00Z');
+});
+
+test('scanRunId is null when neither key is present', () => {
+  const p = writeTempResults({
+    results: [
+      { symbol: 'X', price: 10, entry_trigger: 'alert at 11', setup_type: 'building_base', rank: 1 },
+    ],
+  });
+  assert.strictEqual(readCandidates(p).scanRunId, null);
+});
+
+test('trigger <= 0 rows are filtered out (defensive guard)', () => {
+  const p = writeTempResults({
+    generated_at: 't',
+    results: [
+      { symbol: 'BAD', price: 10, entry_trigger: 'alert at 0', setup_type: 'building_base', rank: 1 },
+      { symbol: 'OK',  price: 10, entry_trigger: 'alert at 11', setup_type: 'building_base', rank: 2 },
+    ],
+  });
+  const out = readCandidates(p);
+  assert.strictEqual(out.candidates.length, 1);
+  assert.strictEqual(out.candidates[0].symbol, 'OK');
+});
