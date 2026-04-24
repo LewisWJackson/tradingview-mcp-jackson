@@ -33,8 +33,9 @@ Paste this into Claude Code and it will handle everything:
 
 ```
 Set up TradingView MCP Jackson for me. 
-Clone https://github.com/LewisWJackson/tradingview-mcp-jackson.git to ~/tradingview-mcp-jackson, run npm install, then add it to my MCP config at ~/.claude/.mcp.json (merge with any existing servers, don't overwrite them). 
-The config block is: { "mcpServers": { "tradingview": { "command": "node", "args": ["/Users/YOUR_USERNAME/tradingview-mcp-jackson/src/server.js"] } } } — replace YOUR_USERNAME with my actual username.
+Clone https://github.com/LewisWJackson/tradingview-mcp-jackson.git to ~/tradingview-mcp-jackson, run npm install, then register it with Claude Code by running:
+  claude mcp add -s user tradingview node /Users/YOUR_USERNAME/tradingview-mcp-jackson/src/server.js
+Replace YOUR_USERNAME with my actual username (echo $USER on Mac). The -s user flag makes it available from any directory.
 Then copy rules.example.json to rules.json and open it so I can fill in my trading rules.
 Finally restart and verify with tv_health_check.
 ```
@@ -96,7 +97,22 @@ Or use the MCP tool after setup: `"Use tv_launch to start TradingView in debug m
 
 ### 4. Add to Claude Code
 
-Add to `~/.claude/.mcp.json` (merge with any existing servers):
+Use the Claude Code CLI (works on Claude Code v2.1+):
+
+```bash
+claude mcp add -s user tradingview node /Users/YOUR_USERNAME/tradingview-mcp-jackson/src/server.js
+```
+
+Replace `YOUR_USERNAME` with your actual username (`echo $USER` on Mac). The `-s user` flag registers the server at user scope so it's available from every directory; drop it for `local` (current project only) or use `-s project` to track in a `.mcp.json` committed to a project repo.
+
+Verify it landed:
+
+```bash
+claude mcp list
+# tradingview: node /Users/YOUR_USERNAME/tradingview-mcp-jackson/src/server.js - ✓ Connected
+```
+
+For other MCP-compatible clients (Claude Desktop, etc.) the equivalent stdio config block is:
 
 ```json
 {
@@ -109,7 +125,7 @@ Add to `~/.claude/.mcp.json` (merge with any existing servers):
 }
 ```
 
-Replace `YOUR_USERNAME` with your actual username. On Mac: `echo $USER` to check.
+Place it in whatever config file your client reads — for Claude Desktop on Mac that's `~/Library/Application Support/Claude/claude_desktop_config.json`. For Claude Code, prefer the `claude mcp add` CLI above; hand-editing `~/.claude/.mcp.json` does not work on current Claude Code (the file is not read).
 
 ### 5. Verify
 
@@ -292,7 +308,7 @@ Full command list: `tv --help`
 |---------|----------|
 | `cdp_connected: false` | TradingView isn't running with `--remote-debugging-port=9222`. Use the launch script. |
 | `ECONNREFUSED` | TradingView isn't running or port 9222 is blocked |
-| MCP server not showing in Claude Code | Check `~/.claude/.mcp.json` syntax, restart Claude Code |
+| MCP server not showing in Claude Code | Run `claude mcp list` — if `tradingview` is missing, re-add with `claude mcp add -s user tradingview node /full/path/to/src/server.js`. If listed but not appearing in tools, fully quit and re-launch Claude Code (servers load at session startup). |
 | `tv` command not found | Run `npm link` from the project directory |
 | `morning_brief` — "No rules.json found" | Run `cp rules.example.json rules.json` and fill it in |
 | `morning_brief` — watchlist empty | Add symbols to the `watchlist` array in `rules.json` |
