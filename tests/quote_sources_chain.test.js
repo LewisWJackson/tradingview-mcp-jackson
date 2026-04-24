@@ -132,3 +132,30 @@ test('probe returns structured result { flipped, reason|restoredSource, error? }
   assert.strictEqual(goodProbe.flipped, true);
   assert.strictEqual(goodProbe.restoredSource, 'yahoo');
 });
+
+test('probe cooldown is NOT stamped on failure (allows quick retry)', async () => {
+  const primary = mkMockSource('yahoo', async () => { throw new Error('still down'); });
+  const secondary = mkMockSource('tv_cdp', async syms => ({ quotes: Object.fromEntries(syms.map(s => [s, { symbol: s, price: 99, marketTimeIso: new Date().toISOString() }])), fetchedAt: new Date() }));
+  const chain = createQuoteChain({ sources: [primary, secondary], flipAfterFailures: 1, probeIntervalMs: 30_000 });
+  // Force flip
+  try { await chain.fetchQuotes(['X']); } catch {}
+  assert.strictEqual(chain.activeSourceName(), 'tv_cdp');
+  // First probe fails — should not block subsequent probes
+  const probe1 = await chain.probe(['X']);
+  assert.strictEqual(probe1.flipped, false);
+  assert.strictEqual(probe1.reason, 'probe_failed');
+  // Second probe call should NOT be throttled (cooldown wasn't stamped on failure)
+  const probe2 = await chain.probe(['X']);
+  assert.strictEqual(probe2.flipped, false);
+  assert.strictEqual(probe2.reason, 'probe_failed', 'cooldown not stamped on failure → re-attempts allowed');
+});
+
+test('tryFetch does not mutate source-returned quote objects', async () => {
+  const sharedQuote = { symbol: 'X', price: 100, marketTimeIso: new Date().toISOString() };
+  const source = mkMockSource('yahoo', async () => ({ quotes: { X: sharedQuote }, fetchedAt: new Date() }));
+  const chain = createQuoteChain({ sources: [source] });
+  await chain.fetchQuotes(['X']);
+  // Verify the source's original object was NOT mutated
+  assert.strictEqual(sharedQuote.quoteSource, undefined);
+  assert.strictEqual(sharedQuote.quoteAgeMs, undefined);
+});
