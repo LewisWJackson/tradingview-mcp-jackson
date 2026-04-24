@@ -15,7 +15,7 @@ export async function start({ date } = {}) {
   await evaluate(`${rp}.showReplayToolbar()`);
   await new Promise(r => setTimeout(r, 500));
 
-  if (date) await evaluate(`${rp}.selectDate(new Date('${date}'))`);
+  if (date) await evaluate(`${rp}.selectDate(new Date(${JSON.stringify(date)}))`);
   else await evaluate(`${rp}.selectFirstAvailableDate()`);
   await new Promise(r => setTimeout(r, 1000));
 

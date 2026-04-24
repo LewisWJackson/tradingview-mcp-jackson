@@ -15,59 +15,65 @@ import { registerUiTools } from "./tools/ui.js";
 import { registerPaneTools } from "./tools/pane.js";
 import { registerTabTools } from "./tools/tab.js";
 import { registerMorningTools } from "./tools/morning.js";
+import { registerResources } from "./resources.js";
 
 const server = new McpServer(
   {
     name: "tradingview",
-    version: "2.0.0",
+    version: "2.1.0-tr-guvenli",
     description:
-      "AI-assisted TradingView chart analysis and Pine Script development via Chrome DevTools Protocol",
+      "TradingView grafik analizi ve Pine Script gelistirme - Chrome DevTools Protocol uzerinden (Guvenlik yamali Turkce surum)",
   },
   {
-    instructions: `TradingView MCP — 78 tools for reading and controlling a live TradingView Desktop chart.
+    instructions: `TradingView MCP — Canli TradingView Desktop grafiklerini okuma ve kontrol etme araclari.
 
-TOOL SELECTION GUIDE — use this to pick the right tool:
+ARAC SECIM REHBERI — dogru araci secmek icin kullanin:
 
-Reading your chart:
-- chart_get_state → get symbol, timeframe, all indicator names + entity IDs (call first)
-- data_get_study_values → get current numeric values from ALL visible indicators (RSI, MACD, BB, EMA, etc.)
-- quote_get → get real-time price snapshot (last, OHLC, volume)
-- data_get_ohlcv → get price bars. ALWAYS pass summary=true unless you need individual bars
+Grafiginizi okuma:
+- chart_get_state → sembol, zaman dilimi, tum indikator adlari + entity ID'leri (ilk bunu cagirin)
+- data_get_study_values → tum gorunen indikatorlerin guncel sayisal degerleri (RSI, MACD, BB, EMA, vb.)
+- quote_get → anlik fiyat (son, OHLC, hacim)
+- data_get_ohlcv → fiyat mumlari. Bireysel mumlara ihtiyaciniz yoksa MUTLAKA summary=true kullanin
 
-Reading custom Pine indicator output (line.new/label.new/table.new/box.new drawings):
-- data_get_pine_lines → horizontal price levels from custom indicators (deduplicated, sorted)
-- data_get_pine_labels → text annotations with prices ("PDH 24550", "Bias Long", etc.)
-- data_get_pine_tables → table data as formatted rows (session stats, analytics dashboards)
-- data_get_pine_boxes → price zones as {high, low} pairs
-- ALWAYS pass study_filter to target a specific indicator by name (e.g., study_filter="Profiler")
-- Indicators must be VISIBLE on chart for these to work
+Ozel Pine indikator ciktilari (line.new/label.new/table.new/box.new):
+- data_get_pine_lines → ozel indikatorlerden yatay fiyat seviyeleri
+- data_get_pine_labels → fiyatli metin etiketleri ("PDH 24550", "Bias Long", vb.)
+- data_get_pine_tables → tablo verileri (seans istatistikleri, analiz panolari)
+- data_get_pine_boxes → fiyat bölgeleri {high, low} ciftleri
+- MUTLAKA study_filter kullanin (orn: study_filter="Profiler")
+- Indikatorlerin grafikte GORUNUR olmasi gerekir
 
-Changing the chart:
-- chart_set_symbol, chart_set_timeframe, chart_set_type → change ticker/resolution/style
-- chart_manage_indicator → add/remove studies. USE FULL NAMES: "Relative Strength Index" not "RSI"
-- chart_scroll_to_date → jump to a date (ISO format)
-- indicator_set_inputs → change indicator settings (length, source, etc.)
+Grafigi degistirme:
+- chart_set_symbol, chart_set_timeframe, chart_set_type → sembol/zaman/stil degistir
+- chart_manage_indicator → indikator ekle/kaldir. TAM AD KULLANIN: "RSI" degil "Relative Strength Index"
+- chart_scroll_to_date → tarihe git (ISO format)
+- indicator_set_inputs → indikator ayarlarini degistir
 
-Pine Script development:
-- pine_set_source → inject code, pine_smart_compile → compile + check errors
-- pine_get_errors → read errors, pine_get_console → read log output
-- WARNING: pine_get_source can return 200KB+ for complex scripts — avoid unless editing
+Pine Script gelistirme:
+- pine_set_source → kod yaz, pine_smart_compile → derle + hata kontrol
+- pine_get_errors → hatalari oku, pine_get_console → log ciktisini oku
+- UYARI: pine_get_source karmasik scriptlerde 200KB+ donebilir — sadece duzenleme icin
 
-Screenshots: capture_screenshot → regions: "full", "chart", "strategy_tester"
-Replay: replay_start → replay_step → replay_trade → replay_status → replay_stop
-Batch: batch_run → run action across multiple symbols/timeframes
-Drawing: draw_shape → horizontal_line, trend_line, rectangle, text
-Alerts: alert_create, alert_list, alert_delete
-Launch: tv_launch → auto-detect and start TradingView with CDP on any platform
-Panes: pane_list, pane_set_layout (s, 2h, 2v, 4, 6, 8), pane_focus, pane_set_symbol
-Tabs: tab_list, tab_new, tab_close, tab_switch
+Ekran goruntusu: capture_screenshot → bolgeler: "full", "chart", "strategy_tester"
+Tekrar: replay_start → replay_step → replay_trade → replay_status → replay_stop
+Toplu islem: batch_run → birden fazla sembol/zaman diliminde islem yap
+Cizim: draw_shape → yatay cizgi, trend cizgisi, dikdortgen, metin
+Alarmlar: alert_create, alert_list, alert_delete
+Baslatma: tv_launch → TradingView'i otomatik bul ve CDP ile baslat
+Paneller: pane_list, pane_set_layout (s, 2h, 2v, 4, 6, 8), pane_focus, pane_set_symbol
+Sekmeler: tab_list, tab_new, tab_close, tab_switch
 
-CONTEXT MANAGEMENT:
-- ALWAYS use summary=true on data_get_ohlcv
-- ALWAYS use study_filter on pine tools when you know which indicator you want
-- NEVER use verbose=true unless user specifically asks for raw data
-- Prefer capture_screenshot for visual context over pulling large datasets
-- Call chart_get_state ONCE at start, reuse entity IDs`,
+GUVENLIK NOTU:
+- ui_evaluate araci guvenlik nedeniyle kaldirilmistir (keyfi JS calistirma riski)
+- Tum kullanici girdileri JSON.stringify ile guvenli hale getirilmistir
+- pine_check araci Pine Script kaynak kodunuzu TradingView sunucularina gonderir — hassas stratejilerinizi kontrol etmeyin
+
+BAGLAM YONETIMI:
+- data_get_ohlcv'de MUTLAKA summary=true kullanin
+- Pine araclarinda indikator adini biliyorsaniz MUTLAKA study_filter kullanin
+- Kullanici ozellikle istemediginde ASLA verbose=true kullanmayin
+- Buyuk veri setleri yerine capture_screenshot tercih edin
+- chart_get_state'i BASLANGIÇTA BIR KERE cagirin, entity ID'leri tekrar kullanin`,
   },
 );
 
@@ -88,12 +94,18 @@ registerPaneTools(server);
 registerTabTools(server);
 registerMorningTools(server);
 
-// Startup notice (stderr so it doesn't interfere with MCP stdio protocol)
+// Register static/dynamic resources (watchlist, market-hours, scheduler-status, recent-signals, claude-rules)
+registerResources(server);
+
+// Baslangic bildirimi (stderr — MCP stdio protokolunu etkilemez)
 process.stderr.write(
-  "⚠  tradingview-mcp  |  Unofficial tool. Not affiliated with TradingView Inc. or Anthropic.\n",
+  "⚠  tradingview-mcp (TR-Guvenli)  |  Resmi olmayan arac. TradingView Inc. veya Anthropic ile baglantisi yoktur.\n",
 );
 process.stderr.write(
-  "   Ensure your usage complies with TradingView's Terms of Use.\n\n",
+  "   Kullaniminizin TradingView Kullanim Kosullari'na uygun olduguna emin olun.\n",
+);
+process.stderr.write(
+  "   Guvenlik yamalari: ui_evaluate kaldirildi, JS injection duzeltildi, Turkce surum.\n\n",
 );
 
 // Start stdio transport

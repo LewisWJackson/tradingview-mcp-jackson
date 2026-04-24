@@ -3,18 +3,19 @@
     "kripto": [
       "BTCUSD",
       "ETHUSDC",
-      "XRPUSDC",
-      "SOLUSDC",
       "SUIUSDC",
-      "LINKUSDC",
-      "HYPEUSDT",
       "BTCXAU",
       "ETHXAU",
       "USDT.D",
       "DOTUSDC",
       "MONUSD",
-      "PEPEUSDC",
-      "RENDERUSDC"
+      "RENDERUSDC",
+      "LINKUSDT.P",
+      "BTCUSDT.P",
+      "ETHUSDT.P",
+      "HYPEUSDT.P",
+      "XRPUSDT.P",
+      "SOLUSDT.P"
     ],
     "forex": [
       "EURUSD",
@@ -36,7 +37,10 @@
       "ISRG",
       "FSLR",
       "PG",
-      "CRCL"
+      "CRCL",
+      "INTL",
+      "PLTR",
+      "TESLA"
     ],
     "bist": [
       "PEKGY",
@@ -70,7 +74,9 @@
       "TTKOM",
       "TUPRS",
       "VAKBN",
-      "YKBNK"
+      "YKBNK",
+      "MIATK",
+      "ATATR"
     ],
     "emtia": [
       "XAUUSD",
@@ -382,8 +388,16 @@
   "pozisyon_yonetimi": {
     "giris": "Sinyalde tum pozisyonu birden acma, 2-3 kademeli giris yap",
     "tp_mesafeleri_R": {
-      "normal_vol": { "tp1": 1.0, "tp2": 2.2, "tp3": 3.5 },
-      "high_vol":   { "tp1": 1.2, "tp2": 2.5, "tp3": 4.0 },
+      "normal_vol": {
+        "tp1": 1,
+        "tp2": 2.2,
+        "tp3": 3.5
+      },
+      "high_vol": {
+        "tp1": 1.2,
+        "tp2": 2.5,
+        "tp3": 4
+      },
       "aciklama": "2026-04 backtest (simulate-tp1.js) ile dogrulandi: TP1=1.0R hit orani 1.5R'a gore +%33, sl_hit rescue orani %3.6 -> %12.0."
     },
     "dinamik_tp_sayisi": {

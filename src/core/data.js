@@ -9,13 +9,14 @@ const CHART_API = KNOWN_PATHS.chartApi;
 const BARS_PATH = KNOWN_PATHS.mainSeriesBars;
 
 function buildGraphicsJS(collectionName, mapKey, filter) {
+  const safeFilter = JSON.stringify(filter || '');
   return `
     (function() {
       var chart = window.TradingViewApi._activeChartWidgetWV.value()._chartWidget;
       var model = chart.model();
       var sources = model.model().dataSources();
       var results = [];
-      var filter = '${filter}';
+      var filter = ${safeFilter};
       for (var si = 0; si < sources.length; si++) {
         var s = sources[si];
         if (!s.metaInfo) continue;
@@ -110,8 +111,8 @@ export async function getIndicator({ entity_id }) {
   const data = await evaluate(`
     (function() {
       var api = ${CHART_API};
-      var study = api.getStudyById('${entity_id}');
-      if (!study) return { error: 'Study not found: ${entity_id}' };
+      var study = api.getStudyById(${JSON.stringify(entity_id)});
+      if (!study) return { error: 'Study not found: ' + ${JSON.stringify(entity_id)} };
       var result = { name: null, inputs: null, visible: null };
       try { result.visible = study.isVisible(); } catch(e) {}
       try { result.inputs = study.getInputValues(); } catch(e) { result.inputs_error = e.message; }
@@ -246,7 +247,7 @@ export async function getQuote({ symbol } = {}) {
   const data = await evaluate(`
     (function() {
       var api = ${CHART_API};
-      var sym = '${symbol || ''}';
+      var sym = ${JSON.stringify(symbol || '')};
       if (!sym) { try { sym = api.symbol(); } catch(e) {} }
       if (!sym) { try { sym = api.symbolExt().symbol; } catch(e) {} }
       var ext = {};

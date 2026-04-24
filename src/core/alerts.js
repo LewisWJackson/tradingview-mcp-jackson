@@ -21,14 +21,16 @@ export async function create({ condition, price, message }) {
 
   await new Promise(r => setTimeout(r, 1000));
 
+  const safePrice = JSON.stringify(String(price));
   const priceSet = await evaluate(`
     (function() {
+      var priceVal = ${safePrice};
       var inputs = document.querySelectorAll('[class*="alert"] input[type="text"], [class*="alert"] input[type="number"]');
       for (var i = 0; i < inputs.length; i++) {
         var label = inputs[i].closest('[class*="row"]')?.querySelector('[class*="label"]');
         if (label && /value|price/i.test(label.textContent)) {
           var nativeSet = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
-          nativeSet.call(inputs[i], '${price}');
+          nativeSet.call(inputs[i], priceVal);
           inputs[i].dispatchEvent(new Event('input', { bubbles: true }));
           inputs[i].dispatchEvent(new Event('change', { bubbles: true }));
           return true;
@@ -36,7 +38,7 @@ export async function create({ condition, price, message }) {
       }
       if (inputs.length > 0) {
         var nativeSet = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
-        nativeSet.call(inputs[0], '${price}');
+        nativeSet.call(inputs[0], priceVal);
         inputs[0].dispatchEvent(new Event('input', { bubbles: true }));
         return true;
       }

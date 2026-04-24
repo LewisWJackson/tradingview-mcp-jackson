@@ -29,11 +29,12 @@ export async function getState() {
 }
 
 export async function setSymbol({ symbol }) {
+  const safeSymbol = JSON.stringify(symbol);
   await evaluateAsync(`
     (function() {
       var chart = ${CHART_API};
       return new Promise(function(resolve) {
-        chart.setSymbol('${symbol.replace(/'/g, "\\'")}', {});
+        chart.setSymbol(${safeSymbol}, {});
         setTimeout(resolve, 500);
       });
     })()
@@ -43,10 +44,11 @@ export async function setSymbol({ symbol }) {
 }
 
 export async function setTimeframe({ timeframe }) {
+  const safeTimeframe = JSON.stringify(timeframe);
   await evaluate(`
     (function() {
       var chart = ${CHART_API};
-      chart.setResolution('${timeframe.replace(/'/g, "\\'")}', {});
+      chart.setResolution(${safeTimeframe}, {});
     })()
   `);
   const ready = await waitForChartReady(null, timeframe);
@@ -78,10 +80,12 @@ export async function manageIndicator({ action, indicator, entity_id, inputs: in
   if (action === 'add') {
     const inputArr = inputs ? Object.entries(inputs).map(([k, v]) => ({ id: k, value: v })) : [];
     const before = await evaluate(`${CHART_API}.getAllStudies().map(function(s) { return s.id; })`);
+    const safeIndicator = JSON.stringify(indicator);
+    const safeInputArr = JSON.stringify(inputArr);
     await evaluate(`
       (function() {
         var chart = ${CHART_API};
-        chart.createStudy('${indicator.replace(/'/g, "\\'")}', false, false, ${JSON.stringify(inputArr)});
+        chart.createStudy(${safeIndicator}, false, false, ${safeInputArr});
       })()
     `);
     await new Promise(r => setTimeout(r, 1500));
@@ -90,10 +94,11 @@ export async function manageIndicator({ action, indicator, entity_id, inputs: in
     return { success: newIds.length > 0, action: 'add', indicator, entity_id: newIds[0] || null, new_study_count: newIds.length };
   } else if (action === 'remove') {
     if (!entity_id) throw new Error('entity_id required for remove action. Use chart_get_state to find study IDs.');
+    const safeEntityId = JSON.stringify(entity_id);
     await evaluate(`
       (function() {
         var chart = ${CHART_API};
-        chart.removeEntity('${entity_id.replace(/'/g, "\\'")}');
+        chart.removeEntity(${safeEntityId});
       })()
     `);
     return { success: true, action: 'remove', entity_id };

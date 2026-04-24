@@ -11,18 +11,24 @@ export async function drawShape({ shape, point, point2, overrides: overridesRaw,
 
   const before = await evaluate(`${apiPath}.getAllShapes().map(function(s) { return s.id; })`);
 
+  const safeShape = JSON.stringify(shape);
+  const safePoint = JSON.stringify(point);
+  const safeOverrides = JSON.stringify(overrides || {});
+  const safeText = JSON.stringify(text || '');
+
   if (point2) {
+    const safePoint2 = JSON.stringify(point2);
     await evaluate(`
       ${apiPath}.createMultipointShape(
-        [{ time: ${point.time}, price: ${point.price} }, { time: ${point2.time}, price: ${point2.price} }],
-        { shape: '${shape}', overrides: ${overridesStr}, text: ${textStr} }
+        [${safePoint}, ${safePoint2}],
+        { shape: ${safeShape}, overrides: ${safeOverrides}, text: ${safeText} }
       )
     `);
   } else {
     await evaluate(`
       ${apiPath}.createShape(
-        { time: ${point.time}, price: ${point.price} },
-        { shape: '${shape}', overrides: ${overridesStr}, text: ${textStr} }
+        ${safePoint},
+        { shape: ${safeShape}, overrides: ${safeOverrides}, text: ${safeText} }
       )
     `);
   }
@@ -51,7 +57,7 @@ export async function getProperties({ entity_id }) {
   const result = await evaluate(`
     (function() {
       var api = ${apiPath};
-      var eid = '${entity_id}';
+      var eid = ${JSON.stringify(entity_id)};
       var props = { entity_id: eid };
       var shape = api.getShapeById(eid);
       if (!shape) return { error: 'Shape not found: ' + eid };
@@ -80,7 +86,7 @@ export async function removeOne({ entity_id }) {
   const result = await evaluate(`
     (function() {
       var api = ${apiPath};
-      var eid = '${entity_id}';
+      var eid = ${JSON.stringify(entity_id)};
       var before = api.getAllShapes();
       var found = false;
       for (var i = 0; i < before.length; i++) { if (before[i].id === eid) { found = true; break; } }

@@ -85,10 +85,8 @@ export function registerUiTools(server) {
     catch (err) { return jsonResult({ success: false, error: err.message }, true); }
   });
 
-  server.tool('ui_evaluate', 'Execute JavaScript code in the TradingView page context for advanced automation', {
-    expression: z.string().describe('JavaScript expression to evaluate in the page context. Wrap in IIFE for complex logic.'),
-  }, async ({ expression }) => {
-    try { return jsonResult(await core.uiEvaluate({ expression })); }
-    catch (err) { return jsonResult({ success: false, error: err.message }, true); }
-  });
+  // GÜVENLİK: ui_evaluate aracı kaldırıldı.
+  // Bu araç, TradingView sayfa bağlamında keyfi JavaScript çalıştırmaya izin veriyordu.
+  // Bu, oturum çerezlerinin çalınması, hesap verilerinin sızdırılması veya
+  // broker bağlıysa yetkisiz trade tetiklenmesi gibi ciddi güvenlik risklerine yol açabilirdi.
 }
