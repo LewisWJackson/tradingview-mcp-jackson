@@ -2,23 +2,32 @@
  * Ladder Engine — per-symbol, per-grade üç-liga state makinesi.
  *
  * Ligler: 'real' (GERCEK), 'ara' (ARA), 'virtual' (SANAL).
+ *
+ * 2026-04-23: A ve B gradeler de ladder'a dahil. TF'ler buyudugu icin sinyal
+ * seyrekleti; A/B nin da symbol bazli kalite takibi yapiliyor.
+ *
  * Grade -> league mapping:
- *   A, B  -> daima 'real' (ladder etkilemez, A/B zaten yuksek conviction).
- *   C     -> varsayilan 'ara'. SANAL'a dusebilir, GERCEK'e cikabilir.
+ *   A, B  -> varsayilan 'real'. 3 loss streak ile ARA/SANAL'a dusebilir;
+ *           3 win streak + WR ile geri cikar.
+ *   C     -> varsayilan 'ara'. SANAL'a dusebilir, GERCEK'e cikabilir (2 streak).
  *   BEKLE -> varsayilan 'virtual'. ARA'ya/GERCEK'e cikabilir, geri dusebilir.
  *
  * Outcome sinifi:
- *   win  = TP1/TP2/TP3 hit
+ *   win  = TP1/TP2/TP3 hit, trailing_stop_exit
  *   loss = SL hit
- *   netr = entry_expired / superseded* / manual_close / reverse_close / invalid_data
- *          → streak ve recentOutcomes penceresi ETKILENMEZ.
+ *   netr = entry_expired / superseded* / manual_close / reverse_close / invalid_data /
+ *          sl_hit_high_mfe → streak ve pencere ETKILENMEZ.
  *
- * Geçis kurallari (her grade için ayni):
+ * Geçis kurallari:
  *   Promotion (lig yukselme):
- *     C:     ARA     --2 win streak + son 10'da WR>=%40--> GERCEK
- *     BEKLE: SANAL   --3 win streak + son 10'da WR>=%30--> ARA
- *     BEKLE: ARA     --3 win streak + son 10'da WR>=%40--> GERCEK
+ *     A/B:   SANAL   --3 win streak + WR>=%30--> ARA
+ *     A/B:   ARA     --3 win streak + WR>=%40--> GERCEK
+ *     C:     ARA     --2 win streak + WR>=%40--> GERCEK
+ *     BEKLE: SANAL   --3 win streak + WR>=%30--> ARA
+ *     BEKLE: ARA     --3 win streak + WR>=%40--> GERCEK
  *   Demotion (lig düsme) — WR esigi YOK, sadece streak:
+ *     A/B:   GERCEK  --3 loss streak--> ARA
+ *     A/B:   ARA     --3 loss streak--> SANAL
  *     C:     GERCEK  --2 loss streak--> ARA
  *     C:     ARA     --2 loss streak--> SANAL
  *     BEKLE: GERCEK  --2 loss streak--> ARA
@@ -29,6 +38,9 @@
  *
  * Sliding WR penceresi: her (symbol, grade) için son 10 kapanmis outcome
  * (sadece win/loss, netr'ler pencereye girmez) tutulur. WR = win / toplam * 100.
+ *
+ * Learning hook: her transition `transitionListeners` uzerinden yayilir;
+ * learning-loop.js bu event'i WS'e broadcast eder ve kalite istatistiklerine isler.
  */
 
 import { readJSON, writeJSON, dataPath } from './persistence.js';
@@ -42,6 +54,28 @@ const TRANSITIONS_KEEP = 200;
 
 // Grade -> rule set. { promote: { fromTier → { streakNeeded, minWR } }, demote: { fromTier → streakNeeded } }
 const RULES = {
+  A: {
+    defaultTier: 'real',
+    promote: {
+      virtual: { to: 'ara',  streak: 3, minWR: 30 },
+      ara:     { to: 'real', streak: 3, minWR: 40 },
+    },
+    demote: {
+      real:    { to: 'ara',     streak: 3 },
+      ara:     { to: 'virtual', streak: 3 },
+    },
+  },
+  B: {
+    defaultTier: 'real',
+    promote: {
+      virtual: { to: 'ara',  streak: 3, minWR: 30 },
+      ara:     { to: 'real', streak: 3, minWR: 40 },
+    },
+    demote: {
+      real:    { to: 'ara',     streak: 3 },
+      ara:     { to: 'virtual', streak: 3 },
+    },
+  },
   C: {
     defaultTier: 'ara',
     promote: {
@@ -64,6 +98,28 @@ const RULES = {
     },
   },
 };
+
+// Transition listeners — learning-loop, analytics, WS broadcast bunlara baglanir.
+const transitionListeners = [];
+
+/**
+ * Transition event subscriber kaydi. Gelen event formati:
+ * { symbol, grade, from, to, kind: 'promote'|'demote', streak, windowWR,
+ *   triggeredBy, signalId, at }
+ */
+export function onTransition(callback) {
+  if (typeof callback === 'function') transitionListeners.push(callback);
+  return () => {
+    const idx = transitionListeners.indexOf(callback);
+    if (idx >= 0) transitionListeners.splice(idx, 1);
+  };
+}
+
+function emitTransition(event) {
+  for (const cb of transitionListeners) {
+    try { cb(event); } catch (e) { console.log(`[Ladder] transition listener hata: ${e.message}`); }
+  }
+}
 
 function defaultState() {
   return {
@@ -229,11 +285,12 @@ export function recordOutcome(symbol, grade, outcome) {
 
   const applied = applyOutcome(entry, cls, whenISO);
   let transitionEvent = null;
+  let persistedEvent = null;
   if (applied.readyToCheck) {
     const t = evaluateTransition(entry, grade);
     if (t) {
       transitionEvent = applyTransition(entry, t, whenISO);
-      state.transitions.push({
+      persistedEvent = {
         at: whenISO,
         symbol,
         grade,
@@ -244,7 +301,8 @@ export function recordOutcome(symbol, grade, outcome) {
         windowWR: transitionEvent.wr,
         triggeredBy: outcome?.status,
         signalId: outcome?.signalId,
-      });
+      };
+      state.transitions.push(persistedEvent);
       if (state.transitions.length > TRANSITIONS_KEEP) {
         state.transitions = state.transitions.slice(-TRANSITIONS_KEEP);
       }
@@ -252,6 +310,10 @@ export function recordOutcome(symbol, grade, outcome) {
   }
 
   saveLadder(state);
+
+  // Learning/UI hook — state kaydedildikten sonra listener'lara yay.
+  if (persistedEvent) emitTransition(persistedEvent);
+
   return { changed: true, transition: transitionEvent, outcomeClass: cls };
 }
 
@@ -265,6 +327,7 @@ export function classifyOutcome(status) {
   if (!status) return 'neutral';
   if (status === 'sl_hit') return 'loss';
   if (status === 'tp1_hit' || status === 'tp2_hit' || status === 'tp3_hit') return 'win';
+  if (status === 'trailing_stop_exit') return 'win';
   return 'neutral';
 }
 
@@ -279,7 +342,7 @@ export function classifyOutcome(status) {
 export function rebuildFromArchive(signals) {
   const state = defaultState();
   const relevant = (signals || [])
-    .filter(s => s && s.symbol && (s.grade === 'C' || s.grade === 'BEKLE'))
+    .filter(s => s && s.symbol && RULES[s.grade])
     .filter(s => s.status && s.resolvedAt)
     .filter(s => {
       const cls = classifyOutcome(s.status);

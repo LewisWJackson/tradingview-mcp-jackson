@@ -1,0 +1,15 @@
+{
+  "name": "tv-scanner",
+  "version": "1.0.0",
+  "description": "Autonomous TradingView Scanner - Auto-scan crypto/stocks with signal detection",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "ws": "^8.16.0"
+  }
+}

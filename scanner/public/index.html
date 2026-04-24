@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TV Scanner — Otonom Trading Analiz</title>
+  <style>
+    :root {
+      --bg: #0d1117;
+      --bg2: #161b22;
+      --bg3: #21262d;
+      --border: #30363d;
+      --text: #c9d1d9;
+      --text2: #8b949e;
+      --green: #3fb950;
+      --red: #f85149;
+      --yellow: #d29922;
+      --blue: #58a6ff;
+      --purple: #bc8cff;
+      --orange: #f0883e;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'SF Mono', 'Consolas', 'Monaco', monospace; background: var(--bg); color: var(--text); font-size: 13px; }
+
+    .header {
+      background: var(--bg2);
+      border-bottom: 1px solid var(--border);
+      padding: 12px 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .header h1 { font-size: 16px; color: var(--blue); }
+    .header .status { display: flex; gap: 12px; align-items: center; }
+    .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+    .status-dot.online { background: var(--green); box-shadow: 0 0 6px var(--green); }
+    .status-dot.offline { background: var(--red); box-shadow: 0 0 6px var(--red); }
+
+    .layout { display: grid; grid-template-columns: 280px 1fr 340px; height: calc(100vh - 52px); }
+
+    .left-panel {
+      background: var(--bg2);
+      border-right: 1px solid var(--border);
+      overflow-y: auto;
+      padding: 12px;
+    }
+    .section-title {
+      font-size: 11px;
+      text-transform: uppercase;
+      color: var(--text2);
+      letter-spacing: 1px;
+      margin: 16px 0 8px;
+    }
+    .section-title:first-child { margin-top: 4px; }
+
+    .btn {
+      display: block;
+      width: 100%;
+      padding: 8px 12px;
+      margin: 4px 0;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--bg3);
+      color: var(--text);
+      cursor: pointer;
+      font-family: inherit;
+      font-size: 12px;
+      text-align: left;
+      transition: all 0.15s;
+    }
+    .btn:hover { border-color: var(--blue); background: #1c2128; }
+    .btn-row { display: flex; gap: 6px; }
+    .btn-row .btn { flex: 1; text-align: center; }
+    .btn-green { border-color: var(--green); color: var(--green); }
+    .btn-red { border-color: var(--red); color: var(--red); }
+
+    .input-group { margin: 8px 0; }
+    .input-group label { display: block; font-size: 11px; color: var(--text2); margin-bottom: 4px; }
+    .input-group select, .input-group input {
+      width: 100%;
+      padding: 6px 8px;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      background: var(--bg);
+      color: var(--text);
+      font-family: inherit;
+      font-size: 12px;
+    }
+
+    .center-panel { overflow-y: auto; padding: 16px; }
+
+    .signal-card {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 12px;
+    }
+    .signal-card.grade-A { border-left: 3px solid var(--green); }
+    .signal-card.grade-B { border-left: 3px solid var(--blue); }
+    .signal-card.grade-C { border-left: 3px solid var(--yellow); }
+    .signal-card.grade-IPTAL { border-left: 3px solid var(--red); opacity: 0.6; }
+    .signal-card.grade-BEKLE { border-left: 3px solid var(--purple); opacity: 0.8; }
+
+    .signal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+    .signal-symbol { font-size: 16px; font-weight: bold; }
+    .signal-grade {
+      padding: 3px 10px;
+      border-radius: 4px;
+      font-weight: bold;
+      font-size: 12px;
+    }
+    .grade-A .signal-grade { background: rgba(63,185,80,0.2); color: var(--green); }
+    .grade-B .signal-grade { background: rgba(88,166,255,0.2); color: var(--blue); }
+    .grade-C .signal-grade { background: rgba(210,153,34,0.2); color: var(--yellow); }
+    .grade-IPTAL .signal-grade { background: rgba(248,81,73,0.2); color: var(--red); }
+    .grade-BEKLE .signal-grade { background: rgba(188,140,255,0.2); color: var(--purple); }
+
+    .signal-direction { font-size: 14px; margin-left: 8px; }
+    .signal-direction.long { color: var(--green); }
+    .signal-direction.short { color: var(--red); }
+
+    .signal-row {
+      display: flex;
+      gap: 16px;
+      margin: 6px 0;
+      font-size: 12px;
+    }
+    .signal-row .label { color: var(--text2); min-width: 60px; }
+    .signal-row .value { color: var(--text); }
+
+    .signal-levels {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 8px;
+      margin: 10px 0;
+      padding: 10px;
+      background: var(--bg);
+      border-radius: 6px;
+    }
+    .level-box { text-align: center; }
+    .level-box .lbl { font-size: 10px; color: var(--text2); }
+    .level-box .val { font-size: 13px; font-weight: bold; margin-top: 2px; }
+    .level-box .val.entry { color: var(--blue); }
+    .level-box .val.sl { color: var(--red); }
+    .level-box .val.tp { color: var(--green); }
+
+    .reasoning-list {
+      margin: 8px 0;
+      padding-left: 16px;
+      font-size: 11px;
+      color: var(--text2);
+    }
+    .reasoning-list li { margin: 3px 0; line-height: 1.4; }
+
+    .warning-tag {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 3px;
+      font-size: 10px;
+      margin: 2px;
+      background: rgba(210,153,34,0.15);
+      color: var(--yellow);
+      border: 1px solid rgba(210,153,34,0.3);
+    }
+
+    .right-panel {
+      background: var(--bg2);
+      border-left: 1px solid var(--border);
+      overflow-y: auto;
+      padding: 12px;
+    }
+
+    .log-entry {
+      padding: 6px 8px;
+      border-bottom: 1px solid var(--border);
+      font-size: 11px;
+      line-height: 1.4;
+    }
+    .log-entry .time { color: var(--text2); }
+    .log-entry.info { color: var(--blue); }
+    .log-entry.success { color: var(--green); }
+    .log-entry.error { color: var(--red); }
+    .log-entry.signal { color: var(--yellow); background: rgba(210,153,34,0.05); }
+
+    .macro-panel {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 10px;
+      margin: 8px 0;
+    }
+    .macro-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 4px 0;
+      font-size: 11px;
+    }
+
+    .backtest-stats {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin: 10px 0;
+    }
+    .stat-box {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 10px;
+      text-align: center;
+    }
+    .stat-box .stat-label { font-size: 10px; color: var(--text2); }
+    .stat-box .stat-value { font-size: 18px; font-weight: bold; margin-top: 4px; }
+    .stat-value.positive { color: var(--green); }
+    .stat-value.negative { color: var(--red); }
+
+    .spinner {
+      display: inline-block;
+      width: 16px;
+      height: 16px;
+      border: 2px solid var(--border);
+      border-top-color: var(--blue);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .scanning-overlay {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      background: var(--bg2);
+      border: 1px solid var(--blue);
+      border-radius: 8px;
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      z-index: 1000;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+    }
+    .scanning-overlay.hidden { display: none; }
+
+    .empty-state {
+      text-align: center;
+      padding: 60px 20px;
+      color: var(--text2);
+    }
+    .empty-state p { margin: 8px 0; }
+
+    @media (max-width: 1200px) { .layout { grid-template-columns: 240px 1fr 280px; } }
+    @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } .left-panel, .right-panel { display: none; } }
+
+    /* Canli Fiyatlar Paneli */
+    .live-prices-panel {
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 6px 8px;
+      margin-bottom: 10px;
+      max-height: 240px;
+      overflow-y: auto;
+    }
+    .live-price-grid { display: grid; grid-template-columns: 1fr auto; row-gap: 2px; column-gap: 8px; font-size: 11px; }
+    .live-price-row { display: contents; }
+    .live-price-row .sym { color: var(--text2); padding: 2px 0; }
+    .live-price-row .val { color: var(--text); text-align: right; font-variant-numeric: tabular-nums; padding: 2px 4px; border-radius: 3px; transition: background 0.6s ease; }
+    .live-price-cell { font-variant-numeric: tabular-nums; transition: background 0.6s ease, color 0.6s ease; }
+    .flash-up { background: rgba(63, 185, 80, 0.25); color: var(--green) !important; }
+    .flash-down { background: rgba(248, 81, 73, 0.25); color: var(--red) !important; }
+
+    /* Watchlist Modal */
+    .modal-backdrop {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.6);
+      display: flex; align-items: center; justify-content: center; z-index: 2000;
+    }
+    .modal-backdrop.hidden { display: none; }
+    .modal {
+      background: var(--bg2); border: 1px solid var(--border); border-radius: 10px;
+      width: min(1040px, 95vw); height: min(720px, 90vh);
+      display: grid; grid-template-columns: 340px 1fr; overflow: hidden;
+      box-shadow: 0 8px 30px rgba(0,0,0,0.6);
+    }
+    .modal-header {
+      grid-column: 1 / -1;
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 12px 18px; border-bottom: 1px solid var(--border); background: var(--bg3);
+    }
+    .modal-header h2 { font-size: 14px; color: var(--blue); }
+    .modal-close {
+      background: transparent; border: none; color: var(--text2);
+      font-size: 20px; cursor: pointer; padding: 0 6px;
+    }
+    .modal-close:hover { color: var(--red); }
+    .modal-body { display: contents; }
+    .wl-left { border-right: 1px solid var(--border); overflow-y: auto; padding: 10px; }
+    .wl-right { overflow-y: auto; padding: 16px; }
+
+    .wl-tabs { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 10px; }
+    .wl-tab {
+      padding: 5px 10px; background: var(--bg3); border: 1px solid var(--border);
+      border-radius: 4px; cursor: pointer; font-size: 11px; color: var(--text2);
+    }
+    .wl-tab.active { background: var(--blue); border-color: var(--blue); color: white; }
+    .wl-tab .count { opacity: 0.7; margin-left: 4px; }
+
+    .wl-list { display: flex; flex-direction: column; gap: 3px; max-height: calc(100% - 110px); overflow-y: auto; }
+    .wl-item {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 6px 10px; background: var(--bg3); border: 1px solid var(--border);
+      border-radius: 5px; cursor: pointer; font-size: 12px;
+    }
+    .wl-item:hover { border-color: var(--blue); }
+    .wl-item.active { border-color: var(--blue); background: #1c2128; }
+    .wl-item .sym { font-weight: 600; }
+    .wl-item .ex-badge {
+      font-size: 9px; padding: 1px 5px; border-radius: 3px;
+      background: var(--bg); color: var(--text2); margin-left: 6px; vertical-align: middle;
+    }
+    .wl-item .ex-badge.nyse { background: #1f3a5f; color: #8ac6ff; }
+    .wl-item .ex-badge.nasdaq { background: #3a2c5f; color: #c8a8ff; }
+    .wl-item .del {
+      background: transparent; border: none; color: var(--text2);
+      cursor: pointer; font-size: 14px; padding: 0 4px;
+    }
+    .wl-item .del:hover { color: var(--red); }
+
+    .wl-add {
+      display: flex; gap: 6px; margin-top: 10px;
+      padding-top: 10px; border-top: 1px solid var(--border);
+    }
+    .wl-add input {
+      flex: 1; padding: 6px 8px; border: 1px solid var(--border); border-radius: 4px;
+      background: var(--bg); color: var(--text); font-family: inherit; font-size: 12px;
+    }
+    .wl-add button {
+      padding: 6px 14px; border: 1px solid var(--green); background: transparent;
+      color: var(--green); border-radius: 4px; cursor: pointer; font-size: 12px;
+    }
+    .wl-add button:hover { background: var(--green); color: white; }
+
+    .wl-stats-header { margin-bottom: 14px; }
+    .wl-stats-header h3 { font-size: 18px; color: var(--blue); }
+    .wl-stats-header .sub { font-size: 11px; color: var(--text2); margin-top: 2px; }
+
+    .wl-stats-grid {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+      gap: 10px; margin-bottom: 16px;
+    }
+    .wl-stat-card {
+      background: var(--bg3); border: 1px solid var(--border);
+      border-radius: 6px; padding: 10px;
+    }
+    .wl-stat-card .label { font-size: 10px; color: var(--text2); text-transform: uppercase; letter-spacing: 0.5px; }
+    .wl-stat-card .value { font-size: 20px; font-weight: 600; margin-top: 4px; }
+    .wl-stat-card .value.green { color: var(--green); }
+    .wl-stat-card .value.red { color: var(--red); }
+    .wl-stat-card .value.yellow { color: var(--yellow); }
+
+    .wl-last-title { font-size: 11px; color: var(--text2); text-transform: uppercase; letter-spacing: 1px; margin: 6px 0 8px; }
+    .wl-last-list { display: flex; flex-direction: column; gap: 4px; }
+    .wl-last-row {
+      display: grid; grid-template-columns: 90px 40px 50px 60px 1fr 70px;
+      gap: 8px; padding: 6px 10px; background: var(--bg3);
+      border: 1px solid var(--border); border-radius: 4px; font-size: 11px;
+    }
+    .wl-last-row .grade { font-weight: 600; text-align: center; }
+    .wl-last-row .grade.A { color: var(--green); }
+    .wl-last-row .grade.B { color: var(--blue); }
+    .wl-last-row .grade.C { color: var(--yellow); }
+    .wl-last-row .dir.long { color: var(--green); }
+    .wl-last-row .dir.short { color: var(--red); }
+    .wl-last-row .outcome.win { color: var(--green); }
+    .wl-last-row .outcome.loss { color: var(--red); }
+
+    .wl-empty { text-align: center; color: var(--text2); padding: 40px 20px; }
+    .wl-toast {
+      position: fixed; bottom: 20px; right: 20px; z-index: 3000;
+      background: var(--bg3); border: 1px solid var(--border); border-radius: 6px;
+      padding: 10px 14px; font-size: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+    }
+    .wl-toast.success { border-color: var(--green); color: var(--green); }
+    .wl-toast.error { border-color: var(--red); color: var(--red); }
+    .wl-toast.hidden { display: none; }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <h1>TV Scanner</h1>
+  <div class="status">
+    <a href="/" style="color:var(--blue);text-decoration:none;font-size:12px;margin-right:12px;">Dashboard</a>
+    <a href="/signals.html" style="color:var(--text2);text-decoration:none;font-size:12px;margin-right:12px;">Acik Sinyaller</a>
+    <a href="/league.html" style="color:var(--text2);text-decoration:none;font-size:12px;margin-right:20px;">Lig Tablosu</a>
+    <span class="status-dot" id="tvStatus"></span>
+    <span id="tvStatusText">Baglaniyor...</span>
+    <span style="margin-left: 12px;" class="status-dot" id="schedulerStatus"></span>
+    <span id="schedulerStatusText">Zamanlayici</span>
+  </div>
+</div>
+
+<div class="layout">
+  <div class="left-panel">
+    <div class="section-title">Otomatik Tarama</div>
+    <div class="btn-row">
+      <button class="btn btn-green" id="btnStartScheduler" onclick="startScheduler()">Baslat</button>
+      <button class="btn btn-red" id="btnStopScheduler" onclick="stopScheduler()">Durdur</button>
+    </div>
+
+    <div class="section-title">Manuel Tarama</div>
+    <div class="input-group">
+      <label>Sembol</label>
+      <input type="text" id="scanSymbol" placeholder="Herhangi bir sembol yaz..." autocomplete="off" />
+    </div>
+    <div class="input-group">
+      <label>Mod</label>
+      <select id="scanMode" onchange="onScanModeChange()">
+        <option value="short">Kisa Vade — Tum TF (15m-1D)</option>
+        <option value="long">Uzun Vade — Tum TF (4H-1M)</option>
+        <option value="short-single">Kisa Vade — Tek TF</option>
+        <option value="long-single">Uzun Vade — Tek TF</option>
+      </select>
+    </div>
+    <div class="input-group" id="singleTFGroup" style="display:none;">
+      <label>Zaman Dilimi</label>
+      <select id="scanTimeframe">
+        <option value="1">1m</option>
+        <option value="3">3m</option>
+        <option value="5">5m</option>
+        <option value="15">15m</option>
+        <option value="30" selected>30m</option>
+        <option value="45">45m</option>
+        <option value="60">1H</option>
+        <option value="120">2H</option>
+        <option value="240">4H</option>
+        <option value="1D">1D</option>
+        <option value="3D">3D</option>
+        <option value="1W">1W</option>
+        <option value="1M">1M</option>
+      </select>
+    </div>
+    <button class="btn" onclick="runManualScan()">Tara</button>
+    <div id="scanTFInfo" style="font-size:10px; color:var(--text2); margin-top:4px; padding:4px 0;">
+      Taranacak: 15m, 30m, 45m, 1H, 4H, 1D
+    </div>
+
+    <div class="section-title">Toplu Tarama</div>
+    <div class="input-group">
+      <label>Kategori</label>
+      <select id="batchCategory">
+        <option value="kripto">Kripto</option>
+        <option value="abd_hisse">ABD Hisse</option>
+        <option value="forex">Forex</option>
+        <option value="emtia">Emtia</option>
+        <option value="bist">BIST</option>
+      </select>
+    </div>
+    <div class="input-group">
+      <label>Mod</label>
+      <select id="batchMode">
+        <option value="short">Kisa Vade</option>
+        <option value="long">Uzun Vade</option>
+      </select>
+    </div>
+    <button class="btn" onclick="runBatchScan()">Toplu Tara</button>
+
+    <div class="section-title">Backtest</div>
+    <div class="input-group">
+      <label>Sembol</label>
+      <input type="text" id="btSymbol" placeholder="Herhangi bir sembol yaz..." autocomplete="off" />
+    </div>
+    <div class="input-group">
+      <label>Zaman Dilimi</label>
+      <select id="btTimeframe">
+        <option value="30">30m</option>
+        <option value="60">1H</option>
+        <option value="240">4H</option>
+        <option value="1D">Gunluk</option>
+      </select>
+    </div>
+    <div class="input-group">
+      <label>Bar Sayisi</label>
+      <input type="number" id="btBars" value="500" min="50" max="500" />
+    </div>
+    <button class="btn" onclick="runBacktest()">Backtest Calistir</button>
+
+    <div class="section-title">Sinyal Gecmisi</div>
+    <div class="input-group">
+      <label>Sembol</label>
+      <input type="text" id="historySymbol" placeholder="Ornek: BTCUSDT" autocomplete="off" />
+    </div>
+    <div class="input-group">
+      <label>Son Kac Gun</label>
+      <select id="historyDays">
+        <option value="1">1 Gun</option>
+        <option value="3" selected>3 Gun</option>
+        <option value="7">7 Gun</option>
+      </select>
+    </div>
+    <button class="btn" onclick="querySignalHistory()">Sinyal Gecmisini Sorgula</button>
+
+    <div class="section-title">Watchlist</div>
+    <button class="btn" style="border-color:var(--purple);color:var(--purple);" onclick="openWatchlistModal()">Watchlist Yonetimi</button>
+
+    <div class="section-title">Makro Durum</div>
+    <button class="btn" onclick="refreshMacro()">Makro Guncelle</button>
+    <div id="macroPanel" class="macro-panel"></div>
+
+    <div class="section-title">Otonom Ogrenme</div>
+    <div id="learningStatusPanel" class="macro-panel">
+      <div class="macro-row">
+        <span style="color:#8b949e">Durum</span>
+        <span id="learningStateText" style="color:var(--purple)">Yukleniyor...</span>
+      </div>
+      <div class="macro-row">
+        <span style="color:#8b949e">Versiyon</span>
+        <span id="learningVersion">—</span>
+      </div>
+      <div class="macro-row">
+        <span style="color:#8b949e">Cozulmus</span>
+        <span id="learningResolved">0</span>
+      </div>
+      <div class="macro-row">
+        <span style="color:#8b949e">Acik Sinyal</span>
+        <span id="learningOpen">0</span>
+      </div>
+      <div class="macro-row">
+        <span style="color:#8b949e">Kazanma</span>
+        <span id="learningWinRate">—</span>
+      </div>
+      <div class="macro-row">
+        <span style="color:#8b949e">Trend</span>
+        <span id="learningTrend">—</span>
+      </div>
+    </div>
+    <button class="btn" onclick="viewLearningReport()">Detayli Rapor</button>
+    <button class="btn" onclick="viewIndicatorReport()">Indikator Analizi</button>
+    <button class="btn" style="border-color:var(--purple);color:var(--purple);" onclick="view24hChanges()">Son 24s Degisiklikler</button>
+    <div class="btn-row" style="margin-top:4px;">
+      <button class="btn" onclick="forceOutcomeCheck()">Sonuc Kontrol</button>
+      <button class="btn" onclick="forceWeightAdjust()">Ayarla</button>
+    </div>
+  </div>
+
+  <div class="center-panel" id="centerPanel">
+    <div class="empty-state" id="emptyState">
+      <p style="font-size: 32px;">&#128202;</p>
+      <p style="font-size: 16px; color: var(--text);">TV Scanner Hazir</p>
+      <p>Sol panelden tarama baslatabilir veya otomatik taramayi aktive edebilirsiniz.</p>
+      <p style="margin-top: 16px; font-size: 11px;">TradingView Desktop CDP modunda acik olmali</p>
+    </div>
+  </div>
+
+  <div class="right-panel">
+    <div class="section-title">Aktivite Logu</div>
+    <div id="logPanel"></div>
+  </div>
+</div>
+
+<!-- Watchlist Manager Modal -->
+<div class="modal-backdrop hidden" id="watchlistModal" onclick="if(event.target===this)closeWatchlistModal()">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>Watchlist Yonetimi</h2>
+      <button class="modal-close" onclick="closeWatchlistModal()">×</button>
+    </div>
+    <div class="wl-left">
+      <div class="wl-tabs" id="wlTabs"></div>
+      <div class="wl-list" id="wlList"></div>
+      <div class="wl-add">
+        <input type="text" id="wlAddInput" placeholder="Sembol (orn: AAPL)" autocomplete="off" />
+        <button onclick="addWatchlistSymbol()">Ekle</button>
+      </div>
+    </div>
+    <div class="wl-right" id="wlStatsPanel">
+      <div class="wl-empty">
+        Istatistikleri gormek icin sol taraftaki bir sembole tiklayin.
+      </div>
+    </div>
+  </div>
+</div>
+<div class="wl-toast hidden" id="wlToast"></div>
+
+<div class="scanning-overlay hidden" id="scanningOverlay">
+  <div class="spinner"></div>
+  <span id="scanningText">Taraniyor...</span>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>

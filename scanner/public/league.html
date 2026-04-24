@@ -1,0 +1,804 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lig Tablosu — TV Scanner</title>
+  <style>
+    :root {
+      --bg: #0d1117;
+      --bg2: #161b22;
+      --bg3: #21262d;
+      --border: #30363d;
+      --text: #c9d1d9;
+      --text2: #8b949e;
+      --green: #3fb950;
+      --red: #f85149;
+      --yellow: #d29922;
+      --blue: #58a6ff;
+      --purple: #bc8cff;
+      --orange: #f0883e;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'SF Mono', 'Consolas', 'Monaco', monospace; background: var(--bg); color: var(--text); font-size: 13px; }
+
+    .header {
+      background: var(--bg2);
+      border-bottom: 1px solid var(--border);
+      padding: 12px 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .header h1 { font-size: 16px; color: var(--blue); }
+    .nav { display: flex; gap: 16px; align-items: center; }
+    .nav a { color: var(--text2); text-decoration: none; font-size: 12px; }
+    .nav a:hover { color: var(--text); }
+    .nav a.active { color: var(--blue); }
+
+    .toolbar {
+      background: var(--bg2);
+      border-bottom: 1px solid var(--border);
+      padding: 10px 20px;
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .toolbar label { font-size: 11px; color: var(--text2); }
+    .toolbar select, .toolbar input {
+      padding: 5px 8px;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      background: var(--bg3);
+      color: var(--text);
+      font-family: inherit;
+      font-size: 12px;
+    }
+    .toolbar .sep { width: 1px; height: 20px; background: var(--border); margin: 0 4px; }
+    .btn-sm {
+      padding: 5px 12px;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      background: var(--bg3);
+      color: var(--text);
+      cursor: pointer;
+      font-family: inherit;
+      font-size: 12px;
+    }
+    .btn-sm:hover { border-color: var(--blue); }
+    #lastUpdated { font-size: 11px; color: var(--text2); margin-left: auto; }
+
+    .summary-bar {
+      background: var(--bg3);
+      border-bottom: 1px solid var(--border);
+      padding: 6px 20px;
+      display: flex;
+      gap: 24px;
+      font-size: 11px;
+    }
+    .summary-bar .item { display: flex; gap: 6px; align-items: center; }
+    .summary-bar .lbl { color: var(--text2); }
+
+    .league-layout {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr 320px;
+      gap: 0;
+      height: calc(100vh - 106px);
+      overflow: hidden;
+    }
+
+    .league-col {
+      border-right: 1px solid var(--border);
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .league-header {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .lh-real    { background: rgba(63,185,80,0.1);    border-top: 2px solid #3fb950; }
+    .lh-ara     { background: rgba(240,136,62,0.1);   border-top: 2px solid #f0883e; }
+    .lh-virtual { background: rgba(139,148,158,0.1);  border-top: 2px solid #8b949e; }
+
+    .league-title-real    { color: #3fb950; font-size: 13px; font-weight: bold; }
+    .league-title-ara     { color: #f0883e; font-size: 13px; font-weight: bold; }
+    .league-title-virtual { color: #8b949e; font-size: 13px; font-weight: bold; }
+
+    .league-count {
+      font-size: 11px; color: var(--text2);
+      background: var(--bg3); border: 1px solid var(--border);
+      border-radius: 10px; padding: 1px 8px;
+    }
+    .league-body { padding: 8px; flex: 1; }
+
+    /* Cards — each built via DOM, classes set programmatically */
+    .entry-card {
+      background: var(--bg2); border: 1px solid var(--border);
+      border-radius: 6px; padding: 10px 12px; margin-bottom: 6px;
+    }
+    .card-promo-ready  { border-color: #3fb950 !important; box-shadow: 0 0 6px rgba(63,185,80,0.2); }
+    .card-demote-risk  { border-color: #f85149 !important; box-shadow: 0 0 6px rgba(248,81,73,0.2); }
+    .card-cooldown     { opacity: 0.7; }
+
+    .entry-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+    .entry-symbol { font-size: 14px; font-weight: bold; }
+    .entry-badges { display: flex; gap: 4px; align-items: center; }
+
+    .badge { padding: 2px 7px; border-radius: 3px; font-size: 11px; font-weight: bold; }
+    .badge-A     { background: rgba(63,185,80,0.2);   color: #3fb950; border: 1px solid rgba(63,185,80,0.4); }
+    .badge-B     { background: rgba(88,166,255,0.2);  color: #58a6ff; border: 1px solid rgba(88,166,255,0.4); }
+    .badge-C     { background: rgba(210,153,34,0.2);  color: #d29922; border: 1px solid rgba(210,153,34,0.4); }
+    .badge-BEKLE { background: rgba(188,140,255,0.2); color: #bc8cff; border: 1px solid rgba(188,140,255,0.4); }
+
+    /* Live transition flash */
+    @keyframes flashGreen { 0%,100% { box-shadow: 0 0 0 rgba(63,185,80,0); } 30% { box-shadow: 0 0 14px rgba(63,185,80,0.7); } }
+    @keyframes flashRed   { 0%,100% { box-shadow: 0 0 0 rgba(248,81,73,0); } 30% { box-shadow: 0 0 14px rgba(248,81,73,0.7); } }
+    .flash-promo  { animation: flashGreen 1.5s ease-out; }
+    .flash-demote { animation: flashRed   1.5s ease-out; }
+    .badge-status { font-size: 10px; padding: 1px 6px; border-radius: 3px; border: 1px solid var(--border); color: var(--text2); }
+    .badge-promo  { border-color: #3fb950; color: #3fb950; background: rgba(63,185,80,0.1); }
+    .badge-demote { border-color: #f85149; color: #f85149; background: rgba(248,81,73,0.1); }
+    .badge-cool   { border-color: #d29922; color: #d29922; background: rgba(210,153,34,0.1); }
+
+    .streaks { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 6px 0; }
+    .streak-label { font-size: 10px; color: var(--text2); margin-bottom: 3px; display: flex; justify-content: space-between; }
+    .bar-wrap { background: var(--bg); border-radius: 3px; height: 5px; overflow: hidden; }
+    .bar { height: 100%; border-radius: 3px; transition: width 0.3s; }
+    .bar-win  { background: #3fb950; }
+    .bar-loss { background: #f85149; }
+    .bar-wr   { background: #58a6ff; }
+
+    .wr-block { margin: 6px 0; }
+    .wr-label { font-size: 10px; color: var(--text2); display: flex; justify-content: space-between; margin-bottom: 3px; }
+    .wr-bar-wrap { background: var(--bg); border-radius: 3px; height: 5px; overflow: hidden; position: relative; }
+    .wr-threshold { position: absolute; top: 0; height: 100%; width: 2px; background: #d29922; opacity: 0.8; }
+
+    .entry-stats { display: flex; gap: 12px; font-size: 11px; color: var(--text2); margin-top: 4px; }
+
+    .hint { font-size: 10px; margin-top: 6px; padding: 4px 8px; border-radius: 4px; display: flex; align-items: center; gap: 6px; }
+    .hint-promo   { background: rgba(63,185,80,0.08);  color: #3fb950; border: 1px solid rgba(63,185,80,0.2); }
+    .hint-demote  { background: rgba(248,81,73,0.08);  color: #f85149; border: 1px solid rgba(248,81,73,0.2); }
+    .hint-neutral { background: var(--bg); color: var(--text2); border: 1px solid var(--border); }
+
+    /* Transitions panel */
+    .transitions-panel { background: var(--bg2); overflow-y: auto; border-left: 1px solid var(--border); }
+    .trans-header {
+      position: sticky; top: 0; background: var(--bg2);
+      border-bottom: 1px solid var(--border); padding: 10px 14px; z-index: 10;
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .trans-header span { font-size: 12px; color: var(--text2); text-transform: uppercase; letter-spacing: 1px; }
+    .trans-body { padding: 8px; }
+
+    .trans-item { padding: 8px 10px; border-bottom: 1px solid var(--border); font-size: 11px; }
+    .trans-item:last-child { border-bottom: none; }
+    .t-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+    .t-sym { font-weight: bold; font-size: 12px; }
+    .t-time { color: var(--text2); font-size: 10px; }
+    .t-arrow { display: flex; align-items: center; gap: 6px; font-size: 11px; }
+    .t-tier { padding: 1px 6px; border-radius: 3px; font-size: 10px; font-weight: bold; }
+    .t-tier-real    { background: rgba(63,185,80,0.15);  color: #3fb950; }
+    .t-tier-ara     { background: rgba(240,136,62,0.15); color: #f0883e; }
+    .t-tier-virtual { background: rgba(139,148,158,0.15);color: #8b949e; }
+    .t-promote { color: #3fb950; }
+    .t-demote  { color: #f85149; }
+    .t-detail { color: var(--text2); font-size: 10px; margin-top: 2px; }
+
+    .empty-col { text-align: center; color: var(--text2); padding: 40px 16px; font-size: 12px; }
+
+    @media (max-width: 1100px) { .league-layout { grid-template-columns: 1fr 1fr 1fr; } .transitions-panel { display: none; } }
+    @media (max-width: 700px)  { .league-layout { grid-template-columns: 1fr; height: auto; } .league-col { height: 400px; } }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <h1>TV Scanner — Lig Tablosu</h1>
+  <div class="nav">
+    <a href="/">Dashboard</a>
+    <a href="/signals.html">Acik Sinyaller</a>
+    <a href="/league.html" class="active">Lig Tablosu</a>
+  </div>
+</div>
+
+<div class="toolbar">
+  <label>Grade:</label>
+  <select id="filterGrade" onchange="applyFilters()">
+    <option value="all">Hepsi (A/B/C/BEKLE)</option>
+    <option value="A">Sadece A</option>
+    <option value="B">Sadece B</option>
+    <option value="C">Sadece C</option>
+    <option value="BEKLE">Sadece BEKLE</option>
+  </select>
+  <div class="sep"></div>
+  <label>Sırala:</label>
+  <select id="sortMode" onchange="applyFilters()">
+    <option value="risk">Risk (Çıkma/Düşme)</option>
+    <option value="wr">Kazanma Oranı</option>
+    <option value="streak">Seri</option>
+    <option value="resolved">İşlem Sayısı</option>
+    <option value="symbol">Sembol</option>
+  </select>
+  <div class="sep"></div>
+  <label>Ara:</label>
+  <input type="text" id="searchInput" placeholder="Sembol..." oninput="applyFilters()" style="width:120px;" />
+  <div class="sep"></div>
+  <button class="btn-sm" onclick="refresh()">Yenile</button>
+  <span id="lastUpdated"></span>
+</div>
+
+<div class="summary-bar" id="summaryBar">
+  <div class="item"><span class="lbl">Yükleniyor...</span></div>
+</div>
+
+<div class="league-layout">
+  <div class="league-col" id="colReal">
+    <div class="league-header lh-real">
+      <span class="league-title-real">GERCEK LIG</span>
+      <span class="league-count" id="countReal">0</span>
+    </div>
+    <div class="league-body" id="bodyReal"></div>
+  </div>
+  <div class="league-col" id="colAra">
+    <div class="league-header lh-ara">
+      <span class="league-title-ara">ARA LIG</span>
+      <span class="league-count" id="countAra">0</span>
+    </div>
+    <div class="league-body" id="bodyAra"></div>
+  </div>
+  <div class="league-col" id="colVirtual">
+    <div class="league-header lh-virtual">
+      <span class="league-title-virtual">SANAL LIG</span>
+      <span class="league-count" id="countVirtual">0</span>
+    </div>
+    <div class="league-body" id="bodyVirtual"></div>
+  </div>
+  <div class="transitions-panel">
+    <div class="trans-header">
+      <span>Son Geçişler</span>
+      <span id="transCountBadge" style="font-size:10px;color:var(--text2);background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:1px 8px;">0</span>
+    </div>
+    <div class="trans-body" id="transitionsBody">
+      <div class="empty-col">Yükleniyor...</div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* All user-supplied data is rendered using textContent (never innerHTML).
+   Only structural HTML (empty states, containers) uses innerHTML with static strings. */
+
+// ─── Promotion / demotion thresholds (mirrors ladder-engine.js RULES) ─────────
+const THRESHOLDS = {
+  A: {
+    promote: { virtual: { to: 'ara',  streak: 3, minWR: 30 },
+               ara:     { to: 'real', streak: 3, minWR: 40 } },
+    demote:  { real:    { to: 'ara',     streak: 3 },
+               ara:     { to: 'virtual', streak: 3 } },
+  },
+  B: {
+    promote: { virtual: { to: 'ara',  streak: 3, minWR: 30 },
+               ara:     { to: 'real', streak: 3, minWR: 40 } },
+    demote:  { real:    { to: 'ara',     streak: 3 },
+               ara:     { to: 'virtual', streak: 3 } },
+  },
+  C: {
+    promote: { ara:     { to: 'real',    streak: 2, minWR: 40 } },
+    demote:  { real:    { to: 'ara',     streak: 2 },
+               ara:     { to: 'virtual', streak: 2 } },
+  },
+  BEKLE: {
+    promote: { virtual: { to: 'ara',  streak: 3, minWR: 30 },
+               ara:     { to: 'real', streak: 3, minWR: 40 } },
+    demote:  { real:    { to: 'ara',     streak: 2 },
+               ara:     { to: 'virtual', streak: 2 } },
+  },
+};
+
+const VALID_TIERS  = new Set(['real', 'ara', 'virtual']);
+const VALID_GRADES = new Set(['A', 'B', 'C', 'BEKLE']);
+
+// ─── State ───────────────────────────────────────────────────────────────────
+let allRows = [];
+let allTransitions = [];
+
+// ─── Fetch ───────────────────────────────────────────────────────────────────
+async function refresh() {
+  document.getElementById('lastUpdated').textContent = 'Yükleniyor...';
+  try {
+    const [stateResp, transResp] = await Promise.all([
+      fetch('/api/ladder/state'),
+      fetch('/api/ladder/transitions?limit=100'),
+    ]);
+    const stateData = await stateResp.json();
+    const transData = await transResp.json();
+
+    allRows = (stateData.rows || []).filter(r =>
+      r && typeof r.symbol === 'string' && VALID_TIERS.has(r.tier)
+    );
+    allTransitions = (transData.transitions || transData || []).filter(t =>
+      t && typeof t.symbol === 'string'
+    );
+
+    const ts = stateData.updatedAt ? new Date(stateData.updatedAt).toLocaleString('tr-TR') : '?';
+    document.getElementById('lastUpdated').textContent = 'Güncellendi: ' + ts;
+
+    applyFilters();
+    renderTransitions();
+  } catch (e) {
+    document.getElementById('lastUpdated').textContent = 'Hata: ' + e.message;
+  }
+}
+
+// ─── Filters ─────────────────────────────────────────────────────────────────
+function applyFilters() {
+  const grade  = document.getElementById('filterGrade').value;
+  const sort   = document.getElementById('sortMode').value;
+  const search = document.getElementById('searchInput').value.trim().toUpperCase();
+
+  let rows = allRows.filter(r => {
+    if (grade !== 'all' && r.grade !== grade) return false;
+    if (search && !r.symbol.toUpperCase().includes(search)) return false;
+    return true;
+  });
+
+  rows = sortRows(rows, sort);
+
+  const real    = rows.filter(r => r.tier === 'real');
+  const ara     = rows.filter(r => r.tier === 'ara');
+  const virtual = rows.filter(r => r.tier === 'virtual');
+
+  document.getElementById('countReal').textContent    = real.length;
+  document.getElementById('countAra').textContent     = ara.length;
+  document.getElementById('countVirtual').textContent = virtual.length;
+
+  renderCol('bodyReal',    real);
+  renderCol('bodyAra',     ara);
+  renderCol('bodyVirtual', virtual);
+  renderSummary(rows);
+}
+
+function sortRows(rows, mode) {
+  return [...rows].sort((a, b) => {
+    switch (mode) {
+      case 'wr':       return (b.windowWR || 0) - (a.windowWR || 0);
+      case 'streak':   return Math.max(b.winStreak, b.lossStreak) - Math.max(a.winStreak, a.lossStreak);
+      case 'resolved': return (b.resolvedCount || 0) - (a.resolvedCount || 0);
+      case 'symbol':   return a.symbol.localeCompare(b.symbol);
+      default:         return riskScore(b) - riskScore(a);
+    }
+  });
+}
+
+function riskScore(r) {
+  const th = THRESHOLDS[r.grade];
+  if (!th) return 0;
+  let score = 0;
+  const pr = th.promote?.[r.tier];
+  if (pr) {
+    const sp = Math.min(1, (r.winStreak || 0) / pr.streak);
+    const wp = Math.min(1, (r.windowWR || 0) / (pr.minWR || 1));
+    score += (sp >= 1 && wp >= 1) ? 1000 : (sp + wp) * 50;
+  }
+  const dr = th.demote?.[r.tier];
+  if (dr) {
+    const lp = Math.min(1, (r.lossStreak || 0) / dr.streak);
+    score += lp >= 1 ? 900 : lp * 80;
+  }
+  return score;
+}
+
+// ─── Column renderer ─────────────────────────────────────────────────────────
+function renderCol(id, rows) {
+  const body = document.getElementById(id);
+  body.textContent = '';
+  if (!rows.length) {
+    const em = document.createElement('div');
+    em.className = 'empty-col';
+    em.textContent = 'Kayıt yok';
+    body.appendChild(em);
+    return;
+  }
+  rows.forEach(r => body.appendChild(buildCard(r)));
+}
+
+// ─── Card builder (DOM-based, no innerHTML for user data) ─────────────────────
+function buildCard(r) {
+  const th = THRESHOLDS[r.grade] || {};
+  const pr = th.promote?.[r.tier];
+  const dr = th.demote?.[r.tier];
+
+  const promoReady  = pr && (r.winStreak  || 0) >= pr.streak  && (r.windowWR || 0) >= (pr.minWR || 0);
+  const demoteReady = dr && (r.lossStreak || 0) >= dr.streak;
+  const inCooldown  = (r.cooldownRemaining || 0) > 0;
+
+  const card = document.createElement('div');
+  card.className = 'entry-card' +
+    (promoReady  ? ' card-promo-ready'  : '') +
+    (demoteReady ? ' card-demote-risk'  : '') +
+    (inCooldown  ? ' card-cooldown'     : '');
+
+  // — Top row —
+  const top = document.createElement('div');
+  top.className = 'entry-top';
+
+  const sym = document.createElement('span');
+  sym.className = 'entry-symbol';
+  sym.textContent = r.symbol;
+
+  const badges = document.createElement('div');
+  badges.className = 'entry-badges';
+
+  const gb = document.createElement('span');
+  gb.className = 'badge ' + (VALID_GRADES.has(r.grade) ? 'badge-' + r.grade : 'badge-C');
+  gb.textContent = r.grade;
+  badges.appendChild(gb);
+
+  if (promoReady) {
+    const sb = document.createElement('span');
+    sb.className = 'badge-status badge-promo';
+    sb.textContent = '▲ Çıkma Hazır';
+    badges.appendChild(sb);
+  } else if (demoteReady) {
+    const sb = document.createElement('span');
+    sb.className = 'badge-status badge-demote';
+    sb.textContent = '▼ Düşme Riski';
+    badges.appendChild(sb);
+  } else if (inCooldown) {
+    const sb = document.createElement('span');
+    sb.className = 'badge-status badge-cool';
+    sb.textContent = '⏸ Bekleme (' + (r.cooldownRemaining || 0) + ')';
+    badges.appendChild(sb);
+  }
+
+  top.appendChild(sym);
+  top.appendChild(badges);
+  card.appendChild(top);
+
+  // — Streak bars —
+  const winTarget  = pr?.streak || 3;
+  const lossTarget = dr?.streak || 2;
+  card.appendChild(buildStreaks(r.winStreak || 0, winTarget, r.lossStreak || 0, lossTarget));
+
+  // — WR bar —
+  const wrTarget = pr?.minWR || (r.tier === 'virtual' ? 30 : 40);
+  card.appendChild(buildWR(r.windowWR || 0, r.windowSize || 0, wrTarget));
+
+  // — Stats —
+  const stats = document.createElement('div');
+  stats.className = 'entry-stats';
+  const si1 = document.createElement('span');
+  const l1 = document.createElement('span');
+  l1.style.color = 'var(--text2)';
+  l1.textContent = 'İşlem: ';
+  si1.appendChild(l1);
+  si1.appendChild(t(r.resolvedCount || 0));
+  const si2 = document.createElement('span');
+  const l2 = document.createElement('span');
+  l2.style.color = 'var(--text2)';
+  l2.textContent = 'Son: ';
+  si2.appendChild(l2);
+  si2.appendChild(t(timeAgo(r.lastOutcomeAt)));
+  stats.appendChild(si1);
+  stats.appendChild(si2);
+  card.appendChild(stats);
+
+  // — Transition hint —
+  if (promoReady && pr) {
+    card.appendChild(buildHint('promo', '▲ Bir sonraki sinyal bu sembolü ' + tierName(pr.to) + ' ligine taşıyabilir'));
+  } else if (demoteReady && dr) {
+    card.appendChild(buildHint('demote', '▼ Bir sonraki sinyal bu sembolü ' + tierName(dr.to) + ' ligine düşürebilir'));
+  } else if (pr) {
+    const streakLeft = Math.max(0, pr.streak - (r.winStreak || 0));
+    const wrLeft     = Math.max(0, pr.minWR - (r.windowWR || 0));
+    const parts = [];
+    if (streakLeft > 0) parts.push(streakLeft + ' daha win');
+    if (wrLeft > 0)     parts.push('WR +' + wrLeft.toFixed(0) + '%');
+    if (parts.length)   card.appendChild(buildHint('neutral', '↑ ' + tierName(pr.to) + ' için: ' + parts.join(', ')));
+  }
+
+  return card;
+}
+
+function buildStreaks(win, winMax, loss, lossMax) {
+  const wrap = document.createElement('div');
+  wrap.className = 'streaks';
+
+  // Win
+  const wb = document.createElement('div');
+  const wl = document.createElement('div');
+  wl.className = 'streak-label';
+  const wlt = document.createElement('span');
+  wlt.textContent = 'Win Serisi';
+  const wlv = document.createElement('span');
+  wlv.style.color = '#3fb950';
+  wlv.textContent = win + '/' + winMax;
+  wl.appendChild(wlt); wl.appendChild(wlv);
+  const wbw = document.createElement('div');
+  wbw.className = 'bar-wrap';
+  const wbar = document.createElement('div');
+  wbar.className = 'bar bar-win';
+  wbar.style.width = Math.min(100, (win / winMax) * 100) + '%';
+  wbw.appendChild(wbar);
+  wb.appendChild(wl); wb.appendChild(wbw);
+
+  // Loss
+  const lb = document.createElement('div');
+  const ll = document.createElement('div');
+  ll.className = 'streak-label';
+  const llt = document.createElement('span');
+  llt.textContent = 'Kayıp Serisi';
+  const llv = document.createElement('span');
+  llv.style.color = '#f85149';
+  llv.textContent = loss + '/' + lossMax;
+  ll.appendChild(llt); ll.appendChild(llv);
+  const lbw = document.createElement('div');
+  lbw.className = 'bar-wrap';
+  const lbar = document.createElement('div');
+  lbar.className = 'bar bar-loss';
+  lbar.style.width = Math.min(100, (loss / lossMax) * 100) + '%';
+  lbw.appendChild(lbar);
+  lb.appendChild(ll); lb.appendChild(lbw);
+
+  wrap.appendChild(wb); wrap.appendChild(lb);
+  return wrap;
+}
+
+function buildWR(wr, size, target) {
+  const wrap = document.createElement('div');
+  wrap.className = 'wr-block';
+
+  if (size === 0) {
+    const em = document.createElement('div');
+    em.style.cssText = 'font-size:10px;color:var(--text2);margin:4px 0;';
+    em.textContent = 'Henüz veri yok';
+    wrap.appendChild(em);
+    return wrap;
+  }
+
+  const lbl = document.createElement('div');
+  lbl.className = 'wr-label';
+  const lt = document.createElement('span');
+  lt.textContent = 'Kazanma Oranı (' + size + '/10)';
+  const lv = document.createElement('span');
+  lv.style.color = wr >= target ? '#3fb950' : 'var(--text2)';
+  lv.textContent = wr.toFixed(0) + '% / hedef ' + target + '%';
+  lbl.appendChild(lt); lbl.appendChild(lv);
+
+  const bw = document.createElement('div');
+  bw.className = 'wr-bar-wrap';
+  const bar = document.createElement('div');
+  bar.className = 'bar bar-wr';
+  bar.style.width = Math.min(100, (wr / 100) * 100) + '%';
+  const th = document.createElement('div');
+  th.className = 'wr-threshold';
+  th.style.left = Math.min(100, target) + '%';
+  bw.appendChild(bar); bw.appendChild(th);
+
+  wrap.appendChild(lbl); wrap.appendChild(bw);
+  return wrap;
+}
+
+function buildHint(kind, text) {
+  const el = document.createElement('div');
+  el.className = 'hint hint-' + (kind === 'promo' ? 'promo' : kind === 'demote' ? 'demote' : 'neutral');
+  el.textContent = text;
+  return el;
+}
+
+// text node helper
+function t(val) {
+  const s = document.createElement('span');
+  s.textContent = String(val);
+  return s;
+}
+
+// ─── Summary bar ─────────────────────────────────────────────────────────────
+function renderSummary(rows) {
+  const real    = rows.filter(r => r.tier === 'real').length;
+  const ara     = rows.filter(r => r.tier === 'ara').length;
+  const virtual = rows.filter(r => r.tier === 'virtual').length;
+  const promo   = rows.filter(r => isPromoReady(r)).length;
+  const demote  = rows.filter(r => isDemoteReady(r)).length;
+
+  const bar = document.getElementById('summaryBar');
+  bar.textContent = '';
+
+  const items = [
+    { lbl: 'GERCEK:', val: real,    color: '#3fb950' },
+    { lbl: 'ARA:',    val: ara,     color: '#f0883e' },
+    { lbl: 'SANAL:',  val: virtual, color: '#8b949e' },
+    { sep: true },
+    { lbl: 'Çıkma Hazır:',  val: promo,  color: '#3fb950' },
+    { lbl: 'Düşme Riski:', val: demote, color: '#f85149' },
+    { lbl: 'Toplam:',       val: rows.length, color: 'var(--text)' },
+  ];
+
+  items.forEach(item => {
+    if (item.sep) {
+      const s = document.createElement('span');
+      s.style.cssText = 'color:var(--border);margin:0 4px;';
+      s.textContent = '|';
+      bar.appendChild(s);
+      return;
+    }
+    const div = document.createElement('div');
+    div.className = 'item';
+    const lbl = document.createElement('span');
+    lbl.className = 'lbl';
+    lbl.textContent = item.lbl;
+    const val = document.createElement('span');
+    val.style.color = item.color;
+    val.style.fontWeight = 'bold';
+    val.textContent = item.val;
+    div.appendChild(lbl); div.appendChild(val);
+    bar.appendChild(div);
+  });
+}
+
+function isPromoReady(r) {
+  const pr = THRESHOLDS[r.grade]?.promote?.[r.tier];
+  return pr && (r.winStreak || 0) >= pr.streak && (r.windowWR || 0) >= (pr.minWR || 0);
+}
+function isDemoteReady(r) {
+  const dr = THRESHOLDS[r.grade]?.demote?.[r.tier];
+  return dr && (r.lossStreak || 0) >= dr.streak;
+}
+
+// ─── Transitions (DOM-based) ─────────────────────────────────────────────────
+function renderTransitions() {
+  const body = document.getElementById('transitionsBody');
+  document.getElementById('transCountBadge').textContent = allTransitions.length;
+  body.textContent = '';
+
+  if (!allTransitions.length) {
+    const em = document.createElement('div');
+    em.className = 'empty-col';
+    em.textContent = 'Henüz geçiş yok';
+    body.appendChild(em);
+    return;
+  }
+
+  allTransitions.slice(0, 100).forEach(t => {
+    const item = document.createElement('div');
+    item.className = 'trans-item';
+
+    const top = document.createElement('div');
+    top.className = 't-top';
+
+    const sym = document.createElement('span');
+    sym.className = 't-sym';
+    sym.textContent = t.symbol;
+
+    if (VALID_GRADES.has(t.grade)) {
+      const gb = document.createElement('span');
+      gb.className = 'badge badge-' + t.grade;
+      gb.style.fontSize = '10px';
+      gb.style.marginLeft = '4px';
+      gb.textContent = t.grade;
+      sym.appendChild(gb);
+    }
+
+    const timeStr = t.at ? new Date(t.at).toLocaleString('tr-TR', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }) : '?';
+    const time = document.createElement('span');
+    time.className = 't-time';
+    time.textContent = timeStr;
+
+    top.appendChild(sym); top.appendChild(time);
+    item.appendChild(top);
+
+    const arrow = document.createElement('div');
+    arrow.className = 't-arrow';
+
+    const fromTier = VALID_TIERS.has(t.from) ? t.from : 'virtual';
+    const toTier   = VALID_TIERS.has(t.to)   ? t.to   : 'virtual';
+
+    const fromEl = document.createElement('span');
+    fromEl.className = 't-tier t-tier-' + fromTier;
+    fromEl.textContent = tierName(fromTier);
+
+    const arrow2 = document.createElement('span');
+    arrow2.style.color = 'var(--text2)';
+    arrow2.textContent = '→';
+
+    const toEl = document.createElement('span');
+    toEl.className = 't-tier t-tier-' + toTier;
+    toEl.textContent = tierName(toTier);
+
+    const kindEl = document.createElement('span');
+    const isPromote = t.kind === 'promote';
+    kindEl.className = isPromote ? 't-promote' : 't-demote';
+    kindEl.textContent = isPromote ? '▲ Çıktı' : '▼ Düştü';
+
+    arrow.appendChild(fromEl); arrow.appendChild(arrow2);
+    arrow.appendChild(toEl);   arrow.appendChild(kindEl);
+    item.appendChild(arrow);
+
+    const detail = document.createElement('div');
+    detail.className = 't-detail';
+    detail.textContent = 'Seri: ' + (t.streak || 0) + ' | WR: ' + ((t.windowWR || 0).toFixed(0)) + '% | ' + (t.triggeredBy || '');
+    item.appendChild(detail);
+
+    body.appendChild(item);
+  });
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+function tierName(tier) {
+  return tier === 'real' ? 'GERCEK' : tier === 'ara' ? 'ARA' : 'SANAL';
+}
+
+function timeAgo(iso) {
+  if (!iso) return '?';
+  const diff = Date.now() - new Date(iso).getTime();
+  const m = Math.floor(diff / 60000);
+  if (m < 1)   return 'az önce';
+  if (m < 60)  return m + 'dk';
+  const h = Math.floor(m / 60);
+  if (h < 24)  return h + 's';
+  return Math.floor(h / 24) + 'g';
+}
+
+// ─── WebSocket — live transition updates ─────────────────────────────────────
+let ws = null;
+function connectWS() {
+  try {
+    const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+    ws = new WebSocket(`${proto}://${location.host}`);
+    ws.addEventListener('message', (msg) => {
+      try {
+        const data = JSON.parse(msg.data);
+        if (data.type === 'ladder_transition') {
+          onLiveTransition(data.event);
+        } else if (data.type === 'signal_resolved') {
+          // Herhangi bir cozumleme streak'i degistirebilir — 2sn gecikmeli yenile
+          setTimeout(refresh, 2000);
+        }
+      } catch {}
+    });
+    ws.addEventListener('close', () => {
+      setTimeout(connectWS, 5000);
+    });
+  } catch (e) {
+    setTimeout(connectWS, 5000);
+  }
+}
+
+function onLiveTransition(ev) {
+  if (!ev) return;
+  // Listenin basina ekle, tabloyu yenile
+  allTransitions.unshift(ev);
+  if (allTransitions.length > 200) allTransitions = allTransitions.slice(0, 200);
+  refresh().then(() => flashCard(ev.symbol, ev.grade, ev.kind));
+}
+
+function flashCard(symbol, grade, kind) {
+  const cards = document.querySelectorAll('.entry-card');
+  for (const card of cards) {
+    const symEl = card.querySelector('.entry-symbol');
+    const gbEl  = card.querySelector('.badge');
+    if (symEl && gbEl && symEl.textContent === symbol && gbEl.textContent === grade) {
+      card.classList.add(kind === 'promote' ? 'flash-promo' : 'flash-demote');
+      setTimeout(() => card.classList.remove('flash-promo', 'flash-demote'), 1500);
+      card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      break;
+    }
+  }
+}
+
+// ─── Init ─────────────────────────────────────────────────────────────────────
+refresh();
+setInterval(refresh, 60000);
+connectWS();
+</script>
+</body>
+</html>

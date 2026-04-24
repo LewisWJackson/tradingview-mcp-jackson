@@ -42,6 +42,19 @@ export function evaluateSignalOutcome(signal, currentBar) {
   const dir = signal.direction;
   const now = new Date().toISOString();
 
+  // Migration: eski kodla slHit=true + trailingStopExit=true isaretlenmis ama
+  // status 'tp1_hit'/'tp2_hit' kaldigi icin open listesinde takili kalan
+  // sinyalleri yakala ve terminal status'a yukselt.
+  if (signal.slHit && signal.trailingStopExit && signal.status !== 'trailing_stop_exit') {
+    return {
+      status: 'trailing_stop_exit',
+      trailingExitTier: signal.tp2Hit ? 'tp2' : 'tp1',
+      lastCheckedAt: now,
+      lastCheckedPrice: close,
+      checkCount: (signal.checkCount || 0) + 1,
+    };
+  }
+
   // Sanity check: current price should be in the same ballpark as entry
   if (signal.entry && close) {
     const deviation = Math.abs(close - signal.entry) / signal.entry;
@@ -66,6 +79,14 @@ export function evaluateSignalOutcome(signal, currentBar) {
   const isSmartEntry = signal.entrySource && signal.entrySource !== 'quote_price' && signal.entrySource !== 'lastbar_close';
   const alreadyReached = signal.entryHit || !isSmartEntry;
 
+  // Normalize: market (quote_price/lastbar_close) veya legacy entry ise
+  // entryHit=true olmali. Upsert/refresh yollarindan smart→market gecisi
+  // entryHit'i gerigide birakabiliyor; burada retroaktif duzelt.
+  if (!isSmartEntry && !signal.entryHit) {
+    updates.entryHit = true;
+    updates.entryHitAt = signal.entryHitAt || signal.createdAt || now;
+  }
+
   // Track whether smart entry price was actually reached
   // Tolerance band: 0.25 * ATR yaklasma yeterli (kil payi kacirmayi onler)
   if (isSmartEntry && !signal.entryHit) {
@@ -84,6 +105,18 @@ export function evaluateSignalOutcome(signal, currentBar) {
       } else if (dir === 'short' && signal.entry) {
         const missed = signal.entry - low;
         if (missed > (signal.preEntryMFE || 0)) updates.preEntryMFE = missed;
+      }
+
+      // Entry gelmeden TP1 asildi → pozisyonu kapat (fiyat pullback yapmadan
+      // hedefe ulasti, giris firsati kacti). Netr olarak isle.
+      if (signal.tp1 != null && isFinite(signal.tp1)) {
+        const tpCrossed = (dir === 'long' && high >= signal.tp1)
+          || (dir === 'short' && low <= signal.tp1);
+        if (tpCrossed) {
+          updates.status = 'entry_missed_tp';
+          updates.entryExpiredAt = now;
+          return updates;
+        }
       }
 
       // Entry deadline dolduysa sinyali kapat
@@ -129,7 +162,16 @@ export function evaluateSignalOutcome(signal, currentBar) {
           Number(signal.highestFavorable) || 0,
           Number(updates.highestFavorable) || 0
         );
-        if (!signal.tp1Hit && tp1Dist != null && tp1Dist > 0 && mfeSoFar >= tp1Dist * 0.7) {
+        if (signal.tp1Hit) {
+          // TP1 zaten vurulmus → SL artik en kotu BE/trailing seviyesidir.
+          // Bu bir kayip degil, kilitlenmis kazancin cikisi. Terminal status
+          // olarak 'trailing_stop_exit' kullan — 'tp1_hit'/'tp2_hit' terminal
+          // degil, pozisyonu acik listede birakir (SL badge + acik pozisyon
+          // tutarsizligi).
+          updates.status = 'trailing_stop_exit';
+          updates.trailingStopExit = true;
+          updates.trailingExitTier = signal.tp2Hit ? 'tp2' : 'tp1';
+        } else if (tp1Dist != null && tp1Dist > 0 && mfeSoFar >= tp1Dist * 0.7) {
           updates.status = 'sl_hit_high_mfe';
           updates.highMfeFlag = true;
         } else {
@@ -140,8 +182,10 @@ export function evaluateSignalOutcome(signal, currentBar) {
         // SL tetiklendiginde acikken gelen zit yon sinyalleri (reverseAttempts)
         // hakli cikmis demektir. Bu sinyali "hatali trade" olarak isaretle ki
         // otonom ogrenme indikator agirliklarini ayarlayabilsin.
+        // NOT: TP1 zaten vurulmussa "faulty" degil — reverse sinyal dogruydu ama
+        // pozisyon zaten kazanc kilitlemisti, o yuzden bu blok atlanir.
         const reverseAttempts = Array.isArray(signal.reverseAttempts) ? signal.reverseAttempts : [];
-        if (reverseAttempts.length > 0) {
+        if (reverseAttempts.length > 0 && !signal.tp1Hit) {
           updates.faultyTrade = true;
           updates.faultyTradeReason = `${reverseAttempts.length} zit yon sinyal acikken geldi, SL tetiklendi`;
           const first = reverseAttempts[0];
@@ -201,13 +245,36 @@ export function evaluateSignalOutcome(signal, currentBar) {
         updates.tp1Hit = true;
         updates.tp1HitAt = now;
         updates.tp1HitPrice = signal.tp1;
-        updates.status = 'tp1_hit';
+        // Status sadece daha ilerlemis bir TP yoksa tp1_hit olmalidir —
+        // ayni barda TP2/TP3 de vurulduysa onceki blok zaten tp2_hit/tp3_hit
+        // atamistir; burada ezmeyelim.
+        if (!updates.tp2Hit && !updates.tp3Hit && !signal.tp2Hit && !signal.tp3Hit) {
+          updates.status = 'tp1_hit';
+        }
         // Trailing stop aktiflestir: SL'yi break-even'e cek
         updates.trailingStopActive = true;
         updates.trailingStopLevel = signal.entry;
         updates.sl = signal.entry;
         // Continue tracking for TP2/TP3
       }
+    }
+
+    // --- Retroaktif BE: tp1Hit zaten true ama trailing aktiflestirilmemis ---
+    // Eski koddan kalma acik pozisyonlar (COPPER gibi) icin: TP1 vurulmus ama
+    // SL hala orijinal seviyedeyse, en azindan BE'ye cek. tp2Hit varsa TP1
+    // seviyesine kilitle (1R kazanc korumasi).
+    if (signal.tp1Hit && !signal.trailingStopActive && !updates.trailingStopActive) {
+      const lockLevel = signal.tp2Hit ? signal.tp1 : signal.entry;
+      const currentSl = updates.sl ?? signal.sl;
+      const improved = dir === 'long'
+        ? (currentSl == null || lockLevel > currentSl)
+        : (currentSl == null || lockLevel < currentSl);
+      if (improved) {
+        updates.sl = lockLevel;
+      }
+      updates.trailingStopActive = true;
+      updates.trailingStopLevel = updates.sl ?? lockLevel;
+      updates.beMigratedAt = now;
     }
 
     // --- Trailing stop ilerletme (zaten aktifse) ---
@@ -243,11 +310,11 @@ export function evaluateSignalOutcome(signal, currentBar) {
 /**
  * Determine if a signal is fully resolved (terminal state).
  */
-function isTerminal(status, signal = null) {
+export function isTerminal(status, signal = null) {
   const alwaysTerminal = [
     'sl_hit', 'sl_hit_high_mfe', 'tp3_hit', 'invalid_data',
     'superseded', 'superseded_by_tf', 'superseded_by_cleanup', 'superseded_by_cap',
-    'manual_close',
+    'manual_close', 'trailing_stop_exit', 'entry_expired', 'entry_missed_tp',
   ];
   if (alwaysTerminal.includes(status)) return true;
   // 2-TP modu: TP2 terminal kabul edilir (signal.tp3 == null).
@@ -264,7 +331,14 @@ function computeActualRR(signal) {
   if (risk === 0) return null;
 
   let reward = 0;
-  if (signal.tp3Hit && signal.tp3) reward = Math.abs(signal.tp3 - signal.entry);
+  if (signal.status === 'trailing_stop_exit' && signal.slHitPrice != null) {
+    // Trailing stop cikisi: kazanc kilidi. Reward = trailing seviyesi - entry
+    // (yon isaretli). Negatif olamaz cunku trailing TP1 sonrasi BE+ seviyededir.
+    reward = signal.direction === 'long'
+      ? (signal.slHitPrice - signal.entry)
+      : (signal.entry - signal.slHitPrice);
+  }
+  else if (signal.tp3Hit && signal.tp3) reward = Math.abs(signal.tp3 - signal.entry);
   else if (signal.tp2Hit && signal.tp2) reward = Math.abs(signal.tp2 - signal.entry);
   else if (signal.tp1Hit && signal.tp1) reward = Math.abs(signal.tp1 - signal.entry);
   else if (signal.slHit) reward = -risk;
@@ -278,7 +352,7 @@ function computeActualRR(signal) {
 /**
  * Build an archive record from a resolved signal.
  */
-function buildArchiveRecord(signal) {
+export function buildArchiveRecord(signal) {
   const resolvedAt = new Date().toISOString();
   const holdingMs = new Date(resolvedAt) - new Date(signal.createdAt);
   const holdingMinutes = Math.round(holdingMs / 60000);
@@ -352,7 +426,12 @@ async function _checkAllOpenSignalsInner(signals) {
     try {
       // Switch chart to this symbol (borsa prefix'i ile cozumle)
       const chartSymbol = symbol.includes(':') ? symbol : resolveSymbol(symbol, inferCategory(symbol));
-      await bridge.setSymbol(chartSymbol);
+      const setRes = await bridge.setSymbol(chartSymbol);
+      if (setRes?.success === false) {
+        console.log(`[Outcome] ${chartSymbol} setSymbol dogrulanamadi — bu sembol icin kontrol atlaniyor`);
+        errors++;
+        continue;
+      }
 
       // For each signal, set the appropriate check TF and get bars
       for (const sig of symbolSignals) {
@@ -383,9 +462,21 @@ async function _checkAllOpenSignalsInner(signals) {
           await bridge.setTimeframe(checkTF);
           await new Promise(r => setTimeout(r, 1500));
 
-          // Get last few bars to capture price extremes since last check
-          const barsToGet = 3; // ~15 minutes at 5m TF
-          const ohlcv = await bridge.getOhlcv(barsToGet, false);
+          // Adaptif bar penceresi: son kontrolden bu yana gecen sureyi kapsayacak
+          // kadar bar cek. Chart-lock contention yuzunden cycle'lar atlanabildiginden
+          // sabit 3 bar (~15 dk) penceresi wick'leri kaciriyordu (ornegin COPPER TP3
+          // fitili 45+dk gap'te kayboldu). En az 12 bar (guvenlik payi), en fazla 500.
+          const checkTFMinutes = parseInt(checkTF, 10) || (checkTF === '60' ? 60 : 5);
+          const lastCheckedMs = sig.lastCheckedAt ? new Date(sig.lastCheckedAt).getTime() : 0;
+          const gapMs = lastCheckedMs ? (Date.now() - lastCheckedMs) : 0;
+          const gapBars = lastCheckedMs ? Math.ceil(gapMs / (checkTFMinutes * 60000)) : 12;
+          const barsToGet = Math.max(12, Math.min(500, gapBars + 4));
+          const ohlcv = await bridge.getOhlcv(barsToGet, false, chartSymbol);
+          if (ohlcv && ohlcv._symbolMismatch) {
+            console.log(`[Outcome] ${sig.id}: chart symbol kaymasi (beklenen ${ohlcv._expected}, alinan ${ohlcv._got}) — atlandi`);
+            errors++;
+            continue;
+          }
           const bars = ohlcv?.bars || [];
           if (bars.length === 0) { errors++; continue; }
 

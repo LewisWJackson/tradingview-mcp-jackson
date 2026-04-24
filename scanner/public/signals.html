@@ -1,0 +1,1333 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Acik Sinyaller — TV Scanner</title>
+  <style>
+    :root {
+      --bg: #0d1117;
+      --bg2: #161b22;
+      --bg3: #21262d;
+      --border: #30363d;
+      --text: #c9d1d9;
+      --text2: #8b949e;
+      --green: #3fb950;
+      --red: #f85149;
+      --yellow: #d29922;
+      --blue: #58a6ff;
+      --purple: #bc8cff;
+      --orange: #f0883e;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'SF Mono', 'Consolas', 'Monaco', monospace; background: var(--bg); color: var(--text); font-size: 13px; }
+
+    .header {
+      background: var(--bg2);
+      border-bottom: 1px solid var(--border);
+      padding: 12px 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .header h1 { font-size: 16px; color: var(--blue); }
+    .header-nav { display: flex; gap: 16px; align-items: center; }
+    .header-nav a { color: var(--text2); text-decoration: none; font-size: 12px; }
+    .header-nav a:hover { color: var(--blue); }
+    .header-nav a.active { color: var(--blue); border-bottom: 2px solid var(--blue); padding-bottom: 2px; }
+
+    .toolbar {
+      background: var(--bg2);
+      border-bottom: 1px solid var(--border);
+      padding: 10px 20px;
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .toolbar label { font-size: 11px; color: var(--text2); margin-right: 4px; }
+    .toolbar select, .toolbar input {
+      padding: 4px 8px;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      background: var(--bg);
+      color: var(--text);
+      font-family: inherit;
+      font-size: 12px;
+    }
+    .toolbar .btn {
+      padding: 6px 14px;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      background: var(--bg3);
+      color: var(--text);
+      cursor: pointer;
+      font-family: inherit;
+      font-size: 12px;
+    }
+    .toolbar .btn:hover { border-color: var(--blue); }
+    .toolbar .btn-refresh { border-color: var(--green); color: var(--green); }
+
+    .summary-bar {
+      display: flex;
+      gap: 16px;
+      padding: 12px 20px;
+      background: var(--bg2);
+      border-bottom: 1px solid var(--border);
+      flex-wrap: wrap;
+    }
+    .summary-stat {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-width: 80px;
+    }
+    .summary-stat .label { font-size: 10px; color: var(--text2); text-transform: uppercase; letter-spacing: 0.5px; }
+    .summary-stat .value { font-size: 18px; font-weight: bold; margin-top: 2px; }
+    .summary-stat .value.positive { color: var(--green); }
+    .summary-stat .value.negative { color: var(--red); }
+    .summary-stat .value.neutral { color: var(--text); }
+
+    .grade-pills { display: flex; gap: 6px; align-items: center; margin-left: auto; }
+    .grade-pill {
+      padding: 3px 10px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: bold;
+    }
+    .grade-pill.A { background: rgba(63,185,80,0.15); color: var(--green); }
+    .grade-pill.B { background: rgba(88,166,255,0.15); color: var(--blue); }
+    .grade-pill.C { background: rgba(210,153,34,0.15); color: var(--yellow); }
+
+    .signals-container { padding: 16px 20px; }
+
+    .signal-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    .signal-table th {
+      text-align: left;
+      padding: 8px 10px;
+      font-size: 10px;
+      color: var(--text2);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      background: var(--bg);
+      cursor: pointer;
+      user-select: none;
+    }
+    .signal-table th:hover { color: var(--blue); }
+    .signal-table th .sort-arrow { margin-left: 4px; font-size: 9px; }
+    .signal-table td {
+      padding: 10px;
+      border-bottom: 1px solid var(--border);
+      font-size: 12px;
+      vertical-align: middle;
+    }
+    .signal-table tr:hover { background: rgba(88,166,255,0.04); }
+
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 3px;
+      font-size: 11px;
+      font-weight: bold;
+    }
+    .badge.long { background: rgba(63,185,80,0.15); color: var(--green); }
+    .badge.short { background: rgba(248,81,73,0.15); color: var(--red); }
+    .badge.grade-A { background: rgba(63,185,80,0.2); color: var(--green); }
+    .badge.grade-B { background: rgba(88,166,255,0.2); color: var(--blue); }
+    .badge.grade-C { background: rgba(210,153,34,0.2); color: var(--yellow); }
+    .badge.grade-BEKLE { background: rgba(139,148,158,0.2); color: var(--text2); }
+
+    /* League tabs (Gercek / Sanal / Tumu) */
+    .league-tabs {
+      display: flex;
+      gap: 8px;
+      padding: 12px 20px 0;
+      margin-bottom: 4px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .league-tabs .tab-btn {
+      padding: 7px 16px;
+      background: #0d1117;
+      border: 1px solid #30363d;
+      color: #8b949e;
+      cursor: pointer;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 500;
+      transition: all 0.15s;
+    }
+    .league-tabs .tab-btn:hover { border-color: #58a6ff; color: #c9d1d9; }
+    .league-tabs .tab-btn.active {
+      background: #1f6feb;
+      color: #fff;
+      border-color: #1f6feb;
+    }
+    .league-tabs .league-count {
+      margin-left: auto;
+      color: #8b949e;
+      font-size: 12px;
+    }
+
+    .pnl-positive { color: var(--green); font-weight: bold; }
+    .pnl-negative { color: var(--red); font-weight: bold; }
+    .pnl-neutral { color: var(--text2); }
+
+    .tp-dots { display: flex; gap: 4px; }
+    .tp-dot {
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 9px;
+      font-weight: bold;
+    }
+    .tp-dot.hit { background: var(--green); color: #000; }
+    .tp-dot.pending { background: var(--bg3); color: var(--text2); border: 1px solid var(--border); }
+    .tp-dot.sl-hit { background: var(--red); color: #fff; }
+
+    .progress-bar {
+      width: 60px;
+      height: 6px;
+      background: var(--bg3);
+      border-radius: 3px;
+      overflow: hidden;
+      display: inline-block;
+      vertical-align: middle;
+      margin-left: 6px;
+    }
+    .progress-bar .fill {
+      height: 100%;
+      border-radius: 3px;
+    }
+    .progress-bar .fill.positive { background: var(--green); }
+    .progress-bar .fill.negative { background: var(--red); }
+
+    .entry-source {
+      font-size: 9px;
+      color: var(--text2);
+      display: block;
+      margin-top: 2px;
+    }
+    .entry-source.smart { color: var(--purple); }
+
+    .age { color: var(--text2); font-size: 11px; }
+
+    .empty-state { text-align: center; padding: 60px 20px; color: var(--text2); }
+
+    .auto-refresh-indicator {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 11px;
+      color: var(--text2);
+    }
+    .auto-refresh-indicator .dot {
+      width: 6px; height: 6px; border-radius: 50%; background: var(--green);
+      animation: pulse 2s ease-in-out infinite;
+    }
+    @keyframes pulse { 0%, 100% { opacity: 0.4; } 50% { opacity: 1; } }
+
+    .detail-modal {
+      display: none;
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.7);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+    }
+    .detail-modal.visible { display: flex; }
+    .detail-content {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 24px;
+      max-width: 600px;
+      width: 90%;
+      max-height: 80vh;
+      overflow-y: auto;
+      position: relative;
+    }
+    .detail-content h2 { font-size: 16px; margin-bottom: 16px; }
+    .detail-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 6px 0;
+      border-bottom: 1px solid var(--border);
+      font-size: 12px;
+    }
+    .detail-row .dlabel { color: var(--text2); }
+    .detail-close {
+      position: absolute;
+      top: 12px;
+      right: 16px;
+      background: none;
+      border: none;
+      color: var(--text2);
+      font-size: 20px;
+      cursor: pointer;
+    }
+
+    @media (max-width: 1100px) {
+      .signal-table { font-size: 11px; }
+      .signal-table td, .signal-table th { padding: 6px; }
+    }
+    .live-price-cell { font-variant-numeric: tabular-nums; transition: background 0.6s ease, color 0.6s ease; }
+    .flash-up { background: rgba(63, 185, 80, 0.25); color: var(--green) !important; }
+    .flash-down { background: rgba(248, 81, 73, 0.25); color: var(--red) !important; }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <h1>TV Scanner</h1>
+  <div class="header-nav">
+    <a href="/">Dashboard</a>
+    <a href="/signals.html" class="active">Acik Sinyaller</a>
+    <a href="/league.html">Lig Tablosu</a>
+  </div>
+</div>
+
+<div class="toolbar" id="toolbar">
+  <label>Kategori:</label>
+  <select id="filterCategory">
+    <option value="all">Tumu</option>
+    <option value="kripto">Kripto</option>
+    <option value="forex">Forex</option>
+    <option value="abd_hisse">ABD Hisse</option>
+    <option value="bist">BIST</option>
+    <option value="emtia">Emtia</option>
+  </select>
+
+  <label>Kalite:</label>
+  <select id="filterGrade">
+    <option value="all">Tumu</option>
+    <option value="A">A</option>
+    <option value="B">B</option>
+    <option value="C">C</option>
+  </select>
+
+  <label>Yon:</label>
+  <select id="filterDirection">
+    <option value="all">Tumu</option>
+    <option value="long">Long</option>
+    <option value="short">Short</option>
+  </select>
+
+  <label>P&amp;L:</label>
+  <select id="filterPnl">
+    <option value="all">Tumu</option>
+    <option value="positive">Karda</option>
+    <option value="negative">Zararda</option>
+  </select>
+
+  <button class="btn btn-refresh" onclick="loadSignals()">Yenile</button>
+  <button class="btn btn-refresh" onclick="cleanupDuplicates()" style="background: #ff9800; color: #000;">Mukerrer Temizle</button>
+
+  <div class="auto-refresh-indicator">
+    <div class="dot"></div>
+    <span id="refreshTimer">30s</span>
+  </div>
+</div>
+
+<div class="league-tabs" id="leagueTabs">
+  <button class="tab-btn active" data-league="real">Gercek (GERCEK)</button>
+  <button class="tab-btn" data-league="ara">Ara (ARA)</button>
+  <button class="tab-btn" data-league="virtual">Sanal (SANAL)</button>
+  <button class="tab-btn" data-league="all">Tumu</button>
+  <span class="league-count" id="leagueCount"></span>
+</div>
+
+<div class="summary-bar" id="summaryBar"></div>
+
+<div class="signals-container">
+  <table class="signal-table" id="signalTable">
+    <thead>
+      <tr>
+        <th data-sort="symbol">Sembol <span class="sort-arrow"></span></th>
+        <th data-sort="direction">Yon <span class="sort-arrow"></span></th>
+        <th data-sort="grade">Kalite <span class="sort-arrow"></span></th>
+        <th data-sort="entry">Entry <span class="sort-arrow"></span></th>
+        <th data-sort="currentPrice">Guncel <span class="sort-arrow"></span></th>
+        <th data-sort="pnlPct">P&amp;L % <span class="sort-arrow"></span></th>
+        <th data-sort="pnlR">P&amp;L (R) <span class="sort-arrow"></span></th>
+        <th data-sort="slDistance">SL Uzaklik <span class="sort-arrow"></span></th>
+        <th>TP Durumu</th>
+        <th data-sort="ageMinutes">Yas <span class="sort-arrow"></span></th>
+        <th data-sort="rr">R:R <span class="sort-arrow"></span></th>
+        <th>Durum</th>
+        <th>Aksiyon</th>
+      </tr>
+    </thead>
+    <tbody id="signalBody"></tbody>
+  </table>
+  <div class="empty-state" id="emptyState" style="display:none;">
+    <p style="font-size: 24px;">Acik sinyal bulunamadi</p>
+    <p>Filtreleri kontrol edin veya tarama baslatin.</p>
+  </div>
+</div>
+
+<div class="detail-modal" id="detailModal">
+  <div class="detail-content" id="detailContent"></div>
+</div>
+
+<script>
+// Safe DOM helper
+function el(tag, attrs, children) {
+  var node = document.createElement(tag);
+  if (attrs) {
+    for (var k in attrs) {
+      if (k === 'className') node.className = attrs[k];
+      else if (k === 'textContent') node.textContent = attrs[k];
+      else if (k === 'style' && typeof attrs[k] === 'object') Object.assign(node.style, attrs[k]);
+      else node.setAttribute(k, attrs[k]);
+    }
+  }
+  if (children) {
+    var arr = Array.isArray(children) ? children : [children];
+    for (var i = 0; i < arr.length; i++) {
+      if (typeof arr[i] === 'string') node.appendChild(document.createTextNode(arr[i]));
+      else if (arr[i]) node.appendChild(arr[i]);
+    }
+  }
+  return node;
+}
+
+var allSignals = [];
+var summaryData = null;
+var currentSort = { key: 'grade', asc: true };
+var leagueFilter = 'real'; // 'real' | 'ara' | 'virtual' | 'all'
+// Sinyalin league'ini tespit et: scanner yazdiysa onu kullan, yoksa grade bazli
+// legacy default. A/B=real, C=ara (yeni default), BEKLE=virtual.
+function signalLeague(s) {
+  if (!s) return 'virtual';
+  if (s.league === 'real' || s.league === 'ara' || s.league === 'virtual') return s.league;
+  if (s.grade === 'A' || s.grade === 'B') return 'real';
+  if (s.grade === 'C') return 'ara';
+  return 'virtual';
+}
+var refreshInterval = null;
+var refreshCountdown = 30;
+
+function loadSignals() {
+  // Try new enriched endpoint first, fallback to existing one
+  fetch('/api/signals/open-dashboard')
+    .then(function(r) {
+      if (!r.ok) throw new Error('new endpoint not available');
+      return r.json();
+    })
+    .then(function(data) {
+      allSignals = data.signals || [];
+      summaryData = data.summary || {};
+      renderSummary();
+      renderTable();
+      refreshCountdown = 30;
+    })
+    .catch(function() {
+      // Fallback: use existing endpoint and compute P&L client-side
+      fetch('/api/learning/signals/open')
+        .then(function(r) { return r.json(); })
+        .then(function(rawSignals) {
+          var openOnly = rawSignals.filter(function(s) { return s.status === 'open'; });
+          var enriched = openOnly.map(function(s) {
+            var price = s.lastCheckedPrice || s.entry;
+            var entry = s.entry;
+            var pnlPct = 0;
+            var pnlR = 0;
+
+            var entryActive = s.entryHit !== false;
+            if (entry && price && entryActive) {
+              if (s.direction === 'long') {
+                pnlPct = ((price - entry) / entry) * 100;
+              } else {
+                pnlPct = ((entry - price) / entry) * 100;
+              }
+              var risk = Math.abs(entry - (s.sl || entry));
+              if (risk > 0) {
+                var rawPnl = s.direction === 'long' ? (price - entry) : (entry - price);
+                pnlR = rawPnl / risk;
+              }
+            }
+
+            var tpProgress = [];
+            var tpHitCheck = function(tpLevel) {
+              if (!tpLevel || !isFinite(tpLevel) || !price) return false;
+              return s.direction === 'long' ? price >= tpLevel : price <= tpLevel;
+            };
+            if (s.tp1) tpProgress.push({ level: 'TP1', price: s.tp1, hit: !!s.tp1Hit || tpHitCheck(s.tp1), hitAt: s.tp1HitAt || null });
+            if (s.tp2) tpProgress.push({ level: 'TP2', price: s.tp2, hit: !!s.tp2Hit || tpHitCheck(s.tp2), hitAt: s.tp2HitAt || null });
+            if (s.tp3) tpProgress.push({ level: 'TP3', price: s.tp3, hit: !!s.tp3Hit || tpHitCheck(s.tp3), hitAt: s.tp3HitAt || null });
+
+            var slDist = entry && s.sl ? Math.abs(price - s.sl) / price * 100 : null;
+            var nextTP = null;
+            for (var t = 0; t < tpProgress.length; t++) { if (!tpProgress[t].hit) { nextTP = tpProgress[t]; break; } }
+            var tpDist = nextTP && price ? Math.abs(nextTP.price - price) / price * 100 : null;
+            var ageMinutes = s.createdAt ? Math.round((Date.now() - new Date(s.createdAt).getTime()) / 60000) : null;
+
+            return {
+              id: s.id,
+              symbol: s.symbol,
+              category: s.category,
+              direction: s.direction,
+              grade: s.grade,
+              positionPct: s.position_pct,
+              timeframe: s.timeframe,
+              entry: entry,
+              entrySource: s.entrySource || 'lastbar_close',
+              entryHit: s.entryHit !== false,
+              entryHitAt: s.entryHitAt || null,
+              quotePrice: s.quotePrice,
+              sl: s.sl,
+              currentPrice: price,
+              pnlPct: Math.round(pnlPct * 100) / 100,
+              pnlR: Math.round(pnlR * 100) / 100,
+              slDistance: slDist ? Math.round(slDist * 100) / 100 : null,
+              nextTPDistance: tpDist ? Math.round(tpDist * 100) / 100 : null,
+              tpProgress: tpProgress,
+              slHit: !!s.slHit,
+              highestFavorable: s.highestFavorable,
+              lowestAdverse: s.lowestAdverse,
+              rr: s.rr,
+              ageMinutes: ageMinutes,
+              createdAt: s.createdAt,
+              lastCheckedAt: s.lastCheckedAt,
+              warnings: s.warnings,
+            };
+          });
+
+          // Sort: A > B > C, then by pnlR desc
+          var gradeOrder = { A: 0, B: 1, C: 2, BEKLE: 3, IPTAL: 4 };
+          enriched.sort(function(a, b) {
+            var gd = (gradeOrder[a.grade] || 9) - (gradeOrder[b.grade] || 9);
+            if (gd !== 0) return gd;
+            return (b.pnlR || 0) - (a.pnlR || 0);
+          });
+
+          var totalOpen = enriched.length;
+          var profitable = enriched.filter(function(x) { return x.pnlPct > 0; }).length;
+          var losing = enriched.filter(function(x) { return x.pnlPct < 0; }).length;
+          var avgPnlPct = totalOpen > 0 ? Math.round(enriched.reduce(function(s, x) { return s + x.pnlPct; }, 0) / totalOpen * 100) / 100 : 0;
+          var avgPnlR = totalOpen > 0 ? Math.round(enriched.reduce(function(s, x) { return s + x.pnlR; }, 0) / totalOpen * 100) / 100 : 0;
+          var byGrade = {};
+          enriched.forEach(function(x) { byGrade[x.grade] = (byGrade[x.grade] || 0) + 1; });
+          var byCategory = {};
+          enriched.forEach(function(x) { byCategory[x.category] = (byCategory[x.category] || 0) + 1; });
+
+          allSignals = enriched;
+          summaryData = { totalOpen: totalOpen, profitable: profitable, losing: losing, avgPnlPct: avgPnlPct, avgPnlR: avgPnlR, byGrade: byGrade, byCategory: byCategory };
+          renderSummary();
+          updateLeagueCount();
+          renderTable();
+          refreshCountdown = 30;
+        })
+        .catch(function(err) {
+          console.error('Sinyal yuklenemedi:', err);
+        });
+    });
+}
+
+function computeSummary(list) {
+  var totalOpen = list.length;
+  // Entry hit olmayanlari P&L ortalamasina dahil etme — henuz aktif pozisyon degil.
+  var active = list.filter(function(x) { return x.entryHit !== false; });
+
+  // Live fiyat varsa pnlPct'yi aninda yeniden hesapla — allSignals'daki deger
+  // server'dan geldiginden canlı fiyat guncellenmis olabilir.
+  function effectivePnl(x) {
+    var snap = window.livePrices && window.livePrices[x.symbol];
+    var livePrice = snap && isFinite(snap.price) ? snap.price : null;
+    if (livePrice != null && x.entry && x.sl) {
+      var pct = x.direction === 'long'
+        ? ((livePrice - x.entry) / x.entry) * 100
+        : ((x.entry - livePrice) / x.entry) * 100;
+      var risk = Math.abs(x.entry - x.sl);
+      var rawPnl = x.direction === 'long' ? (livePrice - x.entry) : (x.entry - livePrice);
+      var r = risk > 0 ? rawPnl / risk : 0;
+      return { pnlPct: pct, pnlR: r };
+    }
+    return { pnlPct: x.pnlPct || 0, pnlR: x.pnlR || 0 };
+  }
+
+  var profitable = active.filter(function(x) { return effectivePnl(x).pnlPct > 0; }).length;
+  var losing = active.filter(function(x) { return effectivePnl(x).pnlPct < 0; }).length;
+  var pending = totalOpen - active.length;
+  var avgPnlPct = active.length > 0 ? Math.round(active.reduce(function(s, x) { return s + effectivePnl(x).pnlPct; }, 0) / active.length * 100) / 100 : 0;
+  var avgPnlR = active.length > 0 ? Math.round(active.reduce(function(s, x) { return s + effectivePnl(x).pnlR; }, 0) / active.length * 100) / 100 : 0;
+  var byGrade = {};
+  list.forEach(function(x) { byGrade[x.grade] = (byGrade[x.grade] || 0) + 1; });
+  return { totalOpen: totalOpen, profitable: profitable, losing: losing, pending: pending, avgPnlPct: avgPnlPct, avgPnlR: avgPnlR, byGrade: byGrade };
+}
+
+function getLeagueList() {
+  return allSignals.filter(function(s) {
+    if (leagueFilter === 'all') return true;
+    return signalLeague(s) === leagueFilter;
+  });
+}
+
+function renderSummary() {
+  var bar = document.getElementById('summaryBar');
+  while (bar.firstChild) bar.removeChild(bar.firstChild);
+  var s = computeSummary(getLeagueList());
+
+  var stats = [
+    { label: 'Toplam Acik', value: String(s.totalOpen || 0), cls: 'neutral' },
+    { label: 'Entry Bekliyor', value: String(s.pending || 0), cls: 'neutral' },
+    { label: 'Karda', value: String(s.profitable || 0), cls: 'positive' },
+    { label: 'Zararda', value: String(s.losing || 0), cls: 'negative' },
+    { label: 'Ort. P&L %', value: (s.avgPnlPct >= 0 ? '+' : '') + (s.avgPnlPct || 0) + '%', cls: s.avgPnlPct >= 0 ? 'positive' : 'negative' },
+    { label: 'Ort. P&L (R)', value: (s.avgPnlR >= 0 ? '+' : '') + (s.avgPnlR || 0) + 'R', cls: s.avgPnlR >= 0 ? 'positive' : 'negative' },
+  ];
+
+  stats.forEach(function(st) {
+    var div = el('div', { className: 'summary-stat' }, [
+      el('div', { className: 'label', textContent: st.label }),
+      el('div', { className: 'value ' + st.cls, textContent: st.value })
+    ]);
+    bar.appendChild(div);
+  });
+
+  // Grade pills
+  var pills = el('div', { className: 'grade-pills' });
+  var grades = s.byGrade || {};
+  ['A', 'B', 'C'].forEach(function(g) {
+    if (grades[g]) {
+      pills.appendChild(el('span', { className: 'grade-pill ' + g, textContent: g + ': ' + grades[g] }));
+    }
+  });
+  bar.appendChild(pills);
+}
+
+function getFiltered() {
+  var cat = document.getElementById('filterCategory').value;
+  var grade = document.getElementById('filterGrade').value;
+  var dir = document.getElementById('filterDirection').value;
+  var pnl = document.getElementById('filterPnl').value;
+
+  return allSignals.filter(function(s) {
+    // 3-tier ladder: league alaniyla filtrele
+    if (leagueFilter !== 'all' && signalLeague(s) !== leagueFilter) return false;
+    if (cat !== 'all' && s.category !== cat) return false;
+    if (grade !== 'all' && s.grade !== grade) return false;
+    if (dir !== 'all' && s.direction !== dir) return false;
+    if (pnl === 'positive' && s.pnlPct <= 0) return false;
+    if (pnl === 'negative' && s.pnlPct >= 0) return false;
+    return true;
+  });
+}
+
+function updateLeagueCount() {
+  var realN = 0, araN = 0, virtualN = 0;
+  allSignals.forEach(function(s) {
+    var lg = signalLeague(s);
+    if (lg === 'real') realN++;
+    else if (lg === 'ara') araN++;
+    else virtualN++;
+  });
+  var el = document.getElementById('leagueCount');
+  if (el) el.textContent = 'Gercek: ' + realN + ' | Ara: ' + araN + ' | Sanal: ' + virtualN + ' | Toplam: ' + allSignals.length;
+}
+
+function sortSignals(signals) {
+  var key = currentSort.key;
+  var asc = currentSort.asc;
+  var gradeOrder = { A: 0, B: 1, C: 2, BEKLE: 3, IPTAL: 4 };
+
+  return signals.slice().sort(function(a, b) {
+    var va = a[key];
+    var vb = b[key];
+    if (key === 'grade') { va = gradeOrder[va] || 9; vb = gradeOrder[vb] || 9; }
+    if (va == null) va = -Infinity;
+    if (vb == null) vb = -Infinity;
+    if (typeof va === 'string') { va = va.toLowerCase(); vb = (vb || '').toLowerCase(); }
+    if (va < vb) return asc ? -1 : 1;
+    if (va > vb) return asc ? 1 : -1;
+    return 0;
+  });
+}
+
+function renderTable() {
+  var filtered = getFiltered();
+  var sorted = sortSignals(filtered);
+  var tbody = document.getElementById('signalBody');
+  var empty = document.getElementById('emptyState');
+  while (tbody.firstChild) tbody.removeChild(tbody.firstChild);
+
+  if (sorted.length === 0) {
+    empty.style.display = 'block';
+    return;
+  }
+  empty.style.display = 'none';
+
+  sorted.forEach(function(s) {
+    // Canli fiyat snapshot'i sunucu tarafi currentPrice'tan farkliysa, pnl/R/slDist
+    // alanlarini canli fiyata gore yeniden hesapla. Aksi halde hucreler tutarsiz
+    // olur (fiyat hucresi canli ama P&L server'in eski lastCheckedPrice'ina baglili).
+    try {
+      var liveSnap = window.livePrices && window.livePrices[s.symbol];
+      var livePrice = liveSnap && isFinite(liveSnap.price) ? liveSnap.price : null;
+      if (livePrice != null && s.entry && s.entryHit !== false) {
+        var dir = s.direction;
+        var newPnlPct = dir === 'long'
+          ? ((livePrice - s.entry) / s.entry) * 100
+          : ((s.entry - livePrice) / s.entry) * 100;
+        var newPnlR = 0;
+        var risk = s.sl ? Math.abs(s.entry - s.sl) : 0;
+        if (risk > 0) {
+          var raw = dir === 'long' ? (livePrice - s.entry) : (s.entry - livePrice);
+          newPnlR = raw / risk;
+        }
+        // TP progress'i canli fiyata gore yeniden degerlendir — outcome checker
+        // henuz yazmadiysa canli fiyat TP'yi gecmisse hit=true yap.
+        var rebuiltTP = (s.tpProgress || []).map(function(tp) {
+          var effHit = tp.hit;
+          if (!effHit && tp.price != null && isFinite(tp.price)) {
+            effHit = dir === 'long' ? livePrice >= tp.price : livePrice <= tp.price;
+          }
+          return { level: tp.level, price: tp.price, hit: effHit, hitAt: tp.hitAt };
+        });
+        s = Object.assign({}, s, {
+          currentPrice: livePrice,
+          pnlPct: Math.round(newPnlPct * 100) / 100,
+          pnlR: Math.round(newPnlR * 100) / 100,
+          slDistance: s.sl ? Math.round((Math.abs(livePrice - s.sl) / livePrice * 100) * 100) / 100 : s.slDistance,
+          tpProgress: rebuiltTP,
+        });
+      }
+    } catch (_) {}
+
+    var tr = document.createElement('tr');
+    tr.style.cursor = 'pointer';
+    tr.onclick = function() { showDetail(s); };
+    // Live price recompute icin satir bazli veri
+    tr.setAttribute('data-symbol', s.symbol || '');
+    tr.setAttribute('data-entry', s.entry != null ? s.entry : '');
+    tr.setAttribute('data-sl', s.sl != null ? s.sl : '');
+    tr.setAttribute('data-direction', s.direction || '');
+    tr.setAttribute('data-entry-active', s.entryHit !== false ? '1' : '0');
+
+    // Symbol + category
+    var tdSym = el('td', {}, [
+      el('strong', { textContent: s.symbol }),
+      el('span', { textContent: s.category || '', style: { display: 'block', fontSize: '10px', color: 'var(--text2)' } })
+    ]);
+    tr.appendChild(tdSym);
+
+    // Direction
+    tr.appendChild(el('td', {}, [
+      el('span', { className: 'badge ' + s.direction, textContent: (s.direction || '').toUpperCase() })
+    ]));
+
+    // Grade
+    tr.appendChild(el('td', {}, [
+      el('span', { className: 'badge grade-' + s.grade, textContent: s.grade + (s.positionPct ? ' %' + s.positionPct : '') })
+    ]));
+
+    // Entry + source
+    var tdEntry = el('td', { textContent: fmt(s.entry) });
+    var srcLabel = s.entrySource === 'ob_zone' ? 'OB' : s.entrySource === 'fvg_zone' ? 'FVG' : s.entrySource === 'ks_entry' ? 'KS' : '';
+    if (srcLabel) {
+      var srcClass = 'entry-source smart';
+      tdEntry.appendChild(el('span', { className: srcClass, textContent: srcLabel }));
+    }
+    tr.appendChild(tdEntry);
+
+    // Current price — live feed ile guncellenir
+    var curTd = el('td', { className: 'live-price-cell', textContent: fmt(s.currentPrice) });
+    curTd.setAttribute('data-live-price', s.symbol || '');
+    // Snapshot'ta canli fiyat varsa hemen yansit
+    if (window.livePrices && window.livePrices[s.symbol]) {
+      var snap = window.livePrices[s.symbol];
+      while (curTd.firstChild) curTd.removeChild(curTd.firstChild);
+      curTd.appendChild(document.createTextNode(formatLivePrice(snap.price)));
+      if (snap.marketState === 'PRE' || snap.marketState === 'POST') {
+        var msBadge = document.createElement('span');
+        msBadge.textContent = snap.marketState;
+        msBadge.style.cssText = 'margin-left:4px;font-size:9px;font-weight:bold;padding:1px 3px;border-radius:3px;background:' + (snap.marketState === 'PRE' ? 'rgba(100,181,246,0.25)' : 'rgba(255,183,77,0.25)') + ';color:' + (snap.marketState === 'PRE' ? '#64b5f6' : '#ffb74d') + ';vertical-align:middle';
+        curTd.appendChild(msBadge);
+      }
+    }
+    tr.appendChild(curTd);
+
+    // P&L % — entry hit olmadiysa "Bekliyor" goster
+    var entryPending = s.entryHit === false;
+    var tdPnl;
+    if (entryPending) {
+      tdPnl = el('td', { className: 'pnl-pct-cell pnl-neutral', textContent: 'Entry bekliyor', style: { fontStyle: 'italic', color: 'var(--text2)' } });
+    } else {
+      var pnlCls = s.pnlPct > 0 ? 'pnl-positive' : s.pnlPct < 0 ? 'pnl-negative' : 'pnl-neutral';
+      tdPnl = el('td', { className: 'pnl-pct-cell ' + pnlCls });
+      var pnlSpan = el('span', { className: 'pnl-pct-text', textContent: (s.pnlPct > 0 ? '+' : '') + s.pnlPct + '%' });
+      tdPnl.appendChild(pnlSpan);
+      var bar = el('div', { className: 'progress-bar' });
+      var fill = el('div', { className: 'fill pnl-pct-fill ' + (s.pnlPct >= 0 ? 'positive' : 'negative') });
+      fill.style.width = Math.min(Math.abs(s.pnlPct) * 10, 100) + '%';
+      bar.appendChild(fill);
+      tdPnl.appendChild(bar);
+    }
+    tr.appendChild(tdPnl);
+
+    // P&L R
+    var tdPnlR;
+    if (entryPending) {
+      tdPnlR = el('td', { className: 'pnl-r-cell pnl-neutral', textContent: '—', style: { color: 'var(--text2)' } });
+    } else {
+      var pnlRCls = s.pnlR > 0 ? 'pnl-positive' : s.pnlR < 0 ? 'pnl-negative' : 'pnl-neutral';
+      tdPnlR = el('td', { className: 'pnl-r-cell ' + pnlRCls, textContent: (s.pnlR > 0 ? '+' : '') + s.pnlR + 'R' });
+    }
+    tr.appendChild(tdPnlR);
+
+    // SL distance
+    var slColor = s.slDistance != null && s.slDistance < 1 ? 'var(--red)' : 'var(--text)';
+    tr.appendChild(el('td', { className: 'sl-dist-cell', textContent: s.slDistance != null ? s.slDistance + '%' : '-', style: { color: slColor } }));
+
+    // TP progress dots
+    var tdTP = document.createElement('td');
+    var dotsDiv = el('div', { className: 'tp-dots' });
+    (s.tpProgress || []).forEach(function(tp) {
+      var dot = el('div', { className: 'tp-dot ' + (tp.hit ? 'hit' : 'pending'), textContent: tp.level.replace('TP', ''), title: tp.level + ': ' + fmt(tp.price) + (tp.hit ? ' (ulasildi)' : '') });
+      dotsDiv.appendChild(dot);
+    });
+    if (s.slHit) {
+      dotsDiv.appendChild(el('div', { className: 'tp-dot sl-hit', textContent: 'SL' }));
+    }
+    tdTP.appendChild(dotsDiv);
+    tr.appendChild(tdTP);
+
+    // Age
+    tr.appendChild(el('td', { className: 'age', textContent: formatAge(s.ageMinutes) }));
+
+    // R:R
+    tr.appendChild(el('td', { textContent: s.rr || '-', style: { color: 'var(--text2)' } }));
+
+    // Durum — reverse / trailing / refresh badges
+    var statusTd = document.createElement('td');
+    var statusWrap = el('div', { style: { display: 'flex', flexDirection: 'column', gap: '2px' } });
+    if (s.reverseAttemptCount > 0) {
+      statusWrap.appendChild(el('span', {
+        className: 'badge',
+        textContent: 'REVERSE ' + s.reverseAttemptCount,
+        style: { background: '#ff9800', color: '#000', fontSize: '10px' },
+        title: 'Acikken ' + s.reverseAttemptCount + ' zit yon sinyal geldi — SL tetiklenirse hatali trade sayilir',
+      }));
+    }
+    if (s.trailingStopActive) {
+      statusWrap.appendChild(el('span', {
+        className: 'badge',
+        textContent: 'TRAIL @ ' + fmt(s.trailingStopLevel || s.sl),
+        style: { background: '#4caf50', color: '#fff', fontSize: '10px' },
+        title: 'Trailing stop aktif — karda SL yukselir',
+      }));
+    }
+    if (s.refreshCount > 0) {
+      statusWrap.appendChild(el('span', {
+        textContent: '↻ ' + s.refreshCount,
+        style: { color: 'var(--text2)', fontSize: '10px' },
+        title: 'Sinyal ' + s.refreshCount + ' kez yenilendi (upsert)',
+      }));
+    }
+    statusTd.appendChild(statusWrap);
+    tr.appendChild(statusTd);
+
+    // Aksiyon — manuel kapatma butonu
+    var actionTd = document.createElement('td');
+    var closeBtn = el('button', {
+      textContent: 'Kapat',
+      style: { background: '#c62828', color: '#fff', border: 'none', padding: '4px 10px', borderRadius: '4px', cursor: 'pointer', fontSize: '11px' },
+    });
+    closeBtn.onclick = function(ev) {
+      ev.stopPropagation();
+      closeSignal(s.id, s.symbol, s.direction);
+    };
+    actionTd.appendChild(closeBtn);
+    tr.appendChild(actionTd);
+
+    tbody.appendChild(tr);
+  });
+
+  // Update sort arrows
+  document.querySelectorAll('.signal-table th').forEach(function(th) {
+    var arrow = th.querySelector('.sort-arrow');
+    if (!arrow) return;
+    var key = th.getAttribute('data-sort');
+    if (key === currentSort.key) {
+      arrow.textContent = currentSort.asc ? ' \u25B2' : ' \u25BC';
+    } else {
+      arrow.textContent = '';
+    }
+  });
+}
+
+function closeSignal(id, symbol, direction) {
+  var msg = symbol + ' ' + (direction || '').toUpperCase() + ' pozisyonunu elle kapatmak istediginizden emin misiniz?';
+  if (!confirm(msg)) return;
+  fetch('/api/signals/' + encodeURIComponent(id) + '/close', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ reason: 'manual_ui' }),
+  })
+    .then(function(r) { return r.json(); })
+    .then(function(result) {
+      if (result && result.ok) {
+        loadSignals();
+      } else {
+        alert('Kapatma hatasi: ' + (result && result.error ? result.error : 'bilinmeyen'));
+      }
+    })
+    .catch(function(e) { alert('Kapatma hatasi: ' + e.message); });
+}
+
+function cleanupDuplicates() {
+  if (!confirm('Mukerrer acik sinyalleri temizlemek istediginizden emin misiniz?\n\nHer sembol+yon icin sadece en iyi kalite+en yeni sinyal kalir.')) return;
+  fetch('/api/signals/cleanup-duplicates', { method: 'POST' })
+    .then(function(r) { return r.json(); })
+    .then(function(result) {
+      if (result && result.ok) {
+        alert('Temizlik tamamlandi:\n' + result.cleaned + ' mukerrer kapatildi,\n' + result.kept + ' tekil sinyal kaldi.');
+        loadSignals();
+      } else {
+        alert('Temizlik hatasi: ' + (result && result.error ? result.error : 'bilinmeyen'));
+      }
+    })
+    .catch(function(e) { alert('Temizlik hatasi: ' + e.message); });
+}
+
+function showDetail(s) {
+  // Live fiyat varsa modal'daki tum turev alanlari (currentPrice, P&L, SL mesafesi,
+  // TP progress) anlik fiyata gore yeniden hesapla. Aksi halde kart sunucunun eski
+  // verisini gosterir.
+  try {
+    var liveSnap = window.livePrices && window.livePrices[s.symbol];
+    var livePrice = liveSnap && isFinite(liveSnap.price) ? liveSnap.price : null;
+    if (livePrice != null && s.entry && s.entryHit !== false) {
+      var dir = s.direction;
+      var newPnlPct = dir === 'long'
+        ? ((livePrice - s.entry) / s.entry) * 100
+        : ((s.entry - livePrice) / s.entry) * 100;
+      var risk = s.sl ? Math.abs(s.entry - s.sl) : 0;
+      var newPnlR = risk > 0
+        ? (dir === 'long' ? (livePrice - s.entry) : (s.entry - livePrice)) / risk
+        : 0;
+      var tpHitCheck = function(tp) {
+        if (tp == null || !isFinite(tp)) return false;
+        return dir === 'long' ? livePrice >= tp : livePrice <= tp;
+      };
+      var rebuiltTP = (s.tpProgress || []).map(function(tp) {
+        var effHit = tp.hit || tpHitCheck(tp.price);
+        return { level: tp.level, price: tp.price, hit: effHit, hitAt: tp.hitAt };
+      });
+      s = Object.assign({}, s, {
+        currentPrice: livePrice,
+        pnlPct: Math.round(newPnlPct * 100) / 100,
+        pnlR: Math.round(newPnlR * 100) / 100,
+        slDistance: s.sl ? Math.round((Math.abs(livePrice - s.sl) / livePrice * 100) * 100) / 100 : s.slDistance,
+        tpProgress: rebuiltTP,
+      });
+    }
+  } catch (_) {}
+
+  var modal = document.getElementById('detailModal');
+  var content = document.getElementById('detailContent');
+  while (content.firstChild) content.removeChild(content.firstChild);
+
+  // Close button
+  var closeBtn = el('button', { className: 'detail-close', textContent: 'x' });
+  closeBtn.onclick = function() { modal.classList.remove('visible'); };
+  content.appendChild(closeBtn);
+
+  // Header
+  var h2 = document.createElement('h2');
+  h2.appendChild(document.createTextNode(s.symbol + ' '));
+  var dirColor = s.direction === 'long' ? 'var(--green)' : 'var(--red)';
+  h2.appendChild(el('span', { textContent: (s.direction || '').toUpperCase(), style: { color: dirColor } }));
+  h2.appendChild(document.createTextNode(' '));
+  h2.appendChild(el('span', { className: 'badge grade-' + s.grade, textContent: s.grade }));
+  content.appendChild(h2);
+
+  var entryPending = s.entryHit === false;
+  var rows = [
+    ['Kategori', s.category],
+    ['Zaman Dilimi', s.timeframe],
+    ['Entry', fmt(s.entry)],
+    ['Entry Kaynak', s.entrySource || 'lastbar_close'],
+    ['Durum', entryPending ? 'Entry bekliyor' : 'Pozisyon aktif'],
+    ['Entry Tetiklendi', s.entryHitAt ? new Date(s.entryHitAt).toLocaleString('tr-TR') : (entryPending ? '— (bekliyor)' : '-')],
+    ['Guncel Fiyat', fmt(s.currentPrice)],
+    ['P&L %', entryPending ? '— (entry bekliyor)' : (s.pnlPct > 0 ? '+' : '') + s.pnlPct + '%'],
+    ['P&L (R)', entryPending ? '— (entry bekliyor)' : (s.pnlR > 0 ? '+' : '') + s.pnlR + 'R'],
+    ['SL', fmt(s.sl)],
+    ['SL Uzaklik', s.slDistance != null ? s.slDistance + '%' : '-'],
+    ['R:R', s.rr || '-'],
+    ['Yas', formatAge(s.ageMinutes)],
+    ['Olusturulma', s.createdAt ? new Date(s.createdAt).toLocaleString('tr-TR') : '-'],
+    ['Son Kontrol', s.lastCheckedAt ? new Date(s.lastCheckedAt).toLocaleString('tr-TR') : '-'],
+  ];
+
+  rows.forEach(function(r) {
+    var valStyle = {};
+    if (r[0].indexOf('P&L') === 0 && !entryPending) {
+      valStyle.color = parseFloat(r[1]) >= 0 ? 'var(--green)' : 'var(--red)';
+      valStyle.fontWeight = 'bold';
+    }
+    if (r[0] === 'Durum') {
+      valStyle.color = entryPending ? 'var(--yellow, #e0a64a)' : 'var(--green)';
+      valStyle.fontWeight = 'bold';
+    }
+    content.appendChild(el('div', { className: 'detail-row' }, [
+      el('span', { className: 'dlabel', textContent: r[0] }),
+      el('span', { textContent: r[1], style: valStyle })
+    ]));
+  });
+
+  // TP levels
+  if (s.tpProgress && s.tpProgress.length > 0) {
+    content.appendChild(el('div', { textContent: 'TP Seviyeleri', style: { marginTop: '12px', fontSize: '11px', color: 'var(--text2)', textTransform: 'uppercase', letterSpacing: '0.5px' } }));
+
+    s.tpProgress.forEach(function(tp) {
+      var statusText;
+      if (tp.hit) {
+        if (tp.hitAt) {
+          statusText = 'Ulasildi: ' + new Date(tp.hitAt).toLocaleString('tr-TR');
+        } else {
+          // Canli fiyat TP'yi gecti ama outcome checker henuz yazmadi
+          statusText = 'Ulasildi (onay bekliyor)';
+        }
+      } else {
+        statusText = 'Bekliyor';
+      }
+      content.appendChild(el('div', { className: 'detail-row' }, [
+        el('span', { className: 'dlabel', textContent: tp.level }),
+        el('span', { textContent: fmt(tp.price) + ' \u2014 ' + statusText, style: { color: tp.hit ? 'var(--green)' : 'var(--text2)' } })
+      ]));
+    });
+  }
+
+  // Trailing stop info
+  if (s.trailingStopActive) {
+    content.appendChild(el('div', {
+      textContent: 'TRAILING STOP AKTIF: ' + fmt(s.trailingStopLevel || s.sl) + ' (TP1 sonrasi)',
+      style: { marginTop: '12px', padding: '8px', background: 'rgba(76, 175, 80, 0.15)', border: '1px solid #4caf50', borderRadius: '4px', color: '#4caf50', fontSize: '12px' },
+    }));
+  }
+
+  // Reverse attempts panel
+  if (s.reverseAttempts && s.reverseAttempts.length > 0) {
+    content.appendChild(el('div', {
+      textContent: 'Zit Yon Sinyalleri (' + s.reverseAttempts.length + '):',
+      style: { marginTop: '12px', fontSize: '11px', color: '#ff9800', textTransform: 'uppercase', letterSpacing: '0.5px' },
+    }));
+    content.appendChild(el('div', {
+      textContent: 'Pozisyon acikken karsi yon sinyal geldi. SL tetiklenirse bu trade "hatali" olarak isaretlenir.',
+      style: { fontSize: '10px', color: 'var(--text2)', padding: '2px 0 6px' },
+    }));
+    s.reverseAttempts.forEach(function(r) {
+      var when = r.at ? new Date(r.at).toLocaleString('tr-TR') : '-';
+      var line = when + ' \u2014 ' + (r.grade || '') + '-' + (r.direction || '').toUpperCase() + ' ' + (r.timeframe || '') + 'TF @ ' + fmt(r.entry);
+      content.appendChild(el('div', {
+        textContent: '\u2022 ' + line,
+        style: { fontSize: '11px', color: '#ffcc80', padding: '2px 0' },
+      }));
+    });
+  }
+
+  // Faulty trade analysis (resolved signals only)
+  if (s.faultyTrade && s.faultyTradeAnalysis) {
+    content.appendChild(el('div', {
+      textContent: 'HATALI TRADE',
+      style: { marginTop: '12px', padding: '8px', background: 'rgba(198, 40, 40, 0.2)', border: '1px solid #c62828', borderRadius: '4px', color: '#ef9a9a', fontSize: '12px', fontWeight: 'bold' },
+    }));
+    var fa = s.faultyTradeAnalysis;
+    [
+      ['Acilirken', fa.openedWithGrade + '-' + s.direction + ' ' + fa.openedWithTF + 'TF'],
+      ['Dinlenmeyen reverse', fa.ignoredReverseCount + ' (gradeler: ' + (fa.ignoredReverseGrades || []).join(',') + ')'],
+      ['Ilk reverse lag', fa.firstReverseLagMinutes + ' dk'],
+    ].forEach(function(r) {
+      content.appendChild(el('div', { className: 'detail-row' }, [
+        el('span', { className: 'dlabel', textContent: r[0] }),
+        el('span', { textContent: r[1] }),
+      ]));
+    });
+    if (fa.indicatorDrift && fa.indicatorDrift.changed && Object.keys(fa.indicatorDrift.changed).length > 0) {
+      content.appendChild(el('div', {
+        textContent: 'Indikator Sapmasi:',
+        style: { marginTop: '8px', fontSize: '11px', color: 'var(--text2)' },
+      }));
+      Object.entries(fa.indicatorDrift.changed).forEach(function(pair) {
+        content.appendChild(el('div', {
+          textContent: '\u2022 ' + pair[0] + ': ' + pair[1],
+          style: { fontSize: '11px', color: '#ef9a9a', padding: '2px 0' },
+        }));
+      });
+    }
+  }
+
+  // Warnings
+  if (s.warnings && s.warnings.length > 0) {
+    content.appendChild(el('div', { textContent: 'Uyarilar:', style: { marginTop: '12px', fontSize: '11px', color: 'var(--orange)' } }));
+    s.warnings.forEach(function(w) {
+      content.appendChild(el('div', { textContent: '\u2022 ' + w, style: { fontSize: '11px', color: 'var(--yellow)', padding: '2px 0' } }));
+    });
+  }
+
+  // Elle kapat butonu (modal icinde)
+  if (s.id) {
+    var modalCloseBtn = el('button', {
+      textContent: 'Pozisyonu Elle Kapat',
+      style: { marginTop: '16px', width: '100%', padding: '10px', background: '#c62828', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '13px' },
+    });
+    modalCloseBtn.onclick = function() {
+      modal.classList.remove('visible');
+      closeSignal(s.id, s.symbol, s.direction);
+    };
+    content.appendChild(modalCloseBtn);
+  }
+
+  modal.classList.add('visible');
+}
+
+// Close modal on background click
+document.getElementById('detailModal').addEventListener('click', function(e) {
+  if (e.target === this) this.classList.remove('visible');
+});
+
+// Sorting
+document.querySelectorAll('.signal-table th[data-sort]').forEach(function(th) {
+  th.addEventListener('click', function() {
+    var key = this.getAttribute('data-sort');
+    if (currentSort.key === key) {
+      currentSort.asc = !currentSort.asc;
+    } else {
+      currentSort.key = key;
+      currentSort.asc = key === 'grade' || key === 'symbol';
+    }
+    renderTable();
+  });
+});
+
+// Filter change handlers
+['filterCategory', 'filterGrade', 'filterDirection', 'filterPnl'].forEach(function(id) {
+  document.getElementById(id).addEventListener('change', renderTable);
+});
+
+// League tab click handlers (Gercek / Sanal / Tumu)
+document.querySelectorAll('#leagueTabs .tab-btn').forEach(function(btn) {
+  btn.addEventListener('click', function() {
+    leagueFilter = this.getAttribute('data-league') || 'real';
+    document.querySelectorAll('#leagueTabs .tab-btn').forEach(function(b) {
+      b.classList.toggle('active', b === btn);
+    });
+    renderSummary();
+    renderTable();
+  });
+});
+
+function fmt(v) {
+  if (v == null) return '-';
+  var n = Number(v);
+  if (isNaN(n)) return '-';
+  if (n === 0) return '0';
+  var abs = Math.abs(n);
+  if (abs >= 100) return n.toFixed(2);
+  if (abs >= 1) return n.toFixed(4);
+  if (abs >= 0.0001) return n.toFixed(6);
+  // Micro-priced tokens (PEPE, SHIB, BONK...) — 4 anlamli basamak goster
+  var digits = Math.min(12, Math.max(6, 2 - Math.floor(Math.log10(abs)) + 3));
+  return n.toFixed(digits).replace(/0+$/, '').replace(/\.$/, '');
+}
+
+function formatAge(minutes) {
+  if (minutes == null) return '-';
+  if (minutes < 60) return minutes + 'dk';
+  if (minutes < 1440) return Math.floor(minutes / 60) + 's ' + (minutes % 60) + 'dk';
+  return Math.floor(minutes / 1440) + 'g ' + Math.floor((minutes % 1440) / 60) + 's';
+}
+
+// Auto-refresh every 30 seconds
+function startAutoRefresh() {
+  loadSignals();
+  refreshInterval = setInterval(function() {
+    refreshCountdown--;
+    if (refreshCountdown <= 0) {
+      loadSignals();
+    }
+    document.getElementById('refreshTimer').textContent = refreshCountdown + 's';
+  }, 1000);
+}
+
+// Keyboard shortcut: ESC closes modal
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') {
+    document.getElementById('detailModal').classList.remove('visible');
+  }
+});
+
+startAutoRefresh();
+
+// --- Live Price Feed (Binance WS via scanner server) ---
+window.livePrices = window.livePrices || {};
+
+function cssEscapeAttr(s) { return String(s).replace(/(["\\])/g, '\\$1'); }
+function formatLivePrice(p) {
+  if (p == null || !isFinite(p)) return '—';
+  if (p >= 1000) return p.toFixed(2);
+  if (p >= 1) return p.toFixed(3);
+  if (p >= 0.01) return p.toFixed(4);
+  return p.toFixed(6);
+}
+
+function applyLivePriceToDom(tvSymbol, price, prevPrice) {
+  var snap = window.livePrices && window.livePrices[tvSymbol];
+  var marketState = snap && snap.marketState;
+  // 1) Guncel fiyat hucreleri
+  var cells = document.querySelectorAll('[data-live-price="' + cssEscapeAttr(tvSymbol) + '"]');
+  for (var i = 0; i < cells.length; i++) {
+    var cell = cells[i];
+    // Fiyat metni + PRE/POST badge
+    while (cell.firstChild) cell.removeChild(cell.firstChild);
+    cell.appendChild(document.createTextNode(formatLivePrice(price)));
+    if (marketState === 'PRE' || marketState === 'POST') {
+      var badge = document.createElement('span');
+      badge.textContent = marketState;
+      badge.style.cssText = 'margin-left:4px;font-size:9px;font-weight:bold;padding:1px 3px;border-radius:3px;background:' + (marketState === 'PRE' ? 'rgba(100,181,246,0.25)' : 'rgba(255,183,77,0.25)') + ';color:' + (marketState === 'PRE' ? '#64b5f6' : '#ffb74d') + ';vertical-align:middle';
+      cell.appendChild(badge);
+    }
+    if (prevPrice != null && prevPrice !== price) {
+      cell.classList.remove('flash-up', 'flash-down');
+      void cell.offsetWidth;
+      cell.classList.add(price > prevPrice ? 'flash-up' : 'flash-down');
+    }
+  }
+  // 2) Ayni satirdaki P&L%, P&L (R), SL Uzaklik hucrelerini yeniden hesapla
+  var rows = document.querySelectorAll('tr[data-symbol="' + cssEscapeAttr(tvSymbol) + '"]');
+  for (var r = 0; r < rows.length; r++) {
+    recomputeRowMetrics(rows[r], price);
+  }
+}
+
+function recomputeRowMetrics(tr, price) {
+  var entry = parseFloat(tr.getAttribute('data-entry'));
+  var sl = parseFloat(tr.getAttribute('data-sl'));
+  var direction = tr.getAttribute('data-direction');
+  var entryActive = tr.getAttribute('data-entry-active') === '1';
+  if (!isFinite(entry) || entry <= 0 || !isFinite(price) || price <= 0) return;
+
+  // P&L %
+  var pnlPct = 0;
+  if (entryActive) {
+    pnlPct = direction === 'long'
+      ? ((price - entry) / entry) * 100
+      : ((entry - price) / entry) * 100;
+  }
+  pnlPct = Math.round(pnlPct * 100) / 100;
+
+  // P&L R
+  var pnlR = 0;
+  if (entryActive && isFinite(sl) && sl > 0) {
+    var risk = Math.abs(entry - sl);
+    if (risk > 0) {
+      var raw = direction === 'long' ? (price - entry) : (entry - price);
+      pnlR = Math.round((raw / risk) * 100) / 100;
+    }
+  }
+
+  // SL uzaklik %
+  var slDist = null;
+  if (isFinite(sl) && sl > 0) {
+    slDist = Math.round((Math.abs(price - sl) / price * 100) * 100) / 100;
+  }
+
+  // P&L % hucresini guncelle
+  var pnlCell = tr.querySelector('.pnl-pct-cell');
+  if (pnlCell && entryActive) {
+    var pnlText = pnlCell.querySelector('.pnl-pct-text');
+    if (pnlText) pnlText.textContent = (pnlPct > 0 ? '+' : '') + pnlPct + '%';
+    pnlCell.classList.remove('pnl-positive', 'pnl-negative', 'pnl-neutral');
+    pnlCell.classList.add(pnlPct > 0 ? 'pnl-positive' : pnlPct < 0 ? 'pnl-negative' : 'pnl-neutral');
+    var fill = pnlCell.querySelector('.pnl-pct-fill');
+    if (fill) {
+      fill.classList.remove('positive', 'negative');
+      fill.classList.add(pnlPct >= 0 ? 'positive' : 'negative');
+      fill.style.width = Math.min(Math.abs(pnlPct) * 10, 100) + '%';
+    }
+  }
+
+  // P&L R hucresini guncelle
+  var pnlRCell = tr.querySelector('.pnl-r-cell');
+  if (pnlRCell && entryActive) {
+    pnlRCell.textContent = (pnlR > 0 ? '+' : '') + pnlR + 'R';
+    pnlRCell.classList.remove('pnl-positive', 'pnl-negative', 'pnl-neutral');
+    pnlRCell.classList.add(pnlR > 0 ? 'pnl-positive' : pnlR < 0 ? 'pnl-negative' : 'pnl-neutral');
+  }
+
+  // SL uzaklik hucresini guncelle
+  var slCell = tr.querySelector('.sl-dist-cell');
+  if (slCell && slDist != null) {
+    slCell.textContent = slDist + '%';
+    slCell.style.color = slDist < 1 ? 'var(--red)' : 'var(--text)';
+  }
+}
+
+var _summaryRefreshTimer = null;
+function scheduleSummaryRefresh() {
+  if (_summaryRefreshTimer) return;
+  _summaryRefreshTimer = setTimeout(function() {
+    _summaryRefreshTimer = null;
+    renderSummary();
+  }, 500);
+}
+
+function handleLivePriceUpdates(updates) {
+  for (var i = 0; i < updates.length; i++) {
+    var u = updates[i];
+    if (!u || !u.tvSymbol) continue;
+    var prev = window.livePrices[u.tvSymbol];
+    window.livePrices[u.tvSymbol] = { price: u.price, ts: u.ts, marketState: u.marketState || null };
+    applyLivePriceToDom(u.tvSymbol, u.price, prev ? prev.price : null);
+  }
+  scheduleSummaryRefresh();
+}
+
+function connectLivePriceWS() {
+  var proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  var ws;
+  try { ws = new WebSocket(proto + '//' + window.location.host); } catch (e) { return; }
+  ws.onmessage = function(e) {
+    try {
+      var data = JSON.parse(e.data);
+      if (data && data.type === 'live_prices' && data.updates) {
+        handleLivePriceUpdates(data.updates);
+      }
+    } catch (_) {}
+  };
+  ws.onclose = function() { setTimeout(connectLivePriceWS, 3000); };
+  ws.onerror = function() { try { ws.close(); } catch (_) {} };
+}
+
+function loadInitialLivePrices() {
+  fetch('/api/live-prices').then(function(r) { return r.json(); }).then(function(d) {
+    if (!d || !d.prices) return;
+    Object.keys(d.prices).forEach(function(tv) {
+      var p = d.prices[tv].price;
+      var prev = window.livePrices[tv];
+      window.livePrices[tv] = { price: p, ts: d.prices[tv].ts, marketState: d.prices[tv].marketState || null };
+      applyLivePriceToDom(tv, p, prev ? prev.price : null);
+    });
+  }).catch(function() {});
+}
+
+connectLivePriceWS();
+setTimeout(loadInitialLivePrices, 500);
+setInterval(loadInitialLivePrices, 30000); // WS kopuksa safety net
+
+</script>
+</body>
+</html>
