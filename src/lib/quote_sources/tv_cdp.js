@@ -63,6 +63,7 @@ export async function tvCdpFetchQuotes(symbols, { dataCore }) {
         symbol: sym,
         error: err.message,
         kind: err.kind ?? null,
+        source: 'tv_cdp',
       });
     }
   }

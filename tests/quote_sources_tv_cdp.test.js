@@ -57,6 +57,18 @@ test('partial failure does not throw (some symbols succeed, some fail)', async (
   assert.ok(out.failed[0].error.includes('BAD'));
 });
 
+test('failed entries carry source=tv_cdp for chain auditability', async () => {
+  const dataCore = {
+    async getQuote(sym) {
+      if (sym === 'GOOD') return { symbol: 'GOOD', last: 100, time: 1776960000 };
+      throw new Error('bad');
+    },
+  };
+  const out = await tvCdpFetchQuotes(['GOOD', 'BAD'], { dataCore });
+  assert.strictEqual(out.failed.length, 1);
+  assert.strictEqual(out.failed[0].source, 'tv_cdp');
+});
+
 test('per-symbol failure carries kind when underlying error has one', async () => {
   const dataCore = {
     async getQuote() {
@@ -65,11 +77,13 @@ test('per-symbol failure carries kind when underlying error has one', async () =
       throw e;
     },
   };
-  try {
-    await tvCdpFetchQuotes(['X'], { dataCore });
-  } catch (err) {
-    assert.strictEqual(err.sourceFailures[0].kind, 'socket_closed');
-  }
+  await assert.rejects(
+    () => tvCdpFetchQuotes(['X'], { dataCore }),
+    (err) => {
+      assert.strictEqual(err.sourceFailures[0].kind, 'socket_closed');
+      return true;
+    },
+  );
 });
 
 test('returns { quotes, fetchedAt, failed, missing } shape', async () => {
