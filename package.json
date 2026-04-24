@@ -16,9 +16,9 @@
     "tv": "node src/cli/index.js",
     "test": "node --test tests/e2e.test.js tests/pine_analyze.test.js",
     "test:e2e": "node --test tests/e2e.test.js",
-    "test:unit": "node --test tests/pine_analyze.test.js tests/cli.test.js tests/explosion_scanner.test.js tests/coiled_spring_scanner.test.js tests/market_hours.test.js tests/candidate_reader.test.js tests/fire_events.test.js tests/poller_state.test.js tests/quote_sources_yahoo.test.js tests/quote_sources_tv_cdp.test.js",
+    "test:unit": "node --test tests/pine_analyze.test.js tests/cli.test.js tests/explosion_scanner.test.js tests/coiled_spring_scanner.test.js tests/market_hours.test.js tests/candidate_reader.test.js tests/fire_events.test.js tests/poller_state.test.js tests/quote_sources_yahoo.test.js tests/quote_sources_tv_cdp.test.js tests/quote_sources_chain.test.js",
     "test:cli": "node --test tests/cli.test.js",
-    "test:all": "node --test tests/e2e.test.js tests/pine_analyze.test.js tests/cli.test.js tests/explosion_scanner.test.js tests/coiled_spring_scanner.test.js tests/market_hours.test.js tests/candidate_reader.test.js tests/fire_events.test.js tests/poller_state.test.js tests/quote_sources_yahoo.test.js tests/quote_sources_tv_cdp.test.js",
+    "test:all": "node --test tests/e2e.test.js tests/pine_analyze.test.js tests/cli.test.js tests/explosion_scanner.test.js tests/coiled_spring_scanner.test.js tests/market_hours.test.js tests/candidate_reader.test.js tests/fire_events.test.js tests/poller_state.test.js tests/quote_sources_yahoo.test.js tests/quote_sources_tv_cdp.test.js tests/quote_sources_chain.test.js",
     "test:verbose": "node --test --test-reporter=spec tests/e2e.test.js tests/pine_analyze.test.js",
     "test:count": "node --test --test-reporter=spec tests/e2e.test.js 2>&1 | tail -5"
   },
