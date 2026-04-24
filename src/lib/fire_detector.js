@@ -6,7 +6,53 @@
  *   hysteresisPct       % below trigger price must reach before re-arming (default 0.5)
  *   maxFiresPerDay      Cap per ticker per trading day (default 2)
  *   staleQuoteMaxAgeMs  Quotes older than this are ignored for state transitions (default 5000)
+ *
+ * Fire Strength Levels (additional to state machine, not a replacement):
+ *   null — ARMED (idle, below trigger)
+ *   1 — WATCH (PENDING — informational, not a trade action)
+ *   2 — CONFIRMED (FIRED — standard alert)
+ *   3 — HIGH CONVICTION (FIRED — priority alert: all technical signals + green risk)
  */
+
+/**
+ * Compute the upgrade-eligible fire strength level given a strengthContext.
+ * Returns 3 iff all three technical signals are true AND risk band is green.
+ * Otherwise returns 2 (default for any confirmed fire with context).
+ */
+function computeFireStrength(ctx) {
+  if (!ctx) return 2;
+  const allTechnicalsGreen =
+    ctx.volumeExpansion === true &&
+    ctx.relativeStrength === true &&
+    ctx.cleanStructure === true;
+  if (allTechnicalsGreen && ctx.riskBand === 'green') return 3;
+  return 2;
+}
+
+/**
+ * Build the strengthBreakdown object that ships on a fire event.
+ * Explains why a fire was awarded its strength so consumers can reason about it.
+ */
+function summarizeStrength(ctx, finalLevel) {
+  if (!ctx) {
+    return { reason: 'no_context_default_level_2' };
+  }
+  const hasVolumeExpansion = ctx.volumeExpansion === true;
+  const hasRelativeStrength = ctx.relativeStrength === true;
+  const hasCleanStructure = ctx.cleanStructure === true;
+  const riskBand = ctx.riskBand || 'unknown';
+  const wouldHaveBeenLevel3 =
+    hasVolumeExpansion && hasRelativeStrength && hasCleanStructure;
+  const downgradedByRisk = wouldHaveBeenLevel3 && riskBand !== 'green';
+  return {
+    hasVolumeExpansion,
+    hasRelativeStrength,
+    hasCleanStructure,
+    riskBand,
+    wouldHaveBeenLevel3,
+    downgradedByRisk,
+  };
+}
 
 export function createFireDetector({
   confirmPolls = 2,
@@ -28,6 +74,8 @@ export function createFireDetector({
       firedEventId: null,
       firesToday: 0,
       lastSuppression: null,
+      fireStrength: null,    // null | 1 (WATCH) | 2 (CONFIRMED) | 3 (HIGH CONVICTION)
+      lastFireLevel: null,   // Last emitted FIRE-level strength (used to preserve across cap re-fires)
     };
   }
 
@@ -61,11 +109,18 @@ export function createFireDetector({
 
   /**
    * Observe a new quote for a ticker. Returns:
-   *   { fired: boolean, firedPrice?, confirmPollCount?, firstCrossObservedAt? }
+   *   { fired: boolean, fireStrength: null|1|2|3, firedPrice?, confirmPollCount?,
+   *     firstCrossObservedAt?, confirmedAt?, strengthBreakdown? }
    */
-  function observe(symbol, { price, quoteAgeMs = 0, fireSuppressed = false, timestamp = new Date() }) {
+  function observe(symbol, {
+    price,
+    quoteAgeMs = 0,
+    fireSuppressed = false,
+    timestamp = new Date(),
+    strengthContext = null,
+  }) {
     const s = tickers.get(symbol);
-    if (!s) return { fired: false };
+    if (!s) return { fired: false, fireStrength: null };
     s.lastPrice = price;
 
     // Stale guard: block any state promotion when the quote is old.
@@ -76,8 +131,10 @@ export function createFireDetector({
         s.state = 'ARMED';
         s.pendingSince = null;
         s.confirmsSeen = 0;
+        s.fireStrength = null;
       }
-      return { fired: false };
+      // FIRED state and existing fireStrength are preserved untouched.
+      return { fired: false, fireStrength: s.fireStrength };
     }
 
     if (s.state === 'FIRED') {
@@ -89,8 +146,10 @@ export function createFireDetector({
         s.pendingSince = null;
         s.confirmsSeen = 0;
         s.firstCrossObservedAt = null;
+        s.fireStrength = null;
+        return { fired: false, fireStrength: null };
       }
-      return { fired: false };
+      return { fired: false, fireStrength: s.fireStrength };
     }
 
     if (price < s.trigger) {
@@ -100,8 +159,9 @@ export function createFireDetector({
         s.pendingSince = null;
         s.confirmsSeen = 0;
         s.firstCrossObservedAt = null;
+        s.fireStrength = null;
       }
-      return { fired: false };
+      return { fired: false, fireStrength: null };
     }
 
     // price >= trigger
@@ -110,31 +170,42 @@ export function createFireDetector({
       s.pendingSince = timestamp.toISOString();
       s.firstCrossObservedAt = timestamp.toISOString();
       s.confirmsSeen = 1;
-      return { fired: false };
+      s.fireStrength = 1; // WATCH
+      return { fired: false, fireStrength: 1 };
     }
 
     // s.state === 'PENDING'
     s.confirmsSeen++;
     if (s.confirmsSeen >= confirmPolls) {
       if (s.firesToday >= maxFiresPerDay) {
-        // Daily cap — suppress
+        // Daily cap — suppress emission but transition to FIRED so we don't keep confirming.
+        // PRESERVE the prior fired-level strength (lastFireLevel) rather than the
+        // transient PENDING value — capped re-fires should not downgrade or wipe
+        // the original fire's strength.
         s.lastSuppression = { reason: 'daily_cap', at: timestamp.toISOString() };
-        // Promote to FIRED anyway so we don't keep confirming; will only re-fire after hysteresis reset
         s.state = 'FIRED';
         s.firedEventId = null;
-        return { fired: false };
+        if (s.lastFireLevel != null) s.fireStrength = s.lastFireLevel;
+        return { fired: false, fireStrength: s.fireStrength };
       }
       s.state = 'FIRED';
       s.firesToday++;
+      const level = computeFireStrength(strengthContext);
+      s.fireStrength = level;
+      s.lastFireLevel = level;
+      const strengthBreakdown = summarizeStrength(strengthContext, level);
       return {
         fired: true,
+        fireStrength: level,
         firedPrice: price,
         confirmPollCount: confirmPolls,
         firstCrossObservedAt: s.firstCrossObservedAt,
         confirmedAt: timestamp.toISOString(),
+        strengthBreakdown,
       };
     }
-    return { fired: false };
+    // Still PENDING, awaiting more confirmations
+    return { fired: false, fireStrength: 1 };
   }
 
   /** Reset all tickers' daily-fire counters (called at start of each trading day). */

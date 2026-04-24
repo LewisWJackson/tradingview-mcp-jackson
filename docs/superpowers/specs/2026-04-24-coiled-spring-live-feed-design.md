@@ -429,6 +429,36 @@ Fire detection requires `quoteAgeMs < 5000`. Any `PENDING → FIRED` transition 
 
 If the scanner refresh changes a ticker's `entry_trigger` value mid-day (rare but possible — the 20-day high can update), the poller updates the trigger but **preserves the current state**. A ticker that was `FIRED` at the old trigger stays `FIRED`; the new trigger is used for the next arm/fire cycle only.
 
+### 12.6 Fire strength levels
+
+A fire event is not a single binary. The detector emits a `fireStrength` ∈ {null, 1, 2, 3} on every `observe()` return:
+
+| Level | Name | State | Meaning |
+|---|---|---|---|
+| null | — | ARMED | Idle, below trigger |
+| 1 | WATCH | PENDING | Price above trigger, awaiting confirmation. Informational only — **not a trade action** |
+| 2 | CONFIRMED | FIRED | Breakout confirmed. Default for any fire without strong context. Eligible for a **standard alert**. |
+| 3 | HIGH CONVICTION | FIRED | Confirmed fire PLUS volume expansion, relative strength, clean technical structure, and a green risk band. Eligible for a **priority alert**. |
+
+**Promotion to Level 3** requires ALL of these in the `strengthContext` passed to `observe()`:
+- `volumeExpansion === true`
+- `relativeStrength === true`
+- `cleanStructure === true`
+- `riskBand === 'green'`
+
+If any is false/missing, the fire is Level 2.
+
+**Downgrade:** yellow or red risk always caps strength at 2, even with all technical signals green. This is additive, not blocking — the fire still fires with `fireStrength: 2`. Red-flag fires still notify the user; the risk context is surfaced separately (§13).
+
+**Stale/degraded data:** stale quotes or `fireSuppressed: true` inputs never promote any state. ARMED stays, PENDING resets to ARMED, FIRED state and its existing `fireStrength` are preserved without update.
+
+**Daily cap:** when a cap-suppressed transition occurs, the existing `fireStrength` from the prior fire is preserved (not overwritten to null).
+
+**Consumer guidance (Task 12+):**
+- `fireStrength === 1` → dashboard-only status chip ("WATCH"), no notification
+- `fireStrength === 2` → dashboard banner + standard desktop toast
+- `fireStrength === 3` → dashboard banner + priority toast (optional audio, sticky badge)
+
 ---
 
 ## 13. Risk flags & fire tagging

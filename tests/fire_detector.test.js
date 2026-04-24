@@ -23,6 +23,7 @@ test('clean breakout fires once after 2 consecutive polls above trigger', () => 
   assert.strictEqual(fires.length, 1);
   assert.strictEqual(fires[0].firedPrice, 152.90);
   assert.strictEqual(fires[0].confirmPollCount, 2);
+  assert.strictEqual(fires[0].fireStrength, 2, 'default confirmed fire is Level 2');
 });
 
 test('whipsaw (one-poll spike) does not fire', () => {
@@ -180,4 +181,171 @@ test('resetDailyCounters clears firesToday without disturbing state machine', ()
   det.resetDailyCounters();
   assert.strictEqual(det.getState('D').firesToday, 0);
   assert.strictEqual(det.getState('D').state, 'FIRED', 'state preserved across daily reset');
+});
+
+// E2 — Fire Strength Levels (WATCH / CONFIRMED / HIGH CONVICTION)
+
+test('Level 1 WATCH emitted on PENDING transition (not a trade action)', () => {
+  const det = createFireDetector({ confirmPolls: 2 });
+  det.upsertTicker({ symbol: 'W', trigger: 100 });
+  // First above-trigger observation → PENDING → fireStrength 1
+  const r = det.observe('W', { price: 101, quoteAgeMs: 100 });
+  assert.strictEqual(r.fired, false, 'Level 1 is not a trade action');
+  assert.strictEqual(r.fireStrength, 1);
+  assert.strictEqual(det.getState('W').state, 'PENDING');
+});
+
+test('ARMED observation returns fireStrength=null', () => {
+  const det = createFireDetector({ confirmPolls: 2 });
+  det.upsertTicker({ symbol: 'A', trigger: 100 });
+  const r = det.observe('A', { price: 95, quoteAgeMs: 100 });
+  assert.strictEqual(r.fired, false);
+  assert.strictEqual(r.fireStrength, null);
+});
+
+test('Level 2 CONFIRMED emitted on FIRED without strength context (default)', () => {
+  const det = createFireDetector({ confirmPolls: 2 });
+  det.upsertTicker({ symbol: 'C2', trigger: 100 });
+  det.observe('C2', { price: 95 });
+  det.observe('C2', { price: 101 });  // PENDING
+  const r = det.observe('C2', { price: 101 });  // FIRED
+  assert.strictEqual(r.fired, true);
+  assert.strictEqual(r.fireStrength, 2);
+  assert.strictEqual(r.strengthBreakdown.reason, 'no_context_default_level_2');
+});
+
+test('Level 3 HIGH CONVICTION emitted when all signals + green risk', () => {
+  const det = createFireDetector({ confirmPolls: 2 });
+  det.upsertTicker({ symbol: 'C3', trigger: 100 });
+  const ctx = { volumeExpansion: true, relativeStrength: true, cleanStructure: true, riskBand: 'green' };
+  det.observe('C3', { price: 95 });
+  det.observe('C3', { price: 101, strengthContext: ctx });   // PENDING, context only matters on FIRED step
+  const r = det.observe('C3', { price: 101, strengthContext: ctx });  // FIRED with strong signals
+  assert.strictEqual(r.fired, true);
+  assert.strictEqual(r.fireStrength, 3);
+  assert.strictEqual(r.strengthBreakdown.hasVolumeExpansion, true);
+  assert.strictEqual(r.strengthBreakdown.hasRelativeStrength, true);
+  assert.strictEqual(r.strengthBreakdown.hasCleanStructure, true);
+  assert.strictEqual(r.strengthBreakdown.riskBand, 'green');
+  assert.strictEqual(r.strengthBreakdown.downgradedByRisk, false);
+});
+
+test('Level 3 downgraded to Level 2 when riskBand is red', () => {
+  const det = createFireDetector({ confirmPolls: 2 });
+  det.upsertTicker({ symbol: 'D1', trigger: 100 });
+  const ctx = { volumeExpansion: true, relativeStrength: true, cleanStructure: true, riskBand: 'red' };
+  det.observe('D1', { price: 95 });
+  det.observe('D1', { price: 101, strengthContext: ctx });
+  const r = det.observe('D1', { price: 101, strengthContext: ctx });
+  assert.strictEqual(r.fired, true);
+  assert.strictEqual(r.fireStrength, 2, 'red risk downgrades from 3 to 2');
+  assert.strictEqual(r.strengthBreakdown.wouldHaveBeenLevel3, true);
+  assert.strictEqual(r.strengthBreakdown.downgradedByRisk, true);
+  assert.strictEqual(r.strengthBreakdown.riskBand, 'red');
+});
+
+test('Level 3 downgraded to Level 2 when riskBand is yellow', () => {
+  const det = createFireDetector({ confirmPolls: 2 });
+  det.upsertTicker({ symbol: 'D2', trigger: 100 });
+  const ctx = { volumeExpansion: true, relativeStrength: true, cleanStructure: true, riskBand: 'yellow' };
+  det.observe('D2', { price: 95 });
+  det.observe('D2', { price: 101, strengthContext: ctx });
+  const r = det.observe('D2', { price: 101, strengthContext: ctx });
+  assert.strictEqual(r.fireStrength, 2);
+  assert.strictEqual(r.strengthBreakdown.downgradedByRisk, true);
+});
+
+test('Level 2 when technical signals incomplete even with green risk', () => {
+  const det = createFireDetector({ confirmPolls: 2 });
+  det.upsertTicker({ symbol: 'S', trigger: 100 });
+  const ctx = { volumeExpansion: true, relativeStrength: false, cleanStructure: true, riskBand: 'green' };
+  det.observe('S', { price: 95 });
+  det.observe('S', { price: 101, strengthContext: ctx });
+  const r = det.observe('S', { price: 101, strengthContext: ctx });
+  assert.strictEqual(r.fireStrength, 2);
+  assert.strictEqual(r.strengthBreakdown.wouldHaveBeenLevel3, false, 'not all signals → never could have been L3');
+  assert.strictEqual(r.strengthBreakdown.downgradedByRisk, false);
+});
+
+test('stale quote on PENDING drops fireStrength back to null', () => {
+  const det = createFireDetector({ confirmPolls: 2, staleQuoteMaxAgeMs: 5000 });
+  det.upsertTicker({ symbol: 'ST', trigger: 100 });
+  det.observe('ST', { price: 95 });
+  det.observe('ST', { price: 101, quoteAgeMs: 100 });  // PENDING, fireStrength = 1
+  assert.strictEqual(det.getState('ST').fireStrength, 1);
+  det.observe('ST', { price: 101, quoteAgeMs: 10_000 }); // stale → revert to ARMED
+  assert.strictEqual(det.getState('ST').fireStrength, null);
+});
+
+test('stale quote on FIRED preserves fireStrength', () => {
+  const det = createFireDetector({ confirmPolls: 2, staleQuoteMaxAgeMs: 5000 });
+  det.upsertTicker({ symbol: 'SF', trigger: 100 });
+  const ctx = { volumeExpansion: true, relativeStrength: true, cleanStructure: true, riskBand: 'green' };
+  det.observe('SF', { price: 95 });
+  det.observe('SF', { price: 101, strengthContext: ctx });
+  det.observe('SF', { price: 101, strengthContext: ctx });  // FIRED, fireStrength=3
+  assert.strictEqual(det.getState('SF').fireStrength, 3);
+  // Stale print now
+  det.observe('SF', { price: 105, quoteAgeMs: 10_000 });
+  assert.strictEqual(det.getState('SF').state, 'FIRED');
+  assert.strictEqual(det.getState('SF').fireStrength, 3, 'stale does not downgrade existing fire strength');
+});
+
+test('fireSuppressed never creates Level 2 or 3 even with strong context', () => {
+  const det = createFireDetector({ confirmPolls: 2 });
+  det.upsertTicker({ symbol: 'FSL', trigger: 100 });
+  const ctx = { volumeExpansion: true, relativeStrength: true, cleanStructure: true, riskBand: 'green' };
+  det.observe('FSL', { price: 95 });
+  // Two above-trigger observations but fireSuppressed=true
+  det.observe('FSL', { price: 101, strengthContext: ctx, fireSuppressed: true });
+  const r = det.observe('FSL', { price: 101, strengthContext: ctx, fireSuppressed: true });
+  assert.strictEqual(r.fired, false, 'suppressed data cannot fire');
+  assert.strictEqual(r.fireStrength, null, 'no level awarded on suppressed data');
+  assert.notStrictEqual(det.getState('FSL').state, 'FIRED');
+});
+
+test('hysteresis re-arm resets fireStrength to null', () => {
+  const det = createFireDetector({ confirmPolls: 2, hysteresisPct: 0.5 });
+  det.upsertTicker({ symbol: 'H', trigger: 100 });
+  det.observe('H', { price: 95 });
+  det.observe('H', { price: 101 });
+  det.observe('H', { price: 101 });  // FIRED (level 2)
+  assert.strictEqual(det.getState('H').fireStrength, 2);
+  det.observe('H', { price: 99.3 }); // drops > 0.5% below → re-arm
+  assert.strictEqual(det.getState('H').state, 'ARMED');
+  assert.strictEqual(det.getState('H').fireStrength, null);
+});
+
+test('daily cap preserves existing fireStrength on capped transition', () => {
+  const det = createFireDetector({ confirmPolls: 2, hysteresisPct: 0.5, maxFiresPerDay: 1 });
+  det.upsertTicker({ symbol: 'CP', trigger: 100 });
+  const ctx = { volumeExpansion: true, relativeStrength: true, cleanStructure: true, riskBand: 'green' };
+  // First fire: Level 3
+  det.observe('CP', { price: 95 });
+  det.observe('CP', { price: 101, strengthContext: ctx });
+  det.observe('CP', { price: 101, strengthContext: ctx });
+  assert.strictEqual(det.getState('CP').fireStrength, 3);
+  // Re-arm (hysteresis)
+  det.observe('CP', { price: 99 });
+  // Second would-be fire — capped
+  det.observe('CP', { price: 101 });
+  const r = det.observe('CP', { price: 101 });
+  assert.strictEqual(r.fired, false, 'cap blocks emission');
+  assert.strictEqual(det.getState('CP').lastSuppression.reason, 'daily_cap');
+  // fireStrength should be preserved at the prior L3 value (no overwrite on cap)
+  assert.strictEqual(det.getState('CP').fireStrength, 3);
+});
+
+test('snapshot and restoreState preserve fireStrength', () => {
+  const det = createFireDetector({ confirmPolls: 2 });
+  det.upsertTicker({ symbol: 'SR', trigger: 100 });
+  det.observe('SR', { price: 95 });
+  det.observe('SR', { price: 101 });
+  det.observe('SR', { price: 101 }); // FIRED, fireStrength=2
+  const snap = det.snapshot();
+  assert.strictEqual(snap.SR.fireStrength, 2);
+
+  const det2 = createFireDetector({ confirmPolls: 2 });
+  det2.restoreState(snap);
+  assert.strictEqual(det2.getState('SR').fireStrength, 2);
 });
