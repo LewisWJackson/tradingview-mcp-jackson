@@ -3,6 +3,32 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { tradingDate } from './market_hours.js';
 
+function formatFiredAtET(ts) {
+  // ISO-8601 with the America/New_York offset (e.g. "2026-04-24T13:45:13-04:00").
+  // Parseable by Date().
+  const d = new Date(ts);
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+    hour12: false,
+  }).formatToParts(d);
+  const g = name => parts.find(p => p.type === name)?.value;
+  let hour = g('hour');
+  if (hour === '24') hour = '00';
+  const dateStr = `${g('year')}-${g('month')}-${g('day')}`;
+  const timeStr = `${hour}:${g('minute')}:${g('second')}`;
+  // Compute offset by diffing UTC from ET-local interpretation
+  const etAsUtc = Date.UTC(+g('year'), +g('month') - 1, +g('day'), +hour, +g('minute'), +g('second'));
+  const utcMs = d.getTime();
+  const offsetMin = Math.round((etAsUtc - utcMs) / 60000);
+  const sign = offsetMin >= 0 ? '+' : '-';
+  const abs = Math.abs(offsetMin);
+  const hh = String(Math.floor(abs / 60)).padStart(2, '0');
+  const mm = String(abs % 60).padStart(2, '0');
+  return `${dateStr}T${timeStr}${sign}${hh}:${mm}`;
+}
+
 /**
  * Append-only daily fire audit log.
  *
@@ -30,25 +56,21 @@ export function createFireLog({ baseDir }) {
     const fp = filePathForDate(dateStr);
     const existing = loadFile(fp) || { date: dateStr, fires: [] };
 
-    const firedAtET = new Intl.DateTimeFormat('en-US', {
-      timeZone: 'America/New_York',
-      year: 'numeric', month: '2-digit', day: '2-digit',
-      hour: '2-digit', minute: '2-digit', second: '2-digit',
-      hour12: false, timeZoneName: 'short',
-    }).format(new Date(ts));
+    const firedAtET = formatFiredAtET(ts);
 
     const stored = {
+      ...event,
       eventId: event.eventId || randomUUID(),
       ticker: event.ticker,
       firedAt: ts,
       firedAtET,
-      ...event,
       timestamp: undefined, // normalized into firedAt
     };
     // Drop undefined keys (timestamp we just replaced)
     for (const k of Object.keys(stored)) if (stored[k] === undefined) delete stored[k];
 
     existing.fires.push(stored);
+    // Non-atomic: single-process tool. Upgrade to write-then-rename if multi-process.
     fs.writeFileSync(fp, JSON.stringify(existing, null, 2));
     return stored;
   }

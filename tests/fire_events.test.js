@@ -80,3 +80,27 @@ test('getFiresForDate returns events for an arbitrary date', () => {
   assert.strictEqual(log.getFiresForDate('2026-04-22')[0].ticker, 'OLD');
   assert.strictEqual(log.getFiresForDate('2026-04-24').length, 1);
 });
+
+test('recordFire preserves caller-provided eventId without overwriting', () => {
+  const dir = mktmp();
+  const log = createFireLog({ baseDir: dir });
+  const event = log.recordFire({
+    eventId: 'my-idempotent-id',
+    ticker: 'X', trigger: 1, firedPrice: 2,
+    timestamp: '2026-04-24T17:00:00.000Z',
+  });
+  assert.strictEqual(event.eventId, 'my-idempotent-id');
+});
+
+test('firedAtET is ISO-8601 with offset, parseable by new Date()', () => {
+  const dir = mktmp();
+  const log = createFireLog({ baseDir: dir });
+  const event = log.recordFire({
+    ticker: 'X', trigger: 1, firedPrice: 2,
+    timestamp: '2026-04-24T17:45:13.000Z',
+  });
+  // Should look like 2026-04-24T13:45:13-04:00 (or similar with -05:00 in EST)
+  assert.match(event.firedAtET, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}$/);
+  // Round-trip: parsing it back yields the same UTC instant
+  assert.strictEqual(new Date(event.firedAtET).toISOString(), '2026-04-24T17:45:13.000Z');
+});
