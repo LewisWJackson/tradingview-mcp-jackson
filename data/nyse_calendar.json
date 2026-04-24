@@ -1,0 +1,18 @@
+{
+  "description": "NYSE full closures and early closes for 2026. Source: nyse.com/markets/hours-calendars.",
+  "year": 2026,
+  "days": [
+    { "date": "2026-01-01", "status": "closed", "name": "New Year's Day" },
+    { "date": "2026-01-19", "status": "closed", "name": "MLK Day" },
+    { "date": "2026-02-16", "status": "closed", "name": "Presidents' Day" },
+    { "date": "2026-04-03", "status": "closed", "name": "Good Friday" },
+    { "date": "2026-05-25", "status": "closed", "name": "Memorial Day" },
+    { "date": "2026-06-19", "status": "closed", "name": "Juneteenth" },
+    { "date": "2026-07-03", "status": "early_close", "closeTimeET": "13:00", "name": "Day Before July 4 (observed)" },
+    { "date": "2026-09-07", "status": "closed", "name": "Labor Day" },
+    { "date": "2026-11-26", "status": "closed", "name": "Thanksgiving" },
+    { "date": "2026-11-27", "status": "early_close", "closeTimeET": "13:00", "name": "Day After Thanksgiving" },
+    { "date": "2026-12-24", "status": "early_close", "closeTimeET": "13:00", "name": "Christmas Eve" },
+    { "date": "2026-12-25", "status": "closed", "name": "Christmas Day" }
+  ]
+}
