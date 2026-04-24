@@ -6,23 +6,107 @@
  * Direction is determined by majority vote, grade by total conviction.
  */
 
-import { getVolatilityRegime, computeEffectiveSLMultiplier, getCategorySLBoost } from './calculators.js';
+import { getVolatilityRegime, computeEffectiveSLMultiplier, getCategorySLBoost, findStructuralSL } from './calculators.js';
 import { loadWeights } from './learning/weight-adjuster.js';
 import { isDegradedMode } from './learning/anomaly-detector.js';
 import { pickRegimeWeights } from './learning/regime-detector.js';
 import { resolveLeague } from './learning/ladder-engine.js';
 import { checkBlackout } from './blackout.js';
 import { checkSessionFilter } from './session-filter.js';
+import { applyAlignmentFilters } from './alignment-filters.js';
+import { detectVolumeReaction } from './volume-reaction-detector.js';
+import { detectPumpTop, pumpPullbackLevel } from './pump-guard.js';
+import { loadFibCache } from './fib-engine.js';
+import {
+  resolveCategory,
+  getVolTier,
+  getThresholdMultiplier,
+  getCategoryWeightMultiplier,
+  updateSymbolMeta,
+  computeAtrPct,
+} from './learning/category-tier.js';
 
 // --- TP mesafe politikasi -----------------------------------------------------
 // Backtest (scanner/scripts/simulate-tp1.js, 2026-04) ile dogrulandi:
 //   TP1=1.0R ile hit rate +%33, sl_hit rescue orani 3.6% -> 12.0%.
 // Dusuk volatilite (ATR 20-bar ort. %70 alti): TP3 = null (2-TP modu),
 // sinyal TP1/TP2 ile kapanir. Yuksek vol (%140 ustu): TP'ler hafif genisler.
-const TP_R_DEFAULT = { tp1: 1.0, tp2: 2.2, tp3: 3.5 };
-const TP_R_HIGHVOL = { tp1: 1.2, tp2: 2.5, tp3: 4.0 };
+// Kaliteye gore TP2/TP3 R katsayilari. TP1 her kalitede 1.0R — pozisyonu hizla
+// BE'ye almak icin sabit. TP2/TP3 sinyal kalitesine gore cok siki -> orta ->
+// agresif ayarlanir; runner yuksek kalitede daha fazla nefes alir.
+// Executor tarafi ayrica aciklanan pozisyonda yeni same/reverse sinyallere gore
+// TP2/TP3 tier'ini dinamik kaydirir (okx-executor/src/executor/tp-tier.ts).
+const TP_R_BY_QUALITY = {
+  // 2026-04-22: A icin TP1 1.5R — A sinyalin tarihsel SL hit oranini dusurmek
+  // icin BE'ye daha gec ama daha guvenli geciyoruz; trailing TP1 sonrasi aktif.
+  A: { tp1: 1.5, tp2: 2.8, tp3: 4.5 },
+  B: { tp1: 1.0, tp2: 2.2, tp3: 3.5 }, // orta — varsayilan
+  C: { tp1: 1.0, tp2: 1.6, tp3: 2.4 }, // cok siki — erken realize
+};
+const TP_R_MAX = 4.5; // tier shift'te TP3 ust siniri
 const SQUEEZE_RATIO_TWO_TP = 0.70;
 const SQUEEZE_RATIO_HIGHVOL = 1.40;
+
+/**
+ * EMA9/EMA21 ayirma yuzdesi son kapali bar bazinda. Dusuk ayirma = cross taze/zayif,
+ * yuksek ayirma = cross oturmus. chop'tan ayirmak icin kullanilir.
+ */
+function computeEmaSeparation(bars) {
+  if (!Array.isArray(bars) || bars.length < 22) return null;
+  const calcEma = (period) => {
+    const k = 2 / (period + 1);
+    let ema = bars[0].close;
+    for (let i = 1; i < bars.length; i++) ema = bars[i].close * k + ema * (1 - k);
+    return ema;
+  };
+  const ema9 = calcEma(9);
+  const ema21 = calcEma(21);
+  const price = bars[bars.length - 1].close;
+  if (!price) return null;
+  return Math.abs(ema9 - ema21) / price;
+}
+
+/**
+ * Premium/Discount: son 50 barin high/low aralikta fiyat konumu.
+ *   > %75 → premium (upper quartile, short bias)
+ *   < %25 → discount (lower quartile, long bias)
+ *   aksi → equilibrium, vote yok
+ */
+function computePremiumDiscount(bars, lookback = 50) {
+  if (!Array.isArray(bars) || bars.length < lookback) return null;
+  const slice = bars.slice(-lookback);
+  let hi = -Infinity, lo = Infinity;
+  for (const b of slice) { if (b.high > hi) hi = b.high; if (b.low < lo) lo = b.low; }
+  const range = hi - lo;
+  if (range <= 0) return null;
+  const last = slice[slice.length - 1].close;
+  const pct = (last - lo) / range;
+  if (pct > 0.75) return { zone: 'premium', direction: 'short', pct, hi, lo };
+  if (pct < 0.25) return { zone: 'discount', direction: 'long', pct, hi, lo };
+  return null;
+}
+
+/**
+ * Likidite sweep-and-reclaim: son bar onceki swing high/low'u kirmis ama icinde
+ * kapanmis — stop hunt + reclaim. SMC'nin en guvenilir reversal setup'i.
+ *   - bearish sweep: son bar.high > prev_swing_high VE close < prev_swing_high
+ *   - bullish sweep: son bar.low  < prev_swing_low  VE close > prev_swing_low
+ */
+function detectLiquiditySweep(bars, lookback = 20) {
+  if (!Array.isArray(bars) || bars.length < lookback + 2) return null;
+  const last = bars[bars.length - 1];
+  const prev = bars.slice(-(lookback + 1), -1); // son barin oncesi
+  let prevHi = -Infinity, prevLo = Infinity;
+  for (const b of prev) { if (b.high > prevHi) prevHi = b.high; if (b.low < prevLo) prevLo = b.low; }
+  // Bearish sweep: sweep upward, close back below
+  if (last.high > prevHi && last.close < prevHi) {
+    return { direction: 'short', level: prevHi, sweepBy: last.high - prevHi, close: last.close };
+  }
+  if (last.low < prevLo && last.close > prevLo) {
+    return { direction: 'long', level: prevLo, sweepBy: prevLo - last.low, close: last.close };
+  }
+  return null;
+}
 
 function computeSqueezeRatio(bars, period = 14, lookback = 20) {
   if (!bars || bars.length < period + lookback) return null;
@@ -48,11 +132,19 @@ function computeSqueezeRatio(bars, period = 14, lookback = 20) {
   return { current, avg, ratio: avg > 0 ? current / avg : 1 };
 }
 
-function resolveTpPolicy(squeezeRatio) {
-  if (squeezeRatio == null) return { tpR: TP_R_DEFAULT, tpCount: 3, regime: 'unknown' };
-  if (squeezeRatio < SQUEEZE_RATIO_TWO_TP) return { tpR: TP_R_DEFAULT, tpCount: 2, regime: 'low_vol' };
-  if (squeezeRatio > SQUEEZE_RATIO_HIGHVOL) return { tpR: TP_R_HIGHVOL, tpCount: 3, regime: 'high_vol' };
-  return { tpR: TP_R_DEFAULT, tpCount: 3, regime: 'normal' };
+function resolveTpPolicy(squeezeRatio, grade) {
+  const g = (grade === 'A' || grade === 'B' || grade === 'C') ? grade : 'B';
+  const base = TP_R_BY_QUALITY[g];
+  // Yuksek volatilite ek +0.3R genislet (TP1 sabit kalir, TP3 cap'li).
+  const wide = (tpR) => ({
+    tp1: tpR.tp1,
+    tp2: Math.min(tpR.tp2 + 0.3, TP_R_MAX),
+    tp3: Math.min(tpR.tp3 + 0.3, TP_R_MAX),
+  });
+  if (squeezeRatio == null) return { tpR: base, tpCount: 3, regime: 'unknown', grade: g };
+  if (squeezeRatio < SQUEEZE_RATIO_TWO_TP) return { tpR: base, tpCount: 2, regime: 'low_vol', grade: g };
+  if (squeezeRatio > SQUEEZE_RATIO_HIGHVOL) return { tpR: wide(base), tpCount: 3, regime: 'high_vol', grade: g };
+  return { tpR: base, tpCount: 3, regime: 'normal', grade: g };
 }
 
 function applyTpLevels(result, entryPrice, finalSL, direction, tpR, tpCount) {
@@ -88,7 +180,7 @@ function getWeights(regime = null) {
 // Top performers: EMA Cross + RSI + Volume (PF 5.17), EMA Cross (PF 4.27)
 // Bottom performers: RSI Mean Reversion, BB+RSI, Supertrend alone
 const DEFAULT_VOTE_WEIGHTS = {
-  ema_cross: 2.5,      // #1 — EMA 9/21 cross is THE primary signal (PF 4.27-5.17 in backtest)
+  ema_cross: 1.8,      // EMA 9/21 cross — guclu ama dominant olmamali (korelasyon decay ile birlikte)
   khanSaab: 1.5,       // KhanSaab is EMA-based internally, useful but not dominant
   smc_choch: 2.0,      // CHoCH = structural reversal — strong for entries
   smc_bos: 1.5,        // BOS = structure continuation — good confirmation
@@ -105,7 +197,16 @@ const DEFAULT_VOTE_WEIGHTS = {
   macro_filter: 0.5,   // Macro — penalty only
   squeeze_filter: 1.0, // Squeeze — penalty only (negative weight)
   stoch_rsi: 1.2,     // StochRSI crossover/divergence — RSI level'dan guclu, EMA cross'tan zayif
+  volume_reaction: 2.2, // Hacimli bar uclarinda kontra tepki setup (5-teyit >=3) — counter-trend, yuksek gudum
+  liquidity_sweep: 1.8, // Swing high/low sweep-and-reclaim — SMC'nin en guvenilir reversal setup'i
+  premium_discount: 1.0, // Fiyat aralik icinde premium/discount konumu — mean-reversion bias
 };
+
+// KhanSaab-turevli oylar (hepsi KhanSaab dashboard'undan + ayni trend'den turer):
+// ayni yonde uzlastiklarinda conviction sisirmesini engellemek icin diminishing
+// return uygulanir — 1. oy tam, 2. %60, 3. %40, 4.+ %25 agirlikla sayilir.
+const KHANSAAB_CORRELATED_GROUP = new Set(['khanSaab', 'ema_cross', 'macd', 'vwap_position']);
+const KHANSAAB_DECAY = [1.0, 0.6, 0.4, 0.25];
 
 // Export for learning-reporter: raporlarda baz agirlik + learned + efektif gostermek icin
 export { DEFAULT_VOTE_WEIGHTS };
@@ -114,40 +215,48 @@ export { DEFAULT_VOTE_WEIGHTS };
  * Collect votes from all available indicators.
  * Each vote: { source, direction: 'long'|'short'|null, weight, reasoning }
  */
-function collectVotes({ khanSaab, smc, studyValues, ohlcv, formation, squeeze, divergence, cdv, macroFilter, stochRSI, regime }) {
+function collectVotes({ khanSaab, smc, studyValues, ohlcv, formation, squeeze, divergence, cdv, macroFilter, stochRSI, regime, symbol }) {
   const votes = [];
   const w = getWeights(regime);
   const iw = w.indicatorWeights || {};
 
+  // Kategori-bazli carpan: weights.voteWeightsByCategory[cat][key] varsa global
+  // learned weight'in UZERINE carpilir. Tablo yoksa 1.0 (no-op) — mevcut global
+  // learning bozulmadan "kripto'da macd daha onemli, forex'te daha az" gibi
+  // kategori-spesifik ayarlarin hook'u kurulur. Weight-adjuster bir sonraki
+  // iterasyonda bu tabloyu per-category sample gruplamasi ile doldurur.
   function voteWeight(key) {
     const learned = iw[key] != null ? iw[key] : 1.0;
     const base = DEFAULT_VOTE_WEIGHTS[key] || 1.0;
-    return base * learned;
+    const catMult = getCategoryWeightMultiplier(w, symbol, key);
+    return base * learned * catMult;
   }
 
   // --- 1. KhanSaab (one vote, not a veto) ---
   if (khanSaab) {
+    const ksWeight = voteWeight('khanSaab');
     if (khanSaab.signalStatus === 'BUY' || khanSaab.signalStatus === 'SELL') {
       const dir = khanSaab.signalStatus === 'BUY' ? 'long' : 'short';
       const score = dir === 'long' ? khanSaab.bullScore : khanSaab.bearScore;
-      // Score scales the vote: 71% = full weight, 50% = half weight
       const scoreMult = score != null ? Math.min(score / 71, 1.0) : 0.7;
-      votes.push({
-        source: 'khanSaab',
-        direction: dir,
-        weight: voteWeight('khanSaab') * scoreMult,
-        reasoning: `KhanSaab ${khanSaab.signalStatus} (skor: ${score}%, bias: ${khanSaab.bias})`,
-      });
+      if (ksWeight > 0) {
+        votes.push({
+          source: 'khanSaab',
+          direction: dir,
+          weight: ksWeight * scoreMult,
+          reasoning: `KhanSaab ${khanSaab.signalStatus} (skor: ${score}%, bias: ${khanSaab.bias})`,
+        });
+      }
     } else {
       // WAIT — still vote based on bias direction with reduced weight
-      if (khanSaab.bias) {
+      if (khanSaab.bias && ksWeight > 0) {
         const biasLower = khanSaab.bias.toLowerCase();
         if (biasLower.includes('bull')) {
           const biasStrength = biasLower.includes('strong') ? 0.6 : 0.3;
           votes.push({
             source: 'khanSaab',
             direction: 'long',
-            weight: voteWeight('khanSaab') * biasStrength,
+            weight: ksWeight * biasStrength,
             reasoning: `KhanSaab WAIT ama bias: ${khanSaab.bias} (Bull: ${khanSaab.bullScore}%)`,
           });
         } else if (biasLower.includes('bear')) {
@@ -155,19 +264,25 @@ function collectVotes({ khanSaab, smc, studyValues, ohlcv, formation, squeeze, d
           votes.push({
             source: 'khanSaab',
             direction: 'short',
-            weight: voteWeight('khanSaab') * biasStrength,
+            weight: ksWeight * biasStrength,
             reasoning: `KhanSaab WAIT ama bias: ${khanSaab.bias} (Bear: ${khanSaab.bearScore}%)`,
           });
         }
       }
     }
 
-    // RSI level vote (independent from KhanSaab signal)
+    // RSI level vote — ADX>30 trendli ortamda RSI 70/30 sik sahte sinyal uretir
+    // (RSI guclu trendde 20 bar asiri alim/satimda kalabilir). Trend gucu yuksekse
+    // mean-reversion oyu atlanir.
     if (khanSaab.rsi != null) {
-      if (khanSaab.rsi < 30) {
-        votes.push({ source: 'rsi_level', direction: 'long', weight: voteWeight('rsi_level'), reasoning: `RSI ${khanSaab.rsi} asiri satim — long potansiyeli` });
-      } else if (khanSaab.rsi > 70) {
-        votes.push({ source: 'rsi_level', direction: 'short', weight: voteWeight('rsi_level'), reasoning: `RSI ${khanSaab.rsi} asiri alim — short potansiyeli` });
+      const adxForRsiGate = khanSaab.adx != null ? Number(khanSaab.adx) : null;
+      const strongTrend = adxForRsiGate != null && adxForRsiGate > 30;
+      if (!strongTrend) {
+        if (khanSaab.rsi < 30) {
+          votes.push({ source: 'rsi_level', direction: 'long', weight: voteWeight('rsi_level'), reasoning: `RSI ${khanSaab.rsi} asiri satim — long potansiyeli` });
+        } else if (khanSaab.rsi > 70) {
+          votes.push({ source: 'rsi_level', direction: 'short', weight: voteWeight('rsi_level'), reasoning: `RSI ${khanSaab.rsi} asiri alim — short potansiyeli` });
+        }
       }
     }
 
@@ -179,13 +294,16 @@ function collectVotes({ khanSaab, smc, studyValues, ohlcv, formation, squeeze, d
       }
     }
 
-    // EMA cross vote — PRIMARY SIGNAL (backtest: PF 4.27-5.17)
+    // EMA cross vote — separation kontrolu: ohlcv son barlardan EMA9/EMA21
+    // hesapla, ayirma < %0.2 ise "zayif cross" (chop'ta flipleme riski) — 0.5x carpan
     if (khanSaab.emaStatus) {
       const emaDir = khanSaab.emaStatus === 'BULL' ? 'long' : khanSaab.emaStatus === 'BEAR' ? 'short' : null;
       if (emaDir) {
-        // EMA cross + HIGH volume = strongest combination (PF 5.17 in backtest)
         const volBonus = khanSaab.volume === 'HIGH' ? 1.3 : 1.0;
-        votes.push({ source: 'ema_cross', direction: emaDir, weight: voteWeight('ema_cross') * volBonus, reasoning: `EMA Cross: ${khanSaab.emaStatus}${volBonus > 1 ? ' + HIGH VOLUME (guclu)' : ''}` });
+        const sep = computeEmaSeparation(ohlcv?.bars);
+        const sepMult = sep != null && sep < 0.002 ? 0.5 : 1.0;
+        const sepTag = sepMult < 1 ? ` (ZAYIF cross: sep ${(sep*100).toFixed(3)}%)` : '';
+        votes.push({ source: 'ema_cross', direction: emaDir, weight: voteWeight('ema_cross') * volBonus * sepMult, reasoning: `EMA Cross: ${khanSaab.emaStatus}${volBonus > 1 ? ' + HIGH VOLUME' : ''}${sepTag}` });
       }
     }
 
@@ -332,6 +450,47 @@ function collectVotes({ khanSaab, smc, studyValues, ohlcv, formation, squeeze, d
   if (hvPenalty) {
     votes.push(hvPenalty);
   }
+
+  // --- 11. Liquidity Sweep (SMC reclaim) ---
+  const sweep = detectLiquiditySweep(ohlcv?.bars);
+  if (sweep) {
+    votes.push({
+      source: 'liquidity_sweep',
+      direction: sweep.direction,
+      weight: voteWeight('liquidity_sweep'),
+      reasoning: `Likidite sweep: son bar ${sweep.direction === 'short' ? `${sweep.level.toFixed(4)} ust swing'i kirdi, altinda kapandi` : `${sweep.level.toFixed(4)} alt swing'i kirdi, ustunde kapandi`} — stop hunt + reclaim`,
+    });
+  }
+
+  // --- 12. Premium / Discount (range location bias) ---
+  const pd = computePremiumDiscount(ohlcv?.bars);
+  if (pd) {
+    votes.push({
+      source: 'premium_discount',
+      direction: pd.direction,
+      weight: voteWeight('premium_discount'),
+      reasoning: `${pd.zone === 'premium' ? 'Premium' : 'Discount'} bolgesi (%${(pd.pct*100).toFixed(0)} konumu) — ${pd.direction} bias`,
+    });
+  }
+
+  // --- Korelasyon decay: KhanSaab-turevli ayni-yonde oylari azalt ---
+  // khanSaab, ema_cross, macd, vwap_position hepsi ayni trend kaynagindan turer;
+  // uzlastiklarinda cift-sayim olur. Ayni yonde sayilan N. oy [1.0, 0.6, 0.4, 0.25]
+  // ile carpanlanir. Gucluden zayifa siralanir.
+  const groupLong = votes.filter(v => KHANSAAB_CORRELATED_GROUP.has(v.source) && v.direction === 'long');
+  const groupShort = votes.filter(v => KHANSAAB_CORRELATED_GROUP.has(v.source) && v.direction === 'short');
+  const applyDecay = (group) => {
+    group.sort((a, b) => b.weight - a.weight);
+    group.forEach((v, i) => {
+      const mult = KHANSAAB_DECAY[Math.min(i, KHANSAAB_DECAY.length - 1)];
+      if (mult < 1) {
+        v.weight = v.weight * mult;
+        v.reasoning += ` [korelasyon decay ×${mult}]`;
+      }
+    });
+  };
+  applyDecay(groupLong);
+  applyDecay(groupShort);
 
   return votes;
 }
@@ -591,7 +750,7 @@ function tallyVotes(votes) {
  */
 export function gradeShortTermSignal({
   khanSaab, smc, studyValues, ohlcv, formation, squeeze, divergence, cdv, stochRSI, macroFilter, symbol, timeframe,
-  quotePrice, parsedBoxes, khanSaabLabels, regime,
+  quotePrice, parsedBoxes, khanSaabLabels, regime, smcSRLines,
 }) {
   const result = {
     symbol, timeframe,
@@ -610,9 +769,72 @@ export function gradeShortTermSignal({
     tally: null,
   };
 
-  // Collect votes from ALL indicators
-  const votes = collectVotes({ khanSaab, smc, studyValues, ohlcv, formation, squeeze, divergence, cdv, macroFilter, stochRSI, regime });
+  // --- YATAY + TRANSITION REJIM: KhanSaab bypass ---
+  // CLAUDE.md "Volatilite & Trend Rejimi": net trend_up/trend_down DISINDA tum
+  // rejimlerde (sideways, transition, ADX<25) KhanSaab skoru ve TUM KhanSaab-
+  // turevi oylar (ema_cross, macd, vwap, rsi_level, adx_trend) gurultu uretir —
+  // YOKSAY. Sadece SMC yapisi, formasyon, cdv, volume_confirm, divergence,
+  // squeeze, stochRSI gibi bagimsiz oylar sayilir.
+  const adxForRegime = khanSaab?.adx != null ? Number(khanSaab.adx) : null;
+  const sidewaysByAdx = adxForRegime != null && adxForRegime < 25; // <25: transition + sideways kapsar
+  const regimeStr = typeof regime === 'string' ? regime : regime?.regime;
+  const nonTrendRegime = regimeStr === 'sideways' || regimeStr === 'transition';
+  const khanSaabDisabledFlag = sidewaysByAdx || nonTrendRegime;
+  let khanSaabForVotes = khanSaab;
+  if (khanSaabDisabledFlag) {
+    khanSaabForVotes = null;
+    result.khanSaabDisabled = true;
+    result.khanSaabDisabledReason = sidewaysByAdx
+      ? `ADX ${adxForRegime} < 25 (trend zayif/transition) — KhanSaab oylari devre disi`
+      : `${regimeStr.toUpperCase()} rejim — KhanSaab oylari devre disi`;
+    result.reasoning.push(`TREND-DISI REJIM: ${result.khanSaabDisabledReason}. Sadece SMC + yapisal bounce/reaction setuplari kullanilir.`);
+  }
+
+  // Sembol-spesifik ATR% medianini guncelle (vol tier cache'i besler) — fresh
+  // olcum her grade'de EWMA ile entegre olur; tier rejim degisince kayar.
+  try {
+    const atrPct = computeAtrPct(ohlcv?.bars, 14);
+    if (atrPct != null) updateSymbolMeta(symbol, atrPct);
+  } catch { /* best-effort */ }
+  result.category = resolveCategory(symbol);
+  result.volTier = getVolTier(symbol);
+
+  // Collect votes from ALL indicators (KhanSaab yoklugunda yatay modda)
+  const votes = collectVotes({ khanSaab: khanSaabForVotes, smc, studyValues, ohlcv, formation, squeeze, divergence, cdv, macroFilter, stochRSI, regime, symbol });
   result.regime = regime || null;
+
+  // --- Volume Reaction setup (CLAUDE.md: hacimli bar uclarinda kontra tepki) ---
+  // Detektor ORIJINAL khanSaab + ohlcv bars ister; yatay modda bile calisir
+  // cunku reaction setup'lari tam da exhaust/range donemlerinde degerlidir.
+  let volumeReaction = null;
+  try {
+    const bars = ohlcv?.bars || [];
+    volumeReaction = detectVolumeReaction({
+      bars,
+      smc,
+      // Faz 0 patch (b): FULL BYPASS. KhanSaab devre disiysa reaction detektoru de
+      // KhanSaab RSI/vol/bias field'larini gormesin — aksi halde ADX<25 rejimde
+      // momentum kaynakli "sahte teyit" olusturabilir.
+      khanSaab: khanSaabForVotes,
+      stochRSI,
+      divergence,
+    });
+  } catch (err) {
+    result.warnings.push(`volume_reaction detector hata: ${err.message}`);
+  }
+  if (volumeReaction) {
+    const baseW = DEFAULT_VOTE_WEIGHTS.volume_reaction || 2.0;
+    const learned = getWeights(regime).indicatorWeights?.volume_reaction ?? 1.0;
+    const zoneBonus = volumeReaction.smcZoneOk ? 1.2 : 1.0;
+    votes.push({
+      source: 'volume_reaction',
+      direction: volumeReaction.direction,
+      weight: baseW * learned * zoneBonus,
+      reasoning: volumeReaction.reasoning,
+    });
+    result.volumeReaction = volumeReaction;
+    result.reasoning.push(`Volume Reaction setup: ${volumeReaction.direction.toUpperCase()} (${volumeReaction.count}/5 teyit${volumeReaction.smcZoneOk ? ', SMC zone ✓' : ', SMC zone yok — kalite 1 kademe dusecek'})`);
+  }
 
   // No data at all
   if (votes.length === 0) {
@@ -641,7 +863,9 @@ export function gradeShortTermSignal({
   }
 
   // Volatility regime
-  const adxVal = khanSaab?.adx || extractADX(studyValues);
+  // Faz 0 patch (b): KhanSaab bypass modunda khanSaab.adx'i kullanma,
+  // extractADX(studyValues) uzerinden ADX oku — volRegime dogru tier'a dussun.
+  const adxVal = (khanSaabDisabledFlag ? null : khanSaab?.adx) || extractADX(studyValues);
   const volRegime = getVolatilityRegime(adxVal);
   result.volatilityRegime = volRegime;
 
@@ -663,33 +887,10 @@ export function gradeShortTermSignal({
     return result;
   }
 
-  // --- Volume Veto (Option C — context-aware, 2026-04-19) ---
-  // Sadece kirilim barinda < %80 ise IPTAL. Trend ortasinda cok dusuk (< %40)
-  // hacim sadece 1 kademe downgrade yapar. Guclu teyit (ADX>=30 + 3+ kaynak +
-  // %70+ uyum) IPTAL'i downgrade'e cevirir.
-  const volVeto = evaluateVolumeVeto(ohlcv, {
-    formation,
-    tally,
-    adx: adxVal,
-    direction: tally.direction,
-  });
-  let pendingVolumeDowngrade = null;
-  if (volVeto) {
-    if (volVeto.action === 'iptal') {
-      result.grade = 'IPTAL';
-      result.position_pct = 0;
-      result.warnings.push(`VOLUME VETO: ${volVeto.reasoning}`);
-      result.reasoning.push(`--- VOLUME VETO IPTAL: ${volVeto.reasoning}`);
-      return result;
-    } else if (volVeto.action === 'downgrade') {
-      pendingVolumeDowngrade = volVeto;
-      result.warnings.push(`VOLUME DOWNGRADE: ${volVeto.reasoning}`);
-      result.reasoning.push(`--- VOLUME DOWNGRADE: ${volVeto.reasoning}`);
-    } else if (volVeto.action === 'warn') {
-      result.warnings.push(`VOLUME UYARI: ${volVeto.reasoning}`);
-      result.reasoning.push(`--- VOLUME UYARI: ${volVeto.reasoning}`);
-    }
-  }
+  // --- Volume Veto DEVRE DISI (2026-04-20) ---
+  // Hacim teyidi zaten oylamada `volume_confirm` (1.2) ve `ema_cross` HIGH-vol
+  // bonusu (×1.3) ile ciddi agirlikla sayiliyor. Ayri bir veto/downgrade katmani
+  // cift sayim olusturuyor ve kaliteyi bastiriyor. Oylama sonucu ne diyorsa o.
 
   // --- Economic calendar blackout (Hafta 3-12) ---
   // FOMC / NFP / CPI / buyuk merkez bankasi aciklamalarinda volatilite sicrayisi
@@ -725,14 +926,22 @@ export function gradeShortTermSignal({
   const w = getWeights(regime);
   const gt = w.gradeThresholds;
 
-  // Threshold-based grading from conviction score (learned thresholds)
-  const A_min = gt.A_min || 7;
+  // Per-symbol vol-tier threshold carpani: yuksek-vol sembollerde (ornegin
+  // memecoin) ayni conviction puani daha az bilgi tasir — agreement esigi sabit
+  // kalir (oy birligi metriksel olarak vol-invariant), sadece conviction alt
+  // sinirlari olcektenir. Low-vol sembollerde (BTC, EURUSD, SPX) esigi hafifce
+  // gevseterek yanlisiz sinyallerin bosa kaydirilmasini engelleriz.
+  const thrMult = getThresholdMultiplier(symbol);
+  const A_min = (gt.A_min || 7) * thrMult;
   const A_agr = gt.A_minAgreement || 70;
-  const B_min = gt.B_min || 5;
+  const B_min = (gt.B_min || 5) * thrMult;
   const B_agr = gt.B_minAgreement || 60;
-  const C_min = gt.C_min || 3;
+  const C_min = (gt.C_min || 3) * thrMult;
   const C_agr = gt.C_minAgreement || 50;
-  const BEKLE_min = gt.BEKLE_min || 1.5;
+  const BEKLE_min = (gt.BEKLE_min || 1.5) * thrMult;
+  if (thrMult !== 1.0) {
+    result.reasoning.push(`Vol tier ${getVolTier(symbol)} — threshold carpani ×${thrMult.toFixed(2)} (A_min=${A_min.toFixed(2)}, B_min=${B_min.toFixed(2)}, C_min=${C_min.toFixed(2)})`);
+  }
 
   let grade;
   if (tally.conviction >= A_min && tally.agreement >= A_agr) {
@@ -747,67 +956,86 @@ export function gradeShortTermSignal({
     grade = 'IPTAL';
   }
 
-  // Volume downgrade (Option C): dusuk hacim kirilim disi VEYA guclu teyitli kirilim
-  if (pendingVolumeDowngrade && grade !== 'IPTAL') {
-    const before = grade;
-    if (grade === 'A') grade = 'B';
-    else if (grade === 'B') grade = 'C';
-    else if (grade === 'C') grade = 'BEKLE';
-    if (before !== grade) {
-      result.reasoning.push(`Volume downgrade uygulandi: ${before} → ${grade}`);
-    }
-  }
-
-  // Timeframe reliability adjustment
-  const tfRel = w.timeframeReliability[timeframe];
-  if (tfRel && tfRel < 0.8 && grade !== 'IPTAL') {
-    result.warnings.push(`TF ${timeframe} guvenilirlik dusuk (${tfRel})`);
-    // Downgrade one level
-    if (grade === 'A') grade = 'B';
-    else if (grade === 'B') grade = 'C';
-    else if (grade === 'C') grade = 'BEKLE';
-  }
-
-  // Symbol-specific adjustment (demotion VE promotion)
-  const symAdj = w.symbolAdjustments[symbol];
-  if (symAdj && symAdj.gradeShift && grade !== 'IPTAL') {
-    result.warnings.push(`${symbol}: ${symAdj.reason}`);
-    if (symAdj.gradeShift < 0) {
-      // Demotion (2026-04-18 guncellenen kural):
-      // Flagged semboller sadece B+ kalitede sinyal uretebilir. C-grade canli
-      // veride WR %15, flagged sembollerde cok daha kotu (COPPER %0, BTCXAU
-      // %6.67, XAUUSD %10.53). Kural: A→B, B ve C → BEKLE ("C yasak").
-      if (grade === 'A') grade = 'B';
-      else if (grade === 'B') grade = 'BEKLE';
-      else if (grade === 'C') grade = 'BEKLE';
-    } else if (symAdj.gradeShift > 0) {
-      // Promotion: BEKLE ligasinda tutarli kazanc saglayan semboller
-      if (grade === 'BEKLE') grade = 'C';
-      else if (grade === 'C') grade = 'B';
-      else if (grade === 'B') grade = 'A';
-      // A zaten en ust
-    }
-  }
-
-  // Anomali "degraded mode" aktif iken tum sinyaller 1 kademe dusurulur —
-  // A→B, B→C, C→BEKLE. Rasyonel: sistem kotu performans gosteriyor, riski
-  // otomatik kis. Bkz. scanner/lib/learning/anomaly-detector.js
+  // --- MTF Confluence: HTF fib cache'inden 1D/1W trend yonunu oku.
+  // Herhangi bir HTF sinyal yonune ters bir trend_up/trend_down veriyorsa 1
+  // kademe asagi (≥2 HTF celiski alignment-filters tarafinda zaten iptal).
   try {
-    if (isDegradedMode() && grade !== 'IPTAL' && grade !== 'HATA') {
-      const downgradeMap = { 'A': 'B', 'B': 'C', 'C': 'BEKLE', 'BEKLE': 'BEKLE' };
-      const originalGrade = grade;
-      grade = downgradeMap[grade] || grade;
-      if (grade !== originalGrade) {
-        result.warnings = result.warnings || [];
-        result.warnings.push(`DEGRADED MODE: grade ${originalGrade} → ${grade} (sistem savunma modunda)`);
-        result.reasoning.push(`Anomali dedektoru aktif — grade bir kademe dusuruldu`);
+    const fibCache = loadFibCache(symbol);
+    if (fibCache && fibCache.timeframes && tally.direction) {
+      const oppositeTFs = [];
+      for (const [tf, data] of Object.entries(fibCache.timeframes)) {
+        const reg = data?.trend?.regime;
+        if (!reg) continue;
+        if (tally.direction === 'long' && reg === 'trend_down') oppositeTFs.push(tf);
+        if (tally.direction === 'short' && reg === 'trend_up') oppositeTFs.push(tf);
+      }
+      if (oppositeTFs.length === 1) {
+        const mtfDowngrade = { 'A': 'B', 'B': 'C', 'C': 'BEKLE', 'BEKLE': 'BEKLE', 'IPTAL': 'IPTAL' };
+        const before = grade;
+        grade = mtfDowngrade[grade] || grade;
+        if (before !== grade) {
+          result.warnings.push(`MTF celiski: ${oppositeTFs[0]} ters trend — ${before} → ${grade}`);
+        }
+        result.mtfConflict = { oppositeTFs };
       }
     }
-  } catch { /* anomaly module okunamazsa normal grade kullan */ }
+  } catch (err) {
+    result.warnings.push(`MTF confluence kontrol hata: ${err.message}`);
+  }
 
-  // 3-kademe lig sistemi (2026-04-18): A/B daima 'real', C ve BEKLE sembol+grade
-  // bazli ladder ile GERCEK / ARA / SANAL kovalarina atanir. Grade analytics
+  // --- Volume Reaction quality penalty (SMC zone yoksa 1 kademe dusur) ---
+  // CLAUDE.md: reaction setup SMC bolgesinde degilse kalite bir kademe asagi.
+  if (volumeReaction && volumeReaction.qualityPenalty > 0 && tally.direction === volumeReaction.direction) {
+    const reactionDowngrade = { 'A': 'B', 'B': 'C', 'C': 'BEKLE', 'BEKLE': 'BEKLE', 'IPTAL': 'IPTAL' };
+    const before = grade;
+    grade = reactionDowngrade[grade] || grade;
+    if (before !== grade) {
+      result.warnings.push(`Volume Reaction: SMC zone teyidi yok — ${before} → ${grade}`);
+    }
+  }
+
+  // --- TF reliability downgrade DEVRE DISI (2026-04-20) ---
+  // Zayif TF agirligi zaten weight-adjuster kanaliyla indikator agirliklarina
+  // yansiyor; ek kademe dusurme uygulamiyoruz. Ileride tekrar acilabilir.
+
+  // Symbol-specific adjustment — sadece PROMOTION (2026-04-20)
+  // Demotion kaldirildi: ladder-engine zaten sembol/grade bazli lig atamasi
+  // yapiyor (real / ara / virtual). Ikinci bir "flagged symbol → BEKLE"
+  // katmani lig sisteminiyle cakisiyordu.
+  const symAdj = w.symbolAdjustments[symbol];
+  if (symAdj && symAdj.gradeShift > 0 && grade !== 'IPTAL') {
+    result.warnings.push(`${symbol}: ${symAdj.reason}`);
+    // Promotion: BEKLE ligasinda tutarli kazanc saglayan semboller
+    if (grade === 'BEKLE') grade = 'C';
+    else if (grade === 'C') grade = 'B';
+    else if (grade === 'B') grade = 'A';
+  }
+
+  // --- Degraded-mode grade dusurme DEVRE DISI 2026-04-27'YE KADAR ---
+  // Yeni strateji/matematik sonrasi sistemi 1 hafta boyunca kendi mantigiyla
+  // calistirip ogrenmesi icin savunma moduna gecisi askiya aldik. Tarih
+  // gecince blok otomatik geri aktiflesir. Bkz. anomaly-detector.js (evaluate
+  // tarafi da ayni tarihe kadar mod degisimi yapmiyor).
+  const DEGRADED_MODE_DISABLED_UNTIL = Date.UTC(2026, 3, 27); // 2026-04-27 00:00 UTC
+  if (Date.now() >= DEGRADED_MODE_DISABLED_UNTIL) {
+    try {
+      if (isDegradedMode() && grade !== 'IPTAL' && grade !== 'HATA') {
+        const downgradeMap = { 'A': 'B', 'B': 'C', 'C': 'BEKLE', 'BEKLE': 'BEKLE' };
+        const originalGrade = grade;
+        grade = downgradeMap[grade] || grade;
+        if (grade !== originalGrade) {
+          result.warnings = result.warnings || [];
+          result.warnings.push(`DEGRADED MODE: grade ${originalGrade} → ${grade} (sistem savunma modunda)`);
+          result.reasoning.push(`Anomali dedektoru aktif — grade bir kademe dusuruldu`);
+        }
+      }
+    } catch { /* anomaly module okunamazsa normal grade kullan */ }
+  }
+
+  // 3-kademe lig sistemi (2026-04-23 guncel): TUM tradable gradeler (A/B/C/BEKLE)
+  // sembol bazli ladder ile GERCEK / ARA / SANAL kovalarina atanir. Grade analytics
   // icin sabit kalir; dispatch filtresi league === 'real' uzerinden calisir.
+  // A/B varsayilan 'real' (yuksek conviction) — 3 ardisik kayipla ARA/SANAL'a duser.
   // Bkz. scanner/lib/learning/ladder-engine.js
   const positionMap = { 'A': 100, 'B': 70, 'C': 50, 'BEKLE': 0, 'IPTAL': 0 };
   result.grade = grade;
@@ -848,14 +1076,28 @@ export function gradeShortTermSignal({
     // Momentum Market-Entry bypass: guclu trend + yuksek skor varsa pullback
     // beklemeden anlik fiyattan gir — aksi halde hareket kacirilir.
     // Koşul: ADX >= 28 VE (yön skoru >= %71 VEYA MTF guclu uyum)
-    const _dirScore = tally.direction === 'long' ? (khanSaab?.bullScore || 0) : (khanSaab?.bearScore || 0);
+    // Faz 0 patch (b): KhanSaab bypass modunda bull/bearScore'u momentum
+    // market-entry karari icin kullanma — ADX<25 rejimde yuksek score aldatici.
+    const _dirScore = khanSaabDisabledFlag
+      ? 0
+      : (tally.direction === 'long' ? (khanSaab?.bullScore || 0) : (khanSaab?.bearScore || 0));
     const _mtfStrong = !!(result.mtfConfirmation && result.mtfConfirmation.confidence >= 85
       && result.mtfConfirmation.direction === tally.direction);
     const _adxStrong = (adxVal || 0) >= 28;
     const momentumMarket = _adxStrong && (_dirScore >= 71 || _mtfStrong);
 
+    // Pump-top / dip-short guard: hacimli yesil mum tepesinde long veya
+    // hacimli kirmizi mum dibinde short uretmeyi engelle. Tespit edilirse
+    // momentum bypass devre disi, smart-entry zorunlu, gerekirse pullback
+    // bekle (pendingEntry).
+    const pump = detectPumpTop(ohlcv.bars, tally.direction, atr);
+    if (pump.isPumpTop) {
+      result.pumpGuard = pump;
+      result.warnings.push(`PUMP-TOP guard (${pump.severity}): ${pump.reason}`);
+    }
+
     let smartEntry;
-    if (momentumMarket) {
+    if (momentumMarket && !pump.isPumpTop) {
       smartEntry = {
         entry: currentPrice,
         entrySource: 'quote_price',
@@ -867,13 +1109,51 @@ export function gradeShortTermSignal({
         ],
       };
     } else {
+      if (momentumMarket && pump.isPumpTop) {
+        result.reasoning.push('Momentum bypass iptal edildi (pump-top guard) — smart-entry zorunlu');
+      }
       smartEntry = calculateSmartEntry({
         direction: tally.direction,
         currentPrice,
         atr,
         parsedBoxes: parsedBoxes || null,
-        khanSaabEntry: khanSaabLabels?.entryPrice || null,
+        // Faz 0 patch (b): KhanSaab label entry'sini bypass modunda null gecir.
+        // ADX<25 / transition rejimde KhanSaab label'lari gurultu — SMC yapisi
+        // (OB/FVG/boxes) tek basina entry seciyor olmali.
+        khanSaabEntry: khanSaabDisabledFlag ? null : (khanSaabLabels?.entryPrice || null),
       });
+
+      // Pump-top tespit edildi ve smart-entry yapisal zone bulamadi (fallback
+      // quote_price). Anlik fiyattan girmek yerine spike mumun govde ortasini
+      // pullback hedefi olarak isaretle, sinyal pendingEntry'ye dussun.
+      if (pump.isPumpTop && smartEntry.entrySource === 'quote_price') {
+        const pullbackTarget = pumpPullbackLevel(pump.spikeBar);
+        if (pullbackTarget && Number.isFinite(pullbackTarget)) {
+          const dist = Math.abs(currentPrice - pullbackTarget);
+          // Pullback fiyatin uzakligi 1.5×ATR'yi gecerse hard reject (cok uzak)
+          if (pump.severity === 'hard' && dist > atr * 1.5) {
+            result.warnings.push(`PUMP-TOP hard + pullback hedefi ${pullbackTarget.toFixed(4)} cok uzak (${(dist / atr).toFixed(2)}xATR) — sinyal IPTAL`);
+            result.pumpRejected = true;
+            result.grade = 'IPTAL';
+            result.action = 'BEKLE';
+            return result;
+          }
+          smartEntry = {
+            entry: pullbackTarget,
+            entrySource: 'pump_pullback',
+            entryZone: { high: Math.max(pump.spikeBar.open, pump.spikeBar.close), low: Math.min(pump.spikeBar.open, pump.spikeBar.close) },
+            reasoning: [`Pump-top tespit edildi (${pump.severity}) — spike mumun govde ortasi (${pullbackTarget.toFixed(4)}) pullback hedefi olarak set edildi, BEKLE_PULLBACK durumuna gecer`],
+          };
+          result.pendingPullback = {
+            target: pullbackTarget,
+            direction: tally.direction,
+            severity: pump.severity,
+            spikeBarTime: pump.spikeBar.time || pump.spikeBar.timestamp || null,
+            atrAtTrigger: atr,
+          };
+          result.action = 'BEKLE_PULLBACK';
+        }
+      }
     }
 
     let entryPrice = smartEntry.entry;
@@ -923,6 +1203,25 @@ export function gradeShortTermSignal({
     let finalSL = Math.max(atrSL, minSL);
     let slSource = 'atr_based';
 
+    // Yapisal SL: crypto + abd_hisse + bist icin son 20 bardaki swing low/high'a
+    // 0.2×ATR buffer ile baglar. ATR-bazli SL'den DAHA SIKI ise tercih edilir
+    // (rastgele atr×k yerine gerçek pivot). Daha gevsekse yine ATR kullanilir
+    // — yapisal SL hicbir zaman gevsetmez, sadece sikilastirir.
+    const _structCats = new Set(['kripto', 'crypto', 'abd_hisse', 'bist']);
+    if (_structCats.has(result.category)) {
+      const struct = findStructuralSL(ohlcv.bars, tally.direction, entryPrice, atr, 20);
+      if (struct && struct.slDistance >= minSL && struct.slDistance < finalSL) {
+        finalSL = struct.slDistance;
+        slSource = 'structural_swing';
+        result.structuralSL = {
+          swingPrice: Number(struct.swingPrice.toFixed(6)),
+          swingIndex: struct.swingIndex,
+          distance: Number(struct.slDistance.toFixed(6)),
+        };
+        result.reasoning.push(`SL: yapisal swing ${tally.direction === 'long' ? 'low' : 'high'} @ ${struct.swingPrice.toFixed(4)} (0.2×ATR buffer)`);
+      }
+    }
+
     // OB-based SL optimization: if entry is at OB, use OB boundary as tighter SL
     if (smartEntry.entrySource === 'smc_ob' && smartEntry.entryZone) {
       const obSL = tally.direction === 'long'
@@ -939,11 +1238,12 @@ export function gradeShortTermSignal({
     result.slSource = slSource;
 
     const squeeze = computeSqueezeRatio(ohlcv.bars, 14, 20);
-    const tpPolicy = resolveTpPolicy(squeeze ? squeeze.ratio : null);
+    const tpPolicy = resolveTpPolicy(squeeze ? squeeze.ratio : null, result.grade);
     result.squeezeRatio = squeeze ? Number(squeeze.ratio.toFixed(3)) : null;
     result.volRegimeTP = tpPolicy.regime;
     result.tpCount = tpPolicy.tpCount;
     result.tpRMultipliers = tpPolicy.tpR;
+    result.tpQualityTier = tpPolicy.grade;
     applyTpLevels(result, entryPrice, finalSL, tally.direction, tpPolicy.tpR, tpPolicy.tpCount);
 
     // Safety: entry must not be beyond SL (would make no sense)
@@ -964,13 +1264,166 @@ export function gradeShortTermSignal({
       applyTpLevels(result, entryPrice, finalSL, tally.direction, tpPolicy.tpR, tpPolicy.tpCount);
     }
 
+    // --- Faz 0 patch (d): smart-entry SL sanity validation ---
+    // Alignment filters'dan ONCE cagrilir — boylece bozuk SL/TP filter'a
+    // gitmeden yakalanir ve tani (entry/sl/tp + source) log'a dusurulur.
+    // Validation kriterleri:
+    //   (1) entry, sl, tp1 sonlu sayi > 0
+    //   (2) SL entry'nin dogru tarafinda (long: sl<entry, short: sl>entry)
+    //   (3) SL mesafesi entry'nin %20'sini asmasin (absurd SL)
+    //   (4) SL mesafesi minSL'den kucuk olmasin (cok sikisik)
+    //   (5) TP'ler entry'nin dogru tarafinda ve progresif
+    //       (long: tp1<tp2<tp3 ve hepsi entry'nin ustunde; short tersi)
+    {
+      const _fail = (code, msg) => {
+        const diag = {
+          symbol, timeframe, direction: tally.direction,
+          entry: result.entry, sl: result.sl,
+          tp1: result.tp1, tp2: result.tp2, tp3: result.tp3,
+          entrySource: result.entrySource, slSource: result.slSource,
+          atr, slMultiplier,
+          code,
+        };
+        console.warn(`[SmartEntry][SL_SANITY_FAIL] ${code}: ${msg}`, JSON.stringify(diag));
+        result.warnings.push(`SL_SANITY_FAIL:${code} — ${msg}`);
+        result.reasoning.push(`IPTAL: SL/TP sanity ${code}`);
+        result.filterRejected = true;
+        result.filterReasons = [`SL_SANITY:${code}`, msg];
+        result.grade = null;
+        result.action = 'BEKLE';
+      };
+
+      const _e = Number(result.entry);
+      const _s = Number(result.sl);
+      const _t1 = Number(result.tp1);
+      const dir = tally.direction;
+
+      if (!Number.isFinite(_e) || _e <= 0 || !Number.isFinite(_s) || _s <= 0 || !Number.isFinite(_t1) || _t1 <= 0) {
+        _fail('nonfinite', `entry=${result.entry}, sl=${result.sl}, tp1=${result.tp1}`);
+        return result;
+      }
+      if (dir === 'long' && _s >= _e) {
+        _fail('sl_wrong_side', `long ama SL(${_s}) >= entry(${_e})`); return result;
+      }
+      if (dir === 'short' && _s <= _e) {
+        _fail('sl_wrong_side', `short ama SL(${_s}) <= entry(${_e})`); return result;
+      }
+      const _slDist = Math.abs(_e - _s);
+      if (_slDist > _e * 0.20) {
+        _fail('sl_absurd_distance', `SL mesafesi ${(_slDist / _e * 100).toFixed(2)}% > %20 cap`); return result;
+      }
+      const _minSLAbs = _e * (result.category === 'kripto' || result.category === 'crypto' ? 0.005 : 0.003);
+      if (_slDist < _minSLAbs) {
+        _fail('sl_too_tight', `SL mesafesi ${(_slDist / _e * 100).toFixed(3)}% < floor`); return result;
+      }
+
+      // TP'ler: yon tutarli + progresif. Null TP'lere dokunma (tpCount < 3 olabilir).
+      const _tps = [result.tp1, result.tp2, result.tp3].map(v => (v == null ? null : Number(v)));
+      for (let i = 0; i < _tps.length; i++) {
+        const tp = _tps[i];
+        if (tp == null) continue;
+        if (!Number.isFinite(tp) || tp <= 0) { _fail('tp_nonfinite', `tp${i+1}=${tp}`); return result; }
+        if (dir === 'long' && tp <= _e)  { _fail('tp_wrong_side', `long ama tp${i+1}(${tp}) <= entry(${_e})`); return result; }
+        if (dir === 'short' && tp >= _e) { _fail('tp_wrong_side', `short ama tp${i+1}(${tp}) >= entry(${_e})`); return result; }
+      }
+      for (let i = 1; i < _tps.length; i++) {
+        const a = _tps[i - 1], b = _tps[i];
+        if (a == null || b == null) continue;
+        if (dir === 'long'  && !(b > a)) { _fail('tp_not_progressive', `long tp${i+1}(${b}) <= tp${i}(${a})`); return result; }
+        if (dir === 'short' && !(b < a)) { _fail('tp_not_progressive', `short tp${i+1}(${b}) >= tp${i}(${a})`); return result; }
+      }
+    }
+
+    // --- Alignment Filters: SL ↔ OB catismasi + HTF Fibonacci hizalama ---
+    // TP/SL set edildikten sonra, R:R hesaplanmadan once uygulanir. Eger HTF
+    // trend iki+ TF'de zit yondeyse sinyal IPTAL edilir. TP'ler HTF fib direnci/
+    // desteginin otesine gecerse fib'in hemen onune capped. SL baska bir OB'nin
+    // icinde/kenarindaysa OB disina tasinir.
+    try {
+      const align = applyAlignmentFilters({
+        symbol,
+        direction: tally.direction,
+        entry: result.entry,
+        sl: result.sl,
+        tp1: result.tp1,
+        tp2: result.tp2,
+        tp3: result.tp3,
+        atr,
+        smc,
+        srLines: Array.isArray(smcSRLines) ? smcSRLines : [],
+        entryOBZone: smartEntry?.entryZone || null,
+        currentTF: timeframe,
+      });
+
+      if (align.rejected) {
+        result.grade = null;
+        result.action = 'BEKLE';
+        result.reasoning.push(...align.reasons);
+        result.warnings.push(...align.reasons);
+        result.filterRejected = true;
+        result.filterReasons = align.reasons;
+        return result;
+      }
+
+      // SL/TP ayar edildiyse uygula
+      if (align.slMoved) {
+        result.sl = align.adjusted.sl;
+        result.slSource = 'ob_conflict_adjusted';
+      }
+      if (align.adjusted.tp1 !== result.tp1) result.tp1 = align.adjusted.tp1;
+      if (align.adjusted.tp2 !== result.tp2) result.tp2 = align.adjusted.tp2;
+      if (align.adjusted.tp3 !== result.tp3) result.tp3 = align.adjusted.tp3;
+
+      if (align.warnings.length) result.warnings.push(...align.warnings);
+      if (align.htfSummary) {
+        result.htfFibSummary = align.htfSummary;
+        // CLAUDE.md zorunlulugu: her sinyalde HTF Fib satiri olmali.
+        // Short'lar icin support (below), long'lar icin resistance (above) gosteririz —
+        // TP yolundaki ilk HTF engel. Entry'ye yuzde mesafe konum bilgisi verir.
+        const nearest = tally.direction === 'short' ? align.htfSummary.nearestBelow : align.htfSummary.nearestAbove;
+        if (nearest?.price != null && Number.isFinite(nearest.price)) {
+          const distPct = entryPrice > 0 ? ((nearest.price - entryPrice) / entryPrice) * 100 : 0;
+          const relText = distPct >= 0
+            ? `entry bu seviyenin %${distPct.toFixed(2)} altinda`
+            : `entry bu seviyenin %${Math.abs(distPct).toFixed(2)} ustunde`;
+          const roleText = tally.direction === 'short' ? 'destek (TP yolu)' : 'direnc (TP yolu)';
+          result.reasoning.push(`HTF Fib: ${nearest.tf} ${nearest.level} @ ${Number(nearest.price).toFixed(4)} ${roleText} / ${relText}`);
+        } else {
+          const trendTFs = Array.isArray(align.htfSummary.htfTrends) ? align.htfSummary.htfTrends.map(t => `${t.tf}:${t.regime}`).join(', ') : '';
+          result.reasoning.push(`HTF Fib: yakin TP-yonu seviyesi yok${trendTFs ? ` (HTF trend: ${trendTFs})` : ''}`);
+        }
+      } else {
+        result.reasoning.push(`HTF Fib: cache bulunamadi veya 30h+ eski — fib refresh gerekli`);
+      }
+
+      if (align.barrierSummary) {
+        result.barrierSummary = align.barrierSummary;
+        const above = align.barrierSummary.above || [];
+        const below = align.barrierSummary.below || [];
+        if (above.length || below.length) {
+          const fmt = (z) => `${z.tf}@${Number(z.price).toFixed(4)}(s=${Number(z.strength).toFixed(1)})`;
+          result.reasoning.push(`Barrier: ust=[${above.slice(0, 3).map(fmt).join(', ') || '-'}] alt=[${below.slice(0, 3).map(fmt).join(', ') || '-'}]`);
+        }
+      }
+      if (align.entryZoneClass?.inZone) {
+        result.entryZoneClass = align.entryZoneClass;
+      }
+    } catch (e) {
+      // Filter hatasi sinyali kirmasin — uyari olarak dusur.
+      result.warnings.push(`[AlignFilter] hata: ${e.message}`);
+    }
+
     const risk = Math.abs(result.entry - result.sl);
     const reward = Math.abs(result.tp2 - result.entry);
     result.rr = risk > 0 ? `1:${(reward / risk).toFixed(1)}` : 'N/A';
     result.slDistancePct = ((risk / entryPrice) * 100).toFixed(2) + '%';
 
-    if (risk > 0 && reward / risk < (gt.minRR || 2)) {
-      result.warnings.push(`R:R ${result.rr} < 1:${gt.minRR || 2} minimum`);
+    const minRR = gt.minRR || 2;
+    if (risk > 0 && reward / risk < minRR) {
+      result.warnings.push(`R:R ${result.rr} < 1:${minRR} minimum`);
+      result.grade = 'IPTAL';
+      const rrNum = (reward / risk).toFixed(2);
+      result.reasoning.push(`--- SERT BLOK IPTAL: R:R 1:${rrNum} < 1:${minRR} minimum — pozisyon acilmaz`);
     }
   }
 
@@ -1182,7 +1635,11 @@ function extractADX(studyValues) {
   for (const study of (Array.isArray(studyValues) ? studyValues : [])) {
     if (!study.values) continue;
     for (const [key, val] of Object.entries(study.values)) {
-      if (key.toLowerCase().includes('adx') && typeof val === 'number') return val;
+      const k = key.toLowerCase();
+      if (!k.includes('adx') || k.includes('+di') || k.includes('-di')) continue;
+      if (typeof val !== 'number' || !isFinite(val)) continue;
+      // ADX 0-100 araliginda — disi degerler indicator bug'i, clamp et.
+      return Math.min(100, Math.max(0, val));
     }
   }
   return null;

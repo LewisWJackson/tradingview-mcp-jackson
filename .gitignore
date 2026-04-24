@@ -4,3 +4,17 @@ scripts/current.pine
 temp_*
 *.log
 discovery-log.json
+
+# Runtime state — asla commit edilmemeli
+scanner/data/
+*.bak
+*.pre-*.bak
+
+# Lokal ajan hatiralari
+.remember/
+
+# API anahtarlari / secret
+.env
+.env.*
+*.key
+*.pem
