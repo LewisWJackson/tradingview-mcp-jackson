@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { getMarketMode } from '../src/lib/market_hours.js';
+import { getMarketMode, tradingDate } from '../src/lib/market_hours.js';
 
 // All tests pin a fixed "now" so they're deterministic across runs.
 // Times are expressed in UTC; the module converts to America/New_York.
@@ -66,4 +66,15 @@ test('DST transition — REGULAR 10 AM ET on 2026-03-09 (first EDT day)', () => 
 test('DST transition — REGULAR 10 AM ET on 2026-11-02 (first EST day)', () => {
   const now = new Date('2026-11-02T15:00:00Z'); // 10:00 EST
   assert.strictEqual(getMarketMode(now).mode, 'REGULAR');
+});
+
+test('tradingDate returns ET date, not UTC date, for a late-evening ET timestamp', () => {
+  // 2026-04-23 23:01 EDT = 2026-04-24 03:01 UTC — UTC date is April 24, ET is still April 23
+  const now = new Date('2026-04-24T03:01:00Z');
+  assert.strictEqual(tradingDate(now), '2026-04-23');
+});
+
+test('tradingDate returns correct date at 10 AM ET mid-session', () => {
+  const now = new Date('2026-04-23T14:00:00Z');
+  assert.strictEqual(tradingDate(now), '2026-04-23');
 });

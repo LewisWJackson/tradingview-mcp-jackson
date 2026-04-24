@@ -277,8 +277,8 @@ The poller has four runtime modes driven by the `America/New_York` clock and a m
 | Mode | Window (ET) | Behavior |
 |---|---|---|
 | **PRE_WARM** | 9:25 – 9:30 AM | Poll at 15s to warm caches and detect gap-ups *before* the bell. Fires are **suppressed** (audit-logged but no toast) so the opening cross is logged but not noisy. |
-| **REGULAR** | 9:30 AM – 3:59:59 PM | Full polling + fire detection + notification. |
-| **CLOSE_CAPTURE** | 3:59 – 4:05 PM | Keep polling for 5 extra minutes to capture the closing auction print. Fires in this window are tagged `session: closing_auction`. |
+| **REGULAR**        | 9:30 AM – 3:59:59 PM | Full polling + fire detection + notification. |
+| **CLOSE_CAPTURE**  | 4:00 PM – 4:04:59 PM | Keep polling for 5 extra minutes to capture the closing auction print. Fires in this window are tagged `session: closing_auction`. |
 | **PAUSED** | All other times (including weekends, holidays, early-close afternoons, market halts) | No polling, no SSE ticks. Dashboard shows "Market closed — live feed paused" with the next session time. |
 
 **Market-calendar file** (`data/nyse_calendar.json`, manually maintained / regenerated yearly) lists:

@@ -64,43 +64,44 @@ function minuteOfDay(hour, minute) {
 export function getMarketMode(nowDate = new Date()) {
   const cal = loadCalendar();
   const et = toET(nowDate);
+  const etClock = `${et.hour}:${String(et.minute).padStart(2, '0')}`;
 
   if (et.dow === 0 || et.dow === 6) {
-    return { mode: 'PAUSED', reason: 'weekend', etClock: `${et.hour}:${String(et.minute).padStart(2, '0')}` };
+    return { mode: 'PAUSED', reason: 'weekend', etClock };
   }
 
   const calEntry = cal.get(et.dateStr);
   if (calEntry && calEntry.status === 'closed') {
-    return { mode: 'PAUSED', reason: 'holiday', holiday: calEntry.name, etClock: `${et.hour}:${String(et.minute).padStart(2, '0')}` };
+    return { mode: 'PAUSED', reason: 'holiday', holiday: calEntry.name, etClock };
   }
 
   // Determine session close (default 16:00, or early-close override)
-  let closeHour = 16, closeMin = 0;
+  let closeHour = 16, closeMinuteComponent = 0;
   let closeTimeET = '16:00';
   if (calEntry && calEntry.status === 'early_close') {
     const [h, m] = calEntry.closeTimeET.split(':').map(Number);
-    closeHour = h; closeMin = m;
+    closeHour = h; closeMinuteComponent = m;
     closeTimeET = calEntry.closeTimeET;
   }
 
   const nowMin = minuteOfDay(et.hour, et.minute);
   const preWarmStart = minuteOfDay(9, 25);
   const regularStart = minuteOfDay(9, 30);
-  const closeMin_ = minuteOfDay(closeHour, closeMin);
-  const captureEnd = closeMin_ + 5;
+  const sessionCloseMOD = minuteOfDay(closeHour, closeMinuteComponent);
+  const captureEnd = sessionCloseMOD + 5;
 
   if (nowMin >= preWarmStart && nowMin < regularStart) {
-    return { mode: 'PRE_WARM', etClock: `${et.hour}:${String(et.minute).padStart(2, '0')}`, closeTimeET };
+    return { mode: 'PRE_WARM', etClock, closeTimeET };
   }
-  if (nowMin >= regularStart && nowMin < closeMin_) {
-    return { mode: 'REGULAR', etClock: `${et.hour}:${String(et.minute).padStart(2, '0')}`, closeTimeET };
+  if (nowMin >= regularStart && nowMin < sessionCloseMOD) {
+    return { mode: 'REGULAR', etClock, closeTimeET };
   }
-  if (nowMin >= closeMin_ && nowMin < captureEnd) {
-    return { mode: 'CLOSE_CAPTURE', etClock: `${et.hour}:${String(et.minute).padStart(2, '0')}`, closeTimeET };
+  if (nowMin >= sessionCloseMOD && nowMin < captureEnd) {
+    return { mode: 'CLOSE_CAPTURE', etClock, closeTimeET };
   }
 
   const reason = (calEntry && calEntry.status === 'early_close' && nowMin >= captureEnd) ? 'early_close' : 'outside_hours';
-  return { mode: 'PAUSED', reason, etClock: `${et.hour}:${String(et.minute).padStart(2, '0')}`, closeTimeET };
+  return { mode: 'PAUSED', reason, etClock, closeTimeET };
 }
 
 /**
