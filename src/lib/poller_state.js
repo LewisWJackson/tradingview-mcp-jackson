@@ -19,17 +19,12 @@ export function createStateStore({ filePath, maxAgeMs = DEFAULT_MAX_AGE_MS }) {
   }
 
   function write(state) {
+    // Non-atomic, recovery handled by read() falling back to emptyState().
     fs.writeFileSync(filePath, JSON.stringify(state, null, 2));
   }
 
   function isFresh(now = new Date()) {
-    if (!fs.existsSync(filePath)) return false;
-    let parsed;
-    try {
-      parsed = JSON.parse(fs.readFileSync(filePath, 'utf8'));
-    } catch {
-      return false;
-    }
+    const parsed = read();
     if (!parsed.asOf) return false;
     const ageMs = now - new Date(parsed.asOf);
     return ageMs >= 0 && ageMs <= maxAgeMs;

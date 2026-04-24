@@ -47,6 +47,12 @@ test('isFresh returns true when snapshot is within max age', () => {
   assert.strictEqual(store.isFresh(new Date('2026-04-24T00:05:00.000Z')), true);
 });
 
+test('isFresh returns false when file is missing', () => {
+  const dir = mktmp();
+  const store = createStateStore({ filePath: path.join(dir, 'never.json') });
+  assert.strictEqual(store.isFresh(), false);
+});
+
 test('write survives malformed prior file', () => {
   const dir = mktmp();
   const fp = path.join(dir, 'state.json');
