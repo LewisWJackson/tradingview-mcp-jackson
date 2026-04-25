@@ -113,6 +113,98 @@ export function getProfile(marketType, subClass = null) {
   return base;
 }
 
+/**
+ * Faz 2 — Rejim-aware filtre eşikleri (REGIME_GATES).
+ *
+ * docs/phase-2-design.md §6.5 tablosu. Şu anki sayılar TAHMIN; May 2 Faz 1
+ * raporu sonrası gerçek rejim dağılımı + outcome verisiyle kalibre edilecek.
+ *
+ * applyRegimeStrategy() bu tabloyu okur:
+ *   - minGrade: rejim bu altı grade'leri reddeder
+ *   - htfConfMin: HTF güveni bu yüzdenin altıysa BEKLE
+ *   - mtfAlignMin: MTF uyumu bu yüzdenin altıysa BEKLE
+ *   - allowNewPosition: chaos/drift/closed → false (yeni pozisyon yok)
+ */
+export const REGIME_GATES = {
+  trending_up:      { allowNewPosition: true, minGrade: 'B', htfConfMin: 60, mtfAlignMin: 75 },
+  trending_down:    { allowNewPosition: true, minGrade: 'B', htfConfMin: 60, mtfAlignMin: 75 },
+  ranging:          { allowNewPosition: true, minGrade: 'C', htfConfMin: 45, mtfAlignMin: 60 },
+  breakout_pending: { allowNewPosition: true, minGrade: 'B', htfConfMin: 55, mtfAlignMin: 70 },
+  high_vol_chaos:   { allowNewPosition: false, minGrade: null, htfConfMin: null, mtfAlignMin: null },
+  low_vol_drift:    { allowNewPosition: false, minGrade: null, htfConfMin: null, mtfAlignMin: null },
+  market_closed:    { allowNewPosition: false, minGrade: null, htfConfMin: null, mtfAlignMin: null },
+};
+
+/**
+ * Rejim → SL multiplier override.
+ * docs/phase-2-design.md §2 tablosu (taxonomy ayrıntısı). Trending'de geniş SL
+ * (ATR×2.5), ranging'de dar (ATR×1.5, range içinde fail erken), breakout'ta
+ * geniş (ATR×3.0).
+ */
+export const REGIME_SL_MULT = {
+  trending_up:      2.5,
+  trending_down:    2.5,
+  ranging:          1.5,
+  breakout_pending: 3.0,
+  high_vol_chaos:   null,  // pozisyon yok
+  low_vol_drift:    null,
+  market_closed:    null,
+};
+
+/**
+ * Rejim → vote suppression tablosu.
+ * Hangi indikatör oyları rejimde "bastırılır" (ağırlık 0)? Hangi oylar
+ * "öne çıkarılır" (ağırlık 1.5×)?
+ *
+ * docs/phase-2-design.md §2 tablosu — basit string match yerine indikatör
+ * ailelerine göre kategorize edilmiştir.
+ *
+ * indicatorKey örnekleri (collectVotes'tan beklenen):
+ *   - 'macd_trend', 'ema_cross', 'adx_strong', 'volume_high'  → momentum ailesi
+ *   - 'rsi_oversold', 'rsi_overbought', 'bb_touch_lower', 'bb_touch_upper' → mean-reversion ailesi
+ *   - 'smc_bos_bullish', 'smc_bos_bearish', 'smc_choch'  → SMC ailesi
+ *   - 'orderblock_bounce', 'fvg_fill'  → SMC seviye ailesi
+ *   - 'formation_bullish', 'formation_bearish'  → formasyon ailesi
+ *   - 'htf_trend_aligned', 'htf_trend_conflict'  → HTF ailesi
+ */
+export const VOTE_FAMILIES = {
+  momentum:        ['macd_trend', 'ema_cross', 'adx_strong', 'volume_high', 'macd_main', 'macd_signal', 'trend_strength'],
+  mean_reversion:  ['rsi_oversold', 'rsi_overbought', 'bb_touch_lower', 'bb_touch_upper', 'rsi_divergence_bullish', 'rsi_divergence_bearish', 'discount_zone', 'premium_zone'],
+  smc_structural:  ['smc_bos_bullish', 'smc_bos_bearish', 'smc_choch_bullish', 'smc_choch_bearish'],
+  smc_levels:      ['orderblock_bounce', 'fvg_fill', 'liquidity_sweep'],
+  formation:       ['formation_bullish', 'formation_bearish'],
+  htf:             ['htf_trend_aligned', 'htf_trend_conflict'],
+  cdv:             ['cdv_buy', 'cdv_sell', 'cdv_strong_buy', 'cdv_strong_sell'],
+};
+
+/**
+ * Rejim başına aile ağırlık çarpanları.
+ * 1.0 = nötr, 0 = tamamen bastır, 1.5 = öne çıkar.
+ *
+ * Bu tablo Faz 0 patch (b)'nin "tam bypass" mantığının yumuşak versiyonudur:
+ * ranging'de momentum 0'a inmek yerine 0.3'e (mean-reversion için yön ipucu
+ * hâlâ değerli olabilir), mean-reversion 1.5'e çıkıyor.
+ */
+export const REGIME_VOTE_WEIGHTS = {
+  trending_up:      { momentum: 1.0, mean_reversion: 0.5, smc_structural: 1.0, smc_levels: 1.2, formation: 1.0, htf: 1.0, cdv: 1.0 },
+  trending_down:    { momentum: 1.0, mean_reversion: 0.5, smc_structural: 1.0, smc_levels: 1.2, formation: 1.0, htf: 1.0, cdv: 1.0 },
+  ranging:          { momentum: 0.3, mean_reversion: 1.5, smc_structural: 1.0, smc_levels: 1.2, formation: 0.8, htf: 0.7, cdv: 1.0 },
+  breakout_pending: { momentum: 0.7, mean_reversion: 0.3, smc_structural: 1.0, smc_levels: 1.0, formation: 1.2, htf: 1.0, cdv: 1.0 },
+  high_vol_chaos:   { momentum: 0,   mean_reversion: 0,   smc_structural: 0,   smc_levels: 0,   formation: 0,   htf: 0,   cdv: 0   },
+  low_vol_drift:    { momentum: 0,   mean_reversion: 0,   smc_structural: 0,   smc_levels: 0,   formation: 0,   htf: 0,   cdv: 0   },
+  market_closed:    { momentum: 0,   mean_reversion: 0,   smc_structural: 0,   smc_levels: 0,   formation: 0,   htf: 0,   cdv: 0   },
+};
+
+/** indicatorKey → vote family lookup. */
+export function familyOf(indicatorKey) {
+  if (!indicatorKey) return null;
+  const k = String(indicatorKey).toLowerCase();
+  for (const [family, keys] of Object.entries(VOTE_FAMILIES)) {
+    if (keys.some(p => k.includes(p))) return family;
+  }
+  return null;
+}
+
 /** Scanner kategori adını (rules.json) taxonomy marketType'a çevir. */
 export function categoryToMarketType(category) {
   switch (category) {
