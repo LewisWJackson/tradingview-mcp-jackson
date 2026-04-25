@@ -294,6 +294,13 @@ try {
   console.warn('Could not read coiled spring results:', e.message);
 }
 
+// Shadow mode flag — when set at build time, the dashboard will:
+//   1. Render an orange "SHADOW MODE" banner above the Coiled Springs section
+//   2. Suppress Windows desktop toasts (in-page banner still fires)
+//   3. Tint the fire banner border so it's visually distinct
+// Used during the first ~2-week observation window before flipping toasts on.
+const shadowMode = process.env.SHADOW_MODE === '1';
+
 // Hydrate today's fires for the dashboard's sticky "FIRED TODAY" badges.
 // Read at build time so a freshly-opened (file://) Dashboard.html still shows
 // any fires that already happened today even before the SSE client connects.
@@ -2098,8 +2105,12 @@ function buildCoiledSpringHtml() {
     <button class="exp-filter" data-filter="catalyst_loaded">Catalyst Loaded</button>
   </div>`;
   const cards = r.results.map(renderCoiledSpringCard).join('\n');
+  const shadowBanner = shadowMode
+    ? '<div id="cs-shadow-banner" style="background:#f39c12;color:#1a1a1a;padding:10px 14px;border-radius:6px;margin-bottom:14px;font-weight:600;font-size:14px;">🛡 SHADOW MODE — fires are logged to disk but Windows toasts are suppressed. Banner notifications still appear.</div>'
+    : '';
   return `<div class="panel span-12">
     <h2>🌀 Coiled Springs</h2>
+    ${shadowBanner}
     <div id="cs-source-banner" class="cs-source-banner"></div>
     ${regimeBanner}
     ${meta}
@@ -3756,6 +3767,7 @@ document.querySelectorAll('.exp-filter').forEach(btn => {
 
 <!-- ══════ Coiled Spring live-feed (SSE) — Task 13 ══════ -->
 <script>window.__todaysFires = ${JSON.stringify(todaysFires).replace(/<\/script>/gi, '<\\/script>')};</script>
+<script>window.__shadowMode = ${shadowMode};</script>
 <script>
 (function () {
   if (typeof EventSource === 'undefined') return;
@@ -3900,6 +3912,12 @@ function showFireBanner(f) {
   }
 
   banner.style.background = band === 'red' ? '#c0392b' : band === 'yellow' ? '#d68910' : '#229954';
+  // Shadow mode visual tell: dashed border tells the user toasts are suppressed.
+  if (window.__shadowMode === true) {
+    banner.style.border = '2px dashed rgba(255,255,255,0.6)';
+  } else {
+    banner.style.border = '';
+  }
   // Defense-in-depth: even though ticker is bounded server-side, a single inline
   // escape stops any future scanner-output mishap from injecting HTML.
   const escTicker = String(f.ticker || '?').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -3915,6 +3933,9 @@ function showFireBanner(f) {
 }
 
 function dispatchFireToast(f) {
+  // Shadow mode: suppress toasts; banner still fires (called from showFireBanner separately).
+  if (window.__shadowMode === true) return;
+
   if (!('Notification' in window)) return;
   if (Notification.permission !== 'granted') return;
 
