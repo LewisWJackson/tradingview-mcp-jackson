@@ -14,7 +14,9 @@ import { pickRegimeWeights } from './learning/regime-detector.js';
 import { applyRegimeStrategy } from './learning/regime-strategy.js';
 import { resolveLeague } from './learning/ladder-engine.js';
 import { checkBlackout } from './blackout.js';
-import { checkSessionFilter } from './session-filter.js';
+// Faz 2 v1.9 — session-filter.js kaldırıldı. Çift sayım: low_vol_drift rejimi
+// (computeRegime) gerçek volatiliteyi ölçer; market-hours.js BIST/ABD için
+// kapanış saatlerini zaten tutar. Saat tahmini bazlı statik blok artık yok.
 import { applyAlignmentFilters } from './alignment-filters.js';
 import { detectVolumeReaction } from './volume-reaction-detector.js';
 import { detectPumpTop, pumpPullbackLevel } from './pump-guard.js';
@@ -915,19 +917,12 @@ export function gradeShortTermSignal({
   }
 
   // --- Session-of-day filter (Hafta 3-14) ---
-  // Asya dusuk likidite saatlerinde (22:00 UTC - 06:00 UTC arasi FX/emtia) sinyal
-  // kalitesi dusuyor. BIST/ABD hisse icin piyasa kapali iken sinyal uretmiyoruz
-  // (market-hours zaten kapatır), ama crypto 7/24 oldugundan session filtresi
-  // Asya sessizligini BEKLE olarak isaretler.
-  const sessionBlock = checkSessionFilter(symbol);
-  if (sessionBlock) {
-    result.grade = 'BEKLE';
-    result.position_pct = 0;
-    result.direction = tally.direction;
-    result.warnings.push(`SESSION FILTER: ${sessionBlock.reason}`);
-    result.reasoning.push(`--- SESSION BEKLE: ${sessionBlock.reason}`);
-    return result;
-  }
+  // Faz 2 v1.9 — Saat-tabanli session-filter kaldirildi. Sebepler:
+  //   1. Kripto 24/7 piyasasi; "Asya dead zone" forex/emtia varsayimi yanlis
+  //   2. computeRegime → low_vol_drift gercek volatiliteyi olcer (saat degil)
+  //   3. wrapper REJECT_DRIFT bu durumlari rejim-aware yakalar
+  //   4. BIST/ABD hisse icin market-hours.js zaten kapanis saatlerini tutar
+  // Cift sayim sona erdi; statik 22:00-05:00 UTC blok yok.
 
   // --- Learned weights & thresholds ---
   const w = getWeights(regime);
