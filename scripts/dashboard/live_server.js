@@ -27,7 +27,7 @@ import { createLivePoller } from '../scanner/live_price_poller.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const PORT = 3333;
+const PORT = process.env.PORT != null ? parseInt(process.env.PORT, 10) : 3333;
 const OUTPUT_HTML = 'C:/Users/lam61/OneDrive/Desktop/Queen Mommy/Trading/Dashboard.html';
 const BUILD_SCRIPT = path.join(__dirname, 'build_dashboard_html.js');
 const OPTIONS_CACHE = path.join(__dirname, 'options_cache.json');
