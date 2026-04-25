@@ -18,6 +18,10 @@ import { detectRSIDivergence, detectSqueeze, analyzeCDV, parseSMCLabels, getVola
 import { gradeShortTermSignal, gradeLongTermSignal } from './signal-grader.js';
 import { getMacroState, applyMacroFilter, formatMacroSummary } from './macro-filter.js';
 import { classifyRegime } from './learning/regime-detector.js';
+// Faz 1 İter 2 — shadow-only rejim modülü (sinyal akışına bağlı DEĞİL)
+import { computeRegime as _shadowComputeRegime } from './learning/compute-regime.js';
+import { logRegime as _shadowLogRegime } from './learning/regime-shadow-logger.js';
+import { categoryToMarketType as _shadowCategoryToMarketType } from './learning/regime-profiles.js';
 import { recordSignal } from './learning/signal-tracker.js';
 import { loadWeights } from './learning/weight-adjuster.js';
 import { resolveSymbol, inferCategory } from './symbol-resolver.js';
@@ -547,6 +551,48 @@ async function _scanShortTermInner(symbol, options = {}) {
     const adxForRegime = Number(data.khanSaab?.adx) || null;
     const regimeResult = classifyRegime(macroState || {}, adxForRegime);
     const regime = regimeResult?.regime || 'neutral';
+
+    // ====================================================================
+    // SHADOW MODE — Faz 1 İter 2 (Risk #4 azaltma)
+    // computeRegime() yeni 6-rejim taxonomisini hesaplar ve JSONL'e logger.
+    // Sinyal pipeline'ina HİÇBİR ETKİSİ YOK; try-catch içinde, hata olursa
+    // sadece warning log basar, ana akış devam eder.
+    // ====================================================================
+    try {
+      const studyValuesForRegime = {
+        adx: adxForRegime,
+        adxSlope: 0,  // tek skalar — slope için tarih lazım, İter 3'te eklenecek
+        ema20: Number(data.studyValues?.ema20) || null,
+        bbUpper: Number(data.studyValues?.bbUpper) || null,
+        bbLower: Number(data.studyValues?.bbLower) || null,
+        bbBasis: Number(data.studyValues?.bbBasis) || null,
+      };
+      const macroForRegime = {
+        vix: Number(macroState?.['VIX']?.value) || null,
+        funding_rate: data.funding ?? null,
+        usdtry_realized_sigma_5d: macroState?.usdtry_sigma_5d ?? null,
+        usdtry_bist_rho_5d: macroState?.usdtry_bist_rho_5d ?? null,
+        usdtry_return_1d: macroState?.usdtry_return_1d ?? null,
+      };
+      const marketType = _shadowCategoryToMarketType(category);
+      const shadowResult = _shadowComputeRegime({
+        symbol, timeframe: String(tf), marketType,
+        ohlcv: Array.isArray(data.ohlcv) ? data.ohlcv : [],
+        studyValues: studyValuesForRegime,
+        macro: macroForRegime,
+        chaosWindows: {},  // İter 3'te config/chaos-windows.json'dan yüklenecek
+        events: [],
+        session: null,     // İter 3'te market-hours.js'ten beslenecek
+        now: Date.now(),
+      });
+      _shadowLogRegime({
+        symbol, timeframe: String(tf), marketType,
+        result: shadowResult, now: Date.now(),
+      });
+    } catch (shadowErr) {
+      // Shadow mode birinci kuralı: ana akışı asla bozma.
+      console.warn(`[shadow-regime] ${symbol}/${tf} hesaplama/log hatasi: ${shadowErr?.message || shadowErr}`);
+    }
 
     const signal = gradeShortTermSignal({
       khanSaab: data.khanSaab,

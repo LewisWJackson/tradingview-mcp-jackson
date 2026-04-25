@@ -18,6 +18,8 @@
  * log'lardan replay edilebilir.
  */
 
+import { getProfile, REGIME_PROFILES } from './regime-profiles.js';
+
 const HYSTERESIS_BARS = 3;
 const MAX_TRANSITIONS_PER_DAY = 4;
 
@@ -149,16 +151,11 @@ export function activeChaosWindow({ events = [], chaosWindows = {}, now }) {
 // 3. Ham sınıflandırma (marketType'a göre threshold'lar)
 // ---------------------------------------------------------------------------
 
-// Piyasa thresholdları — İter 2'de regime-profiles.js'e taşınacak.
-const DEFAULT_THRESHOLDS = {
-  crypto:    { adxHi: 25, adxLo: 20, chaos24h: 0.08, chaos1h: 0.04 },
-  us_stocks: { adxHi: 22, adxLo: 18, vixChaos: 30, vixCalm: 12 },
-  bist:      { adxHi: 22, adxLo: 18, usdtryChaosPct: 0.04, usdtryStableSigma: 0.005 },
-  commodities: { adxHi: 25, adxLo: 20 },
-};
-
-function resolveThresholds(marketType) {
-  return DEFAULT_THRESHOLDS[marketType] || DEFAULT_THRESHOLDS.crypto;
+// Threshold kaynağı İter 2'de regime-profiles.js'e taşındı. Bu sarmalayıcı
+// geriye dönük uyumluluk için __internals.DEFAULT_THRESHOLDS altında
+// export edilir.
+function resolveThresholds(marketType, subClass = null) {
+  return getProfile(marketType, subClass);
 }
 
 /**
@@ -175,7 +172,7 @@ export function classifyRaw({
   chaosActive = null,  // activeChaosWindow() sonucu; null ise chaos yok
   session = null,      // 'regular'|'premarket'|'afterhours'|'closed'
 } = {}) {
-  const t = resolveThresholds(marketType);
+  const t = resolveThresholds(marketType, subClass);
   const notes = [];
 
   // Öncelik sırası (taxonomy §1): chaos → closed → low_vol_drift → trending → ranging → breakout_pending
@@ -201,7 +198,7 @@ export function classifyRaw({
       return { regime: 'high_vol_chaos', subRegime: null, notes };
     }
     const funding = Math.abs(macro.funding_rate ?? 0);
-    if (funding > 0.001) {
+    if (t.fundingAbsChaos != null && funding > t.fundingAbsChaos) {
       notes.push(`funding=${funding}`);
       return { regime: 'high_vol_chaos', subRegime: null, notes };
     }
@@ -418,4 +415,10 @@ function toFiniteOrNull(x) { const n = Number(x); return Number.isFinite(n) ? n 
 function toIntOrNull(x) { const n = Number.parseInt(x, 10); return Number.isFinite(n) ? n : null; }
 function fmt(x) { return x == null ? 'null' : Number(x).toFixed(3); }
 
-export const __internals = { HYSTERESIS_BARS, MAX_TRANSITIONS_PER_DAY, DEFAULT_THRESHOLDS, stateKey };
+export const __internals = {
+  HYSTERESIS_BARS,
+  MAX_TRANSITIONS_PER_DAY,
+  // Geriye dönük uyumluluk: testler ve okuyucular için proxy
+  DEFAULT_THRESHOLDS: REGIME_PROFILES,
+  stateKey,
+};
