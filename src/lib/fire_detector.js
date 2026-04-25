@@ -58,7 +58,10 @@ export function createFireDetector({
   confirmPolls = 2,
   hysteresisPct = 0.5,
   maxFiresPerDay = 2,
-  staleQuoteMaxAgeMs = 5000,
+  // 30s default tolerates Yahoo's regularMarketTime lag on low-volume tickers
+  // (often 5-30s behind wall-clock). Quotes older than this are treated as
+  // stale and cannot promote state. Override per-deployment if needed.
+  staleQuoteMaxAgeMs = 30_000,
 } = {}) {
   /** @type {Map<string, object>} */
   const tickers = new Map();

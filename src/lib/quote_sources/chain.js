@@ -53,11 +53,14 @@ export function createQuoteChain({ sources, flipAfterFailures = 5, probeInterval
         decoratedQuotes[sym] = null;
         continue;
       }
-      const marketTime = q.marketTimeIso ? new Date(q.marketTimeIso).getTime() : now;
+      const hasMarketTime = !!q.marketTimeIso;
+      const marketTime = hasMarketTime ? new Date(q.marketTimeIso).getTime() : 0;
       const decorated = {
         ...q,
         quoteSource: source.name,
-        quoteAgeMs: Math.max(0, now - marketTime),
+        quoteAgeMs: hasMarketTime ? Math.max(0, now - marketTime) : Number.MAX_SAFE_INTEGER,
+        // Treat missing marketTimeIso as untrusted: detector won't promote state on it.
+        fireSuppressed: q.fireSuppressed ?? !hasMarketTime,
       };
       decoratedQuotes[sym] = decorated;
       cache.set(sym, { quote: { ...decorated }, source: source.name, cachedAt: now });

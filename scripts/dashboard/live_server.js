@@ -15,7 +15,7 @@ import path from 'path';
 import { execFile } from 'child_process';
 import { fileURLToPath } from 'url';
 import { createSseBroadcaster } from '../../src/lib/sse_broadcaster.js';
-import { getMarketMode } from '../../src/lib/market_hours.js';
+import { getMarketMode, tradingDate } from '../../src/lib/market_hours.js';
 import { readCandidates } from '../../src/lib/candidate_reader.js';
 import { createFireLog } from '../../src/lib/fire_events.js';
 import { createStateStore } from '../../src/lib/poller_state.js';
@@ -261,16 +261,70 @@ const livePoller = createLivePoller({
       activeSource: quoteChain.activeSourceName(),
     });
   },
+  onCoverageWarning: (info) => {
+    sse.broadcast('coverage_warning', info);
+    if (info.symbolsWithNoQuote.length > 0 || info.symbolsServedStale.length > 0) {
+      log(`[poller] coverage warning: ${info.symbolsWithNoQuote.length} no-quote, ${info.symbolsServedStale.length} stale (active=${info.activeSource})`);
+    }
+  },
 });
 
-// Restore state on startup — single read (avoid double file-read race)
+// Restore detector state on boot. Source of truth is the daily fire log
+// (poller_state.json is a hint, not authoritative). Cross-day boot must NOT
+// carry yesterday's firesToday counters.
 (function restoreOnBoot() {
   const persisted = stateStore.read();
-  if (stateStore.isFresh() && persisted.tickers) {
-    livePoller.detector.restoreState(persisted.tickers);
-    log(`[poller] restored state for ${Object.keys(persisted.tickers).length} tickers`);
+  const persistedTickers = persisted.tickers || {};
+  const todayET = tradingDate(new Date());
+  const persistedDate = persisted.asOf ? tradingDate(new Date(persisted.asOf)) : null;
+  const sameTradingDay = persistedDate === todayET;
+
+  // 1. Seed from persisted state for tickers present (only if same trading day).
+  if (sameTradingDay) {
+    livePoller.detector.restoreState(persistedTickers);
+  }
+
+  // 2. Override / inject from today's fire log. The fire log is authoritative
+  //    for firesToday and FIRED state — counts are derived from on-disk events,
+  //    so a 12-min crash + restart cannot reset the daily cap.
+  const todaysFires = fireLog.getTodaysFires();
+  const byTicker = {};
+  for (const f of todaysFires) {
+    if (!byTicker[f.ticker]) byTicker[f.ticker] = [];
+    byTicker[f.ticker].push(f);
+  }
+
+  for (const [ticker, fires] of Object.entries(byTicker)) {
+    const lastFire = fires[fires.length - 1];
+    const trigger = lastFire?.trigger?.level
+      ?? persistedTickers[ticker]?.trigger
+      ?? null;
+    if (trigger == null) continue; // can't seed without a trigger
+    livePoller.detector.upsertTicker({ symbol: ticker, trigger });
+    // Patch the in-memory state via restoreState semantics (one ticker at a time)
+    const maxLevel = fires.reduce((max, f) => Math.max(max, f.fireStrength || 0), 0);
+    livePoller.detector.restoreState({
+      [ticker]: {
+        symbol: ticker,
+        trigger,
+        state: 'FIRED',
+        firesToday: fires.length,
+        lastFireLevel: maxLevel || null,
+        fireStrength: maxLevel || null,
+        firedEventId: lastFire?.eventId || null,
+        lastPrice: lastFire?.price?.firedPrice || null,
+        firstCrossObservedAt: lastFire?.debounce?.firstCrossObservedAt || null,
+        confirmsSeen: 0,
+        pendingSince: null,
+        lastSuppression: null,
+      },
+    });
+  }
+
+  if (sameTradingDay) {
+    log(`[poller] restored ${Object.keys(persistedTickers).length} tickers from state, ${todaysFires.length} fires from today's log`);
   } else {
-    log('[poller] no fresh state to restore — starting cold');
+    log(`[poller] new trading day (${todayET}); reset daily counters; replayed ${todaysFires.length} fires from today's log`);
   }
 })();
 

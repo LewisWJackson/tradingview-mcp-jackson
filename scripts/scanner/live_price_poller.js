@@ -22,14 +22,15 @@ import { createFireDetector } from '../../src/lib/fire_detector.js';
 import { evaluateRiskFlags } from '../../src/lib/risk_flags.js';
 
 export function createLivePoller({
-  getCandidates,      // () => { candidates: [...], scanRunId?: string }
-  chain,              // quote-source chain (createQuoteChain output)
-  onFire,             // (event) => void
-  onTick,             // optional (tickerSnapshot) => void — per-symbol heartbeat
-  onError,            // (err) => void
-  isMarketOpen,       // () => boolean
-  getMarketContext,   // optional () => { vix, spxChangePct, qqqChangePct, regimeMultiplier, vixRegime }
-  detectorOptions,    // passed through to createFireDetector
+  getCandidates,         // () => { candidates: [...], scanRunId?: string }
+  chain,                 // quote-source chain (createQuoteChain output)
+  onFire,                // (event) => void
+  onTick,                // optional (tickerSnapshot) => void — per-symbol heartbeat
+  onError,               // (err) => void
+  onCoverageWarning,     // optional (info) => void — emitted when chain is degraded or symbols return null/stale
+  isMarketOpen,          // () => boolean
+  getMarketContext,      // optional () => { vix, spxChangePct, qqqChangePct, regimeMultiplier, vixRegime }
+  detectorOptions,       // passed through to createFireDetector
 }) {
   const detector = createFireDetector(detectorOptions);
   let pollSequence = 0;
@@ -66,12 +67,18 @@ export function createLivePoller({
 
     const now = new Date();
     const marketContext = getMarketContext ? getMarketContext() : {};
+    const noQuoteSymbols = [];
+    const staleSymbols = [];
 
     for (const cand of candidates) {
       const quote = fetchResult.quotes[cand.symbol];
       if (!quote || quote.price == null) {
+        noQuoteSymbols.push(cand.symbol);
         onTick?.({ symbol: cand.symbol, price: null, stale: true });
         continue;
+      }
+      if (quote.fireSuppressed || quote.quoteSource === 'stale') {
+        staleSymbols.push(cand.symbol);
       }
 
       // Evaluate risk flags BEFORE observing, so we can pass `strengthContext`
@@ -205,6 +212,20 @@ export function createLivePoller({
         onFire?.(event);
       }
     }
+
+    // Coverage warning: emit only when actually degraded (not on every tick)
+    if (fetchResult.degraded || noQuoteSymbols.length > 0 || staleSymbols.length > 0) {
+      onCoverageWarning?.({
+        pollSequence,
+        activeSource: fetchResult.activeSource,
+        degraded: !!fetchResult.degraded,
+        symbolsWithNoQuote: noQuoteSymbols,
+        symbolsServedStale: staleSymbols,
+        sourceAttempts: fetchResult.sourceAttempts || [],
+        timestamp: now.toISOString(),
+      });
+    }
+
     return { polled: true, pollSequence };
   }
 
