@@ -35,15 +35,19 @@ test('build without SHADOW_MODE omits shadow banner', () => {
 });
 
 test('toast dispatcher suppresses notifications in shadow mode', () => {
-  // Reuse the SHADOW_MODE-off build from the previous test (or rebuild if missing)
-  if (!fs.existsSync(OUTPUT_OFF)) {
-    const env = { ...process.env, SKIP_OPTIONS: '1' };
-    delete env.SHADOW_MODE;
-    execFileSync('node', [BUILD, INPUT, OUTPUT_OFF], { env, stdio: 'pipe' });
+  // Assert against the SHADOW_MODE-on build so we verify BOTH that the dispatcher's
+  // early-return guard exists AND that __shadowMode is true at runtime in this build.
+  // Asserting against the OFF build would pass vacuously since the guard is static JS
+  // source present in every build regardless of SHADOW_MODE.
+  if (!fs.existsSync(OUTPUT_ON)) {
+    execFileSync('node', [BUILD, INPUT, OUTPUT_ON], { env: { ...process.env, SHADOW_MODE: '1', SKIP_OPTIONS: '1' }, stdio: 'pipe' });
   }
-  const html = fs.readFileSync(OUTPUT_OFF, 'utf8');
-  // The dispatcher must early-return when shadow mode is on
+  const html = fs.readFileSync(OUTPUT_ON, 'utf8');
+  // (1) Early-return guard exists in the dispatcher source
   assert.ok(html.includes('window.__shadowMode === true'), 'toast dispatcher must check window.__shadowMode');
+  // (2) This build sets the flag true — together with (1), the runtime path skips Notification dispatch
+  assert.ok(html.includes('window.__shadowMode = true'), 'shadow-on build must set __shadowMode = true');
+  assert.ok(html.includes('function dispatchFireToast'), 'dispatchFireToast function not found');
 });
 
 test('operations doc exists and covers required topics', () => {
