@@ -1897,6 +1897,26 @@ const alertBannerHtml = buildAlertBanner();
 
 // ---------- Coiled Springs renderer ----------
 
+// Build-time risk-flag chip helper (Task 14).
+// Reads candidate `details` + `notes` and emits chips for earnings proximity,
+// liquidity (ADV), short float, and merger flags. Matching color band:
+//   red (#e74c3c) — must-not-trade (earnings 0-2d, ADV<200k, merger pending, short>=20%)
+//   yellow (#f1c40f) — caution (earnings 3-7d, ADV<500k)
+function csRiskChipsHtml(c) {
+  const escChip = (s) => String(s || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const chips = [];
+  const details = c.details || {};
+  const daysOut = details.earningsDaysOut;
+  if (daysOut != null && daysOut >= 0 && daysOut <= 2) chips.push({ text: `🚨 earnings ${daysOut}d`, color: '#e74c3c' });
+  else if (daysOut != null && daysOut >= 3 && daysOut <= 7) chips.push({ text: `⚠ earnings ${daysOut}d`, color: '#f1c40f' });
+  const adv = details.averageDailyVolume10Day || details.adv10d;
+  if (adv != null && adv < 200_000) chips.push({ text: `🚨 low vol`, color: '#e74c3c' });
+  else if (adv != null && adv < 500_000) chips.push({ text: `⚠ moderate vol`, color: '#f1c40f' });
+  if (/merger[_ ]pending/i.test(c.notes || '')) chips.push({ text: '🚩 merger', color: '#e74c3c' });
+  if (details.shortFloat != null && details.shortFloat >= 20) chips.push({ text: `⚠ ${details.shortFloat}% short`, color: '#e74c3c' });
+  return chips.map(ch => `<span class="cs-risk-chip" style="background:${ch.color}22;color:${ch.color};padding:2px 7px;border-radius:4px;font-size:10px;margin-right:4px;">${escChip(ch.text)}</span>`).join('');
+}
+
 function renderCoiledSpringCard(c) {
   const esc = (s) => String(s || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
@@ -2033,6 +2053,7 @@ function renderCoiledSpringCard(c) {
     ${redFlagsHtml}
     ${c.play ? `<div class="exp-play">${esc(c.play)}</div>` : ''}
     ${entryHtml}
+    <div class="cs-risk-chips" data-sym="${esc(c.symbol)}">${csRiskChipsHtml(c)}</div>
     ${c.notes ? `<div style="font-size:11px;color:var(--text-dim);margin-bottom:4px;font-style:italic;">${esc(c.notes)}</div>` : ''}
     ${metricsHtml}
     ${newsHtml}
@@ -3017,6 +3038,8 @@ const html = `<!DOCTYPE html>
   .cs-source-banner { display:none; background:rgba(241,196,15,0.18); color:#f1c40f; padding:8px 14px; border-radius:6px; margin-bottom:12px; font-size:14px; }
   .cs-live-price.flash-up { background-color: rgba(46,204,113,0.3); transition: background-color 0.4s; }
   .cs-live-price.flash-down { background-color: rgba(231,76,60,0.3); transition: background-color 0.4s; }
+  .cs-risk-chip { display:inline-block; }
+  .cs-risk-chips { margin-top: 4px; }
 
   /* Breaking News section */
   .news-list { display: flex; flex-direction: column; gap: 2px; }
@@ -3084,6 +3107,12 @@ const html = `<!DOCTYPE html>
 </style>
 </head>
 <body>
+
+<!-- Coiled Spring fire banner (Task 14) — fixed-position floats above all other UI -->
+<div id="cs-fire-banner" style="display:none; position:fixed; top:10px; left:50%; transform:translateX(-50%); background:#e74c3c; color:white; padding:14px 28px; border-radius:8px; font-weight:600; box-shadow:0 4px 16px rgba(0,0,0,0.4); z-index:9999; cursor:pointer; max-width:80%;">
+  <span id="cs-fire-banner-text"></span>
+  <span style="font-size:11px; opacity:0.7; margin-left:14px;">click to dismiss</span>
+</div>
 
 <header>
   <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap;">
@@ -3815,6 +3844,81 @@ document.querySelectorAll('.exp-filter').forEach(btn => {
   es.onerror = () => showBanner('⚠ Live feed disconnected — reconnecting...');
   es.onopen = () => hideBanner();
 })();
+</script>
+
+<!-- ══════ Coiled Spring fire banner + toast dispatcher — Task 14 ══════ -->
+<script>
+window.__onDashboardFire = function (f) {
+  // Banner — always show for any fire event reaching the client (Level 2/3 only get sent)
+  showFireBanner(f);
+  // Toast — Level 2/3 only, gated on permission already granted (Task 15 adds prompt)
+  if (f.fireStrength === 2 || f.fireStrength === 3) {
+    dispatchFireToast(f);
+  }
+};
+
+function showFireBanner(f) {
+  const banner = document.getElementById('cs-fire-banner');
+  const bannerText = document.getElementById('cs-fire-banner-text');
+  if (!banner || !bannerText) return;
+
+  const band = f.riskFlags && f.riskFlags.overallRiskBand;
+  const emoji = band === 'red' ? '🚨' : band === 'yellow' ? '⚠' : '✅';
+  const levelTag = f.fireStrength === 3 ? '🔥 PRIORITY' : f.fireStrength === 2 ? 'CONFIRMED' : 'WATCH';
+
+  // Risk reason summary — concatenate any non-green flag reasons
+  const flags = f.riskFlags || {};
+  const reasons = [];
+  for (const dim of ['earnings','liquidity','spread','newsGap']) {
+    const d = flags[dim];
+    if (d && d.flag !== 'green' && d.reason) reasons.push(d.reason);
+  }
+  const riskSuffix = reasons.length ? ' — ' + reasons.join(', ') : (band === 'green' ? ' — clean setup' : '');
+
+  // Trade plan placeholder hint — degraded source must NOT show plan info
+  let planSuffix = '';
+  const tp = f.tradePlan;
+  if (tp) {
+    if (tp.planReason === 'degraded_source_no_plan') {
+      planSuffix = ' (degraded source — verify before acting)';
+    } else if (tp.planGenerated === false) {
+      planSuffix = ' • Trade plan: pending implementation';
+    }
+  }
+
+  banner.style.background = band === 'red' ? '#c0392b' : band === 'yellow' ? '#d68910' : '#229954';
+  bannerText.innerHTML = emoji + ' <b>' + (f.ticker || '?') + '</b> ' + levelTag +
+    ' fired @ $' + (f.price && f.price.firedPrice != null ? Number(f.price.firedPrice).toFixed(2) : '—') +
+    ' (trigger $' + (f.trigger && f.trigger.level != null ? Number(f.trigger.level).toFixed(2) : '—') + ')' +
+    riskSuffix + planSuffix;
+  banner.style.display = 'block';
+  banner.onclick = () => { banner.style.display = 'none'; };
+  // Auto-fade after 60s
+  if (banner._fadeTimer) clearTimeout(banner._fadeTimer);
+  banner._fadeTimer = setTimeout(() => { banner.style.display = 'none'; }, 60_000);
+}
+
+function dispatchFireToast(f) {
+  if (!('Notification' in window)) return;
+  if (Notification.permission !== 'granted') return;
+
+  const band = f.riskFlags && f.riskFlags.overallRiskBand;
+  const titleEmoji = band === 'red' ? '🚨' : band === 'yellow' ? '⚠' : '✅';
+  const levelTag = f.fireStrength === 3 ? '🔥 PRIORITY' : 'CONFIRMED';
+
+  const body = band === 'red' ? 'Red-flag fire — read context before acting'
+             : band === 'yellow' ? 'Yellow-flag fire — check risk before acting'
+             : 'Clean setup — review chart';
+
+  try {
+    new Notification(titleEmoji + ' ' + (f.ticker || '?') + ' ' + levelTag + ' @ $' + (f.price && f.price.firedPrice != null ? Number(f.price.firedPrice).toFixed(2) : '—'), {
+      body: 'Trigger $' + (f.trigger && f.trigger.level != null ? Number(f.trigger.level).toFixed(2) : '—') + ' • ' + (f.setup && f.setup.confidence ? f.setup.confidence : '?') + ' confidence • ' + (f.setup && f.setup.setupType ? f.setup.setupType : '?') + '\\n' + body,
+      tag: 'cs-fire-' + (f.ticker || '?') + '-' + (f.pollSequence || Date.now()),
+    });
+  } catch (e) {
+    console.warn('Notification dispatch failed:', e);
+  }
+}
 </script>
 
 </body>
