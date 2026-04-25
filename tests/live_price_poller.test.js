@@ -190,12 +190,18 @@ test('fire event includes tradePlan placeholder with planGenerated=false', async
   });
   await poller.tick(); await poller.tick(); await poller.tick();
   assert.strictEqual(fires.length, 1);
-  assert.ok(fires[0].tradePlan, 'tradePlan must be present');
-  assert.strictEqual(fires[0].tradePlan.planGenerated, false);
-  assert.strictEqual(fires[0].tradePlan.planReason, 'not_yet_implemented');
-  assert.strictEqual(fires[0].tradePlan.stock, null);
-  assert.strictEqual(fires[0].tradePlan.options, null);
-  assert.strictEqual(fires[0].tradePlan.finalRecommendation, null);
+  const tp = fires[0].tradePlan;
+  assert.ok(tp, 'tradePlan must be present');
+  // New strict shape: stock and options are always objects (never null)
+  assert.ok(tp.stock && typeof tp.stock === 'object');
+  assert.ok(tp.options && typeof tp.options === 'object');
+  // No real plan yet → all decision-bearing fields are null
+  assert.strictEqual(tp.stock.decision, null);
+  assert.strictEqual(tp.options.decision, null);
+  assert.strictEqual(tp.finalDecision, null);
+  // planReason populated with a human-readable string
+  assert.strictEqual(typeof tp.planReason, 'string');
+  assert.ok(tp.planReason.length > 0);
 });
 
 test('tradePlan.planReason reflects degraded source when chain was in fallback', async () => {
@@ -209,8 +215,13 @@ test('tradePlan.planReason reflects degraded source when chain was in fallback',
     chain, onFire: (e) => fires.push(e), onError: () => {}, isMarketOpen: () => true,
   });
   await poller.tick(); await poller.tick(); await poller.tick();
-  assert.strictEqual(fires[0].tradePlan.planReason, 'degraded_source_no_plan');
-  assert.strictEqual(fires[0].tradePlan.stock, null);
+  const tp = fires[0].tradePlan;
+  assert.ok(tp.planReason.toLowerCase().includes('degraded'), `planReason should explain degradation, got: ${tp.planReason}`);
+  assert.ok(tp.planReason.includes('tv_cdp'), 'planReason should name the active source');
+  // All decision fields still null since no plan generated
+  assert.strictEqual(tp.stock.decision, null);
+  assert.strictEqual(tp.options.decision, null);
+  assert.strictEqual(tp.finalDecision, null);
 });
 
 test('tradePlan contract shape is stable: expected keys present even as placeholders', async () => {
@@ -222,9 +233,16 @@ test('tradePlan contract shape is stable: expected keys present even as placehol
   });
   await poller.tick(); await poller.tick(); await poller.tick();
   const tp = fires[0].tradePlan;
-  assert.ok('planGenerated' in tp);
-  assert.ok('planReason' in tp);
-  assert.ok('stock' in tp);
-  assert.ok('options' in tp);
-  assert.ok('finalRecommendation' in tp);
+  // Top-level keys
+  for (const k of ['stock', 'options', 'finalDecision', 'planReason']) {
+    assert.ok(k in tp, `tradePlan must have key: ${k}`);
+  }
+  // Stock sub-keys
+  for (const k of ['entryPrice', 'stopLoss', 'takeProfit1', 'takeProfit2', 'takeProfit3', 'riskPerShare', 'rewardPotential', 'riskRewardRatio', 'decision']) {
+    assert.ok(k in tp.stock, `tradePlan.stock must have key: ${k}`);
+  }
+  // Options sub-keys
+  for (const k of ['strategy', 'strike', 'expiration', 'premium', 'breakEven', 'probabilityOfTouch', 'capitalRequired', 'decision']) {
+    assert.ok(k in tp.options, `tradePlan.options must have key: ${k}`);
+  }
 });

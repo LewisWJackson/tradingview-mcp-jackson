@@ -3886,10 +3886,16 @@ function showFireBanner(f) {
   let planSuffix = '';
   const tp = f.tradePlan;
   if (tp) {
-    if (tp.planReason === 'degraded_source_no_plan') {
-      planSuffix = ' (degraded source — verify before acting)';
-    } else if (tp.planGenerated === false) {
-      planSuffix = ' • Trade plan: pending implementation';
+    // The schema always emits stock/options/finalDecision as fully-typed objects
+    // with null values until generation logic lands. Show planReason verbatim
+    // when no plan is populated yet; show finalDecision when one is.
+    const hasPlan = tp.finalDecision != null
+      || (tp.stock && tp.stock.decision != null)
+      || (tp.options && tp.options.decision != null);
+    if (!hasPlan && tp.planReason) {
+      planSuffix = ' • ' + tp.planReason;
+    } else if (hasPlan && tp.finalDecision) {
+      planSuffix = ' • Plan: ' + tp.finalDecision;
     }
   }
 

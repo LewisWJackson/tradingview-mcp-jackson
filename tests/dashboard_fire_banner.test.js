@@ -51,13 +51,19 @@ test('toast dispatcher only fires for Level 2 and Level 3', () => {
 
 test('banner shows degraded-source warning when tradePlan.planReason indicates degraded', () => {
   const html = fs.readFileSync(OUTPUT, 'utf8');
-  assert.ok(html.includes('degraded_source_no_plan'), 'degraded source case not handled');
-  assert.ok(html.includes('verify before acting'), 'degraded warning text not found');
+  // The new schema emits planReason as a free-form string. The banner reads it verbatim,
+  // so we check the dashboard JS reads `tp.planReason` and that the dispatcher branches on
+  // whether a real plan exists.
+  assert.ok(html.includes('tp.planReason'), 'banner JS must read tp.planReason');
+  assert.ok(html.includes('hasPlan'), 'banner JS must distinguish plan-vs-placeholder via hasPlan check');
 });
 
 test('banner shows trade-plan placeholder for Level 2/3 with planGenerated=false', () => {
   const html = fs.readFileSync(OUTPUT, 'utf8');
-  assert.ok(html.includes('Trade plan: pending implementation'), 'trade plan placeholder not found');
+  // The placeholder is whatever planReason the poller emitted, displayed verbatim with " • " prefix.
+  // The dashboard checks decision fields on stock/options/finalDecision to detect a real plan.
+  assert.ok(html.includes('tp.finalDecision'), 'banner JS must read tp.finalDecision');
+  assert.ok(html.includes('tp.stock') && html.includes('tp.options'), 'banner JS must check stock + options sub-decisions');
 });
 
 test('risk chips render for build-time candidates', () => {

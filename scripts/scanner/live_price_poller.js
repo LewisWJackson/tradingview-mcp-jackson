@@ -112,13 +112,40 @@ export function createLivePoller({
       });
 
       if (result.fired) {
-        // Trade-plan placeholder contract (§15). Logic lands post-ship; for now we
-        // ship the field shape so downstream consumers (Server/UI) can render a
-        // "pending" chip without a future schema change. planReason flags whether
-        // the chain was degraded at fire time so the UI can suppress the section.
+        // Trade-plan contract (§15). Schema is locked and always-present; values are
+        // null until generation logic lands post-ship. planReason is a human-readable
+        // string explaining why no real plan exists, or null when one is populated.
         const chainDegraded = fetchResult.degraded === true
           || (fetchResult.activeSource && fetchResult.activeSource !== 'yahoo');
-        const planReason = chainDegraded ? 'degraded_source_no_plan' : 'not_yet_implemented';
+        const planReason = chainDegraded
+          ? `Degraded quote source (${fetchResult.activeSource || 'unknown'}) — no trade plan generated. Verify on broker before acting.`
+          : 'Trade plan generation logic not yet implemented (schema reserved).';
+
+        const tradePlan = {
+          stock: {
+            entryPrice: null,
+            stopLoss: null,
+            takeProfit1: null,
+            takeProfit2: null,
+            takeProfit3: null,
+            riskPerShare: null,
+            rewardPotential: null,
+            riskRewardRatio: null,
+            decision: null,
+          },
+          options: {
+            strategy: null,
+            strike: null,
+            expiration: null,
+            premium: null,
+            breakEven: null,
+            probabilityOfTouch: null,
+            capitalRequired: null,
+            decision: null,
+          },
+          finalDecision: null,
+          planReason,
+        };
 
         const event = {
           ticker: cand.symbol,
@@ -171,13 +198,7 @@ export function createLivePoller({
             degraded: fetchResult.degraded,
             sourceAttempts: fetchResult.sourceAttempts,
           },
-          tradePlan: {
-            planGenerated: false,
-            planReason,
-            stock: null,
-            options: null,
-            finalRecommendation: null,
-          },
+          tradePlan,
           pollSequence,
           timestamp: now.toISOString(),
         };

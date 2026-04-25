@@ -557,50 +557,74 @@ After shadow mode, before enabling toasts:
 
 ## 15. Trade recommendation contract (future-facing)
 
-Fire events at Level 2 or 3 carry a `tradePlan` field so the Server/UI can render structured trade guidance. The **contract is shipped now**; the **logic lands later**. This lets us swap in generation logic without schema churn downstream.
+Fire events at Level 2 or 3 carry a strict, fully-typed `tradePlan` field so the Server/UI can render structured trade guidance now and populate values once generation logic lands. **Schema is locked**, not the values.
 
-### Fields
+### Schema
 
-`tradePlan.planGenerated` — `boolean`. `false` until generation logic is implemented. UI shows a "trade plan coming" chip when `false`.
-
-`tradePlan.planReason` — why the plan is a placeholder:
-- `not_yet_implemented` — Level 2/3 fire on fresh data; awaiting generation logic
-- `degraded_source_no_plan` — chain was in fallback/stale mode at fire time; no plan until primary source recovers
-- `stale_data_no_plan` — defensive guard; should never be reached because stale data cannot fire
-- `level_1_watch_only` — reserved for future Level-1 onTick enrichment
-
-`tradePlan.stock` — `null` until implemented. Shape once populated:
 ```
-{ entryPrice, stopLoss, takeProfit1, takeProfit2, takeProfit3, riskPerShare, reward, rr, decision: 'ENTER'|'WATCH'|'AVOID' }
+tradePlan: {
+  stock: {
+    entryPrice: number | null,
+    stopLoss: number | null,
+    takeProfit1: number | null,
+    takeProfit2: number | null,
+    takeProfit3: number | null,
+    riskPerShare: number | null,
+    rewardPotential: number | null,
+    riskRewardRatio: number | null,
+    decision: 'ENTER' | 'WATCH' | 'AVOID' | null,
+  },
+  options: {
+    strategy: 'CSP' | null,
+    strike: number | null,
+    expiration: string | null,
+    premium: number | null,
+    breakEven: number | null,
+    probabilityOfTouch: number | null,
+    capitalRequired: number | null,
+    decision: 'ENTER' | 'WATCH' | 'AVOID' | null,
+  },
+  finalDecision: 'STOCK_ONLY' | 'CSP_ONLY' | 'BOTH' | 'AVOID' | null,
+  planReason: string | null,
+}
 ```
 
-`tradePlan.options` — `null` until implemented. Shape once populated:
-```
-{ strategy: 'CSP', action: 'SELL_OPEN', strike, expiration, premiumEstimate, breakEven, probabilityOfTouch, capitalRequired, decision }
+**Always-present invariant:** `stock` and `options` are objects with all listed keys. They are never `null`. Until real generation logic lands, every field within them is `null`.
+
+**`planReason`:**
+- Populated with a human-readable string when no plan exists (e.g. `"Trade plan generation logic not yet implemented"` or `"Degraded quote source (tv_cdp) — no trade plan generated. Verify on broker before acting."`)
+- `null` when at least one decision field (`stock.decision`, `options.decision`, or `finalDecision`) is populated
+
+### Plan-vs-placeholder detection
+
+Consumers (UI, audit log readers) detect whether a real plan exists by checking:
+
+```js
+const hasPlan = tp.finalDecision != null
+  || tp.stock.decision != null
+  || tp.options.decision != null;
 ```
 
-`tradePlan.finalRecommendation` — `null` until implemented. Shape:
-```
-{ type: 'STOCK_ONLY' | 'CSP_ONLY' | 'BOTH' | 'AVOID', rationale }
-```
-
-### Level semantics
-
-| Fire level | tradePlan emitted? | Notes |
-|---|---|---|
-| 1 (WATCH) | No fire event — no tradePlan | Reserved onTick enrichment for future |
-| 2 (CONFIRMED) | Yes, placeholder | Stock plan + CSP plan + final recommendation expected once logic lands |
-| 3 (HIGH CONVICTION) | Yes, placeholder + priority | Same fields as Level 2, but UI may emphasize |
+When `hasPlan === false`, render `planReason` verbatim. When `true`, render the populated fields.
 
 ### Stale/degraded data guardrails
 
-- Stale data never fires (§12.4), so `stale_data_no_plan` is defensive-only
-- Degraded-source fires (e.g., served from TV CDP after Yahoo rate-limit) emit `planReason: 'degraded_source_no_plan'` — the UI should suppress the trade-plan section entirely until the chain returns to primary
+- Stale data never fires (§12.4), so a degraded fire never carries a real plan
+- When `chainDegraded === true`, the poller sets `planReason` to a human-readable explanation that includes the active source name (e.g. `tv_cdp`)
+- When real generation logic lands, it MUST set all decision fields to `null` and populate `planReason` with the degradation reason if the chain was degraded — never generate a plan from non-primary data
+
+### Level semantics (unchanged)
+
+| Fire level | tradePlan emitted? | Notes |
+|---|---|---|
+| 1 (WATCH) | No fire event — no tradePlan | Reserved for future onTick enrichment |
+| 2 (CONFIRMED) | Yes, schema-locked, decisions null until logic lands | Standard alert |
+| 3 (HIGH CONVICTION) | Yes, same shape | Priority alert; UI may emphasize |
 
 ### UI integration (Phase D-G consumers)
 
-- Phase D (current) — render `tradePlan` block with a "pending — logic coming" placeholder when `planGenerated === false`
-- Post-ship iteration — implement `src/lib/trade_planner.js` that consumes `{quote, candidate, riskFlags, fireStrength}` and populates the three sub-plans; flip `planGenerated = true`. No schema change at the event level.
+- Phase D (current) — banner reads `planReason` verbatim when no plan, shows `finalDecision` when present
+- Post-ship iteration — implement `src/lib/trade_planner.js` consuming `{quote, candidate, riskFlags, fireStrength}` and populating decision fields. Schema does not change.
 
 ---
 
