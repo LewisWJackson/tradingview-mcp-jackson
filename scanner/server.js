@@ -17,6 +17,7 @@ import { scheduler } from './lib/scheduler.js';
 import { getHaltState, engageHalt, releaseHalt, refreshHaltState } from './lib/halt-state.js';
 import { cancelAllAndFlatten } from './lib/okx-dispatcher.js';
 import { getParserAlarmStats } from './lib/parser-validator.js';
+import { getWrapperMode, setWrapperMode } from './lib/learning/wrapper-mode.js';
 import { scanShortTerm, scanLongTerm, batchScan, customScan, isScanActive, getLockHolder, drainLockQueue, acquireScanLock, releaseScanLock } from './lib/scanner-engine.js';
 import { runBacktest, getAvailableStrategies } from './lib/backtest.js';
 import { getMacroState, formatMacroSummary, setMacroLockFunctions } from './lib/macro-filter.js';
@@ -102,6 +103,34 @@ app.get('/api/parser-alarms', (_req, res) => {
 // Severity: ok = mesaj akiyor, warning = >30sn idle, critical = >60sn veya disconnected
 app.get('/api/feed-health', (_req, res) => {
   res.json({ success: true, ...getFeedHealth() });
+});
+
+// Faz 2 — Wrapper mode (rejim-aware sinyal wrapper'i shadow/live geçişi)
+// Default: shadow (signal'ler üretilir + log'lanır ama dispatch yok)
+// 24 saat shadow log incelendikten sonra operator live'a geçer.
+app.get('/api/wrapper/mode', (_req, res) => {
+  res.json({ success: true, ...getWrapperMode() });
+});
+
+app.post('/api/wrapper/mode', (req, res) => {
+  const { mode, by, reason = 'manual_change', confirm } = req.body || {};
+  if (!by || !mode) {
+    return res.status(400).json({ success: false, error: '`mode` ve `by` gerekli' });
+  }
+  // Live'a geçiş için onay zorunlu (shadow log incelenmeden açılmasın diye)
+  if (mode === 'live' && confirm !== 'I_REVIEWED_SHADOW_LOG') {
+    return res.status(400).json({
+      success: false,
+      error: 'live moduna geçiş için confirm: "I_REVIEWED_SHADOW_LOG" zorunlu (24h shadow log review garantisi)',
+    });
+  }
+  try {
+    const state = setWrapperMode({ mode, by, reason });
+    broadcastWS({ type: 'wrapper_mode_changed', mode: state.mode, by, reason });
+    res.json({ success: true, ...state });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
 });
 
 app.get('/api/scheduler/status', (req, res) => {

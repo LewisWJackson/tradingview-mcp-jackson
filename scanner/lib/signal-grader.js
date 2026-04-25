@@ -10,6 +10,8 @@ import { getVolatilityRegime, computeEffectiveSLMultiplier, getCategorySLBoost, 
 import { loadWeights } from './learning/weight-adjuster.js';
 import { isDegradedMode } from './learning/anomaly-detector.js';
 import { pickRegimeWeights } from './learning/regime-detector.js';
+// Faz 2 Commit 2 — rejim-aware wrapper (shadow mode default)
+import { applyRegimeStrategy } from './learning/regime-strategy.js';
 import { resolveLeague } from './learning/ladder-engine.js';
 import { checkBlackout } from './blackout.js';
 import { checkSessionFilter } from './session-filter.js';
@@ -751,6 +753,11 @@ function tallyVotes(votes) {
 export function gradeShortTermSignal({
   khanSaab, smc, studyValues, ohlcv, formation, squeeze, divergence, cdv, stochRSI, macroFilter, symbol, timeframe,
   quotePrice, parsedBoxes, khanSaabLabels, regime, smcSRLines,
+  // Faz 2 Commit 2 — rejim-aware wrapper parametreleri (default null, geri uyumlu)
+  regimeContext = null,
+  marketType = null,
+  htfConfidence = null,
+  mtfAlignment = null,
 }) {
   const result = {
     symbol, timeframe,
@@ -1424,6 +1431,52 @@ export function gradeShortTermSignal({
       result.grade = 'IPTAL';
       const rrNum = (reward / risk).toFixed(2);
       result.reasoning.push(`--- SERT BLOK IPTAL: R:R 1:${rrNum} < 1:${minRR} minimum — pozisyon acilmaz`);
+    }
+  }
+
+  // ====================================================================
+  // Faz 2 Commit 2 — Rejim-Aware Wrapper
+  // computeRegime sonucu varsa rejim-aware oylar + REGIME_GATES kontrolü.
+  // Default shadow mode (dispatch yok); 24 saat sonra operator /api/wrapper/mode
+  // ile live'a geçer. Sinyal akışına dokunma — wrapper sadece grade'i degiştirir
+  // (BEKLE'ye düşürebilir), audit log JSONL'e yazılır.
+  // ====================================================================
+  if (regimeContext && result.grade && result.grade !== 'IPTAL' && result.direction) {
+    try {
+      const wrapperResult = applyRegimeStrategy({
+        regimeContext,
+        votes: Array.isArray(result.votes) ? result.votes : [],
+        signalDraft: {
+          direction: result.direction,
+          grade: result.grade,
+          entry: result.entry,
+          sl: result.sl,
+        },
+        symbol, timeframe, marketType,
+        htfConfidence, mtfAlignment,
+      });
+      result.regimeWrapper = {
+        decision: wrapperResult.decision,
+        rejected: wrapperResult.rejected,
+        suppressedVotes: wrapperResult.suppressedVotes,
+        boostedVotes: wrapperResult.boostedVotes,
+        gateApplied: wrapperResult.gateApplied,
+        slMultiplier: wrapperResult.slMultiplier,
+        tpProfile: wrapperResult.tpProfile,
+        shadowMode: wrapperResult.shadowMode,
+        wouldDispatch: wrapperResult.wouldDispatch,
+      };
+      if (wrapperResult.rejected) {
+        const prevGrade = result.grade;
+        result.grade = 'BEKLE';
+        result.reasoning.push(`[Faz 2 wrapper] ${wrapperResult.decision} — rejim ${regimeContext.regime}; eski grade ${prevGrade} → BEKLE${wrapperResult.shadowMode ? ' (shadow mode)' : ''}`);
+        if (wrapperResult.notes && wrapperResult.notes.length) {
+          for (const n of wrapperResult.notes) result.reasoning.push(`  ${n}`);
+        }
+      }
+    } catch (wrapperErr) {
+      // Shadow safety: wrapper patladigında ana akis bozulmamali
+      result.warnings.push(`[Faz 2 wrapper] hata: ${wrapperErr?.message || wrapperErr}`);
     }
   }
 

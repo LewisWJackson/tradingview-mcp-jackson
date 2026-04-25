@@ -167,14 +167,17 @@ export const REGIME_SL_MULT = {
  *   - 'formation_bullish', 'formation_bearish'  → formasyon ailesi
  *   - 'htf_trend_aligned', 'htf_trend_conflict'  → HTF ailesi
  */
+// Gerçek signal-grader.js vote source key'leri (line 243-468).
+// applyRegimeStrategy hem vote.indicator hem vote.source alanını okuyabilir.
 export const VOTE_FAMILIES = {
-  momentum:        ['macd_trend', 'ema_cross', 'adx_strong', 'volume_high', 'macd_main', 'macd_signal', 'trend_strength'],
-  mean_reversion:  ['rsi_oversold', 'rsi_overbought', 'bb_touch_lower', 'bb_touch_upper', 'rsi_divergence_bullish', 'rsi_divergence_bearish', 'discount_zone', 'premium_zone'],
-  smc_structural:  ['smc_bos_bullish', 'smc_bos_bearish', 'smc_choch_bullish', 'smc_choch_bearish'],
-  smc_levels:      ['orderblock_bounce', 'fvg_fill', 'liquidity_sweep'],
-  formation:       ['formation_bullish', 'formation_bearish'],
-  htf:             ['htf_trend_aligned', 'htf_trend_conflict'],
-  cdv:             ['cdv_buy', 'cdv_sell', 'cdv_strong_buy', 'cdv_strong_sell'],
+  momentum:        ['macd', 'ema_cross', 'adx_trend', 'vwap_position', 'volume', 'trend_str', 'squeeze_filter'],
+  mean_reversion:  ['rsi_level', 'rsi_divergence', 'stoch_rsi', 'discount', 'premium', 'bb_touch'],
+  smc_structural:  ['smc_bos', 'smc_choch'],
+  smc_levels:      ['smc_ob', 'smc_fvg', 'liquidity'],
+  formation:       ['formation', 'pattern'],
+  htf:             ['macro_filter', 'htf_trend', 'htf_align', 'sr_penalty'],
+  cdv:             ['cdv'],
+  meta:            ['hv_penalty', 'mum', 'candle'],  // mum formasyonu = nötr bilgi
 };
 
 /**
@@ -186,13 +189,13 @@ export const VOTE_FAMILIES = {
  * hâlâ değerli olabilir), mean-reversion 1.5'e çıkıyor.
  */
 export const REGIME_VOTE_WEIGHTS = {
-  trending_up:      { momentum: 1.0, mean_reversion: 0.5, smc_structural: 1.0, smc_levels: 1.2, formation: 1.0, htf: 1.0, cdv: 1.0 },
-  trending_down:    { momentum: 1.0, mean_reversion: 0.5, smc_structural: 1.0, smc_levels: 1.2, formation: 1.0, htf: 1.0, cdv: 1.0 },
-  ranging:          { momentum: 0.3, mean_reversion: 1.5, smc_structural: 1.0, smc_levels: 1.2, formation: 0.8, htf: 0.7, cdv: 1.0 },
-  breakout_pending: { momentum: 0.7, mean_reversion: 0.3, smc_structural: 1.0, smc_levels: 1.0, formation: 1.2, htf: 1.0, cdv: 1.0 },
-  high_vol_chaos:   { momentum: 0,   mean_reversion: 0,   smc_structural: 0,   smc_levels: 0,   formation: 0,   htf: 0,   cdv: 0   },
-  low_vol_drift:    { momentum: 0,   mean_reversion: 0,   smc_structural: 0,   smc_levels: 0,   formation: 0,   htf: 0,   cdv: 0   },
-  market_closed:    { momentum: 0,   mean_reversion: 0,   smc_structural: 0,   smc_levels: 0,   formation: 0,   htf: 0,   cdv: 0   },
+  trending_up:      { momentum: 1.0, mean_reversion: 0.5, smc_structural: 1.0, smc_levels: 1.2, formation: 1.0, htf: 1.0, cdv: 1.0, meta: 1.0 },
+  trending_down:    { momentum: 1.0, mean_reversion: 0.5, smc_structural: 1.0, smc_levels: 1.2, formation: 1.0, htf: 1.0, cdv: 1.0, meta: 1.0 },
+  ranging:          { momentum: 0.3, mean_reversion: 1.5, smc_structural: 1.0, smc_levels: 1.2, formation: 0.8, htf: 0.7, cdv: 1.0, meta: 1.0 },
+  breakout_pending: { momentum: 0.7, mean_reversion: 0.3, smc_structural: 1.0, smc_levels: 1.0, formation: 1.2, htf: 1.0, cdv: 1.0, meta: 1.0 },
+  high_vol_chaos:   { momentum: 0,   mean_reversion: 0,   smc_structural: 0,   smc_levels: 0,   formation: 0,   htf: 0,   cdv: 0,   meta: 0 },
+  low_vol_drift:    { momentum: 0,   mean_reversion: 0,   smc_structural: 0,   smc_levels: 0,   formation: 0,   htf: 0,   cdv: 0,   meta: 0 },
+  market_closed:    { momentum: 0,   mean_reversion: 0,   smc_structural: 0,   smc_levels: 0,   formation: 0,   htf: 0,   cdv: 0,   meta: 0 },
 };
 
 /** indicatorKey → vote family lookup. */

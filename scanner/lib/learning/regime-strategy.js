@@ -55,11 +55,14 @@ export function suppressVotes(votes, regime) {
   const suppressedKeys = [];
   const boostedKeys = [];
   const adjusted = votes.map(v => {
-    const family = familyOf(v.indicator);
+    // signal-grader.js vote.source kullanır; harici callerlar vote.indicator
+    // kullanabilir → ikisini de destekle.
+    const key = v.indicator || v.source || null;
+    const family = familyOf(key);
     const mult = (family && weights[family] != null) ? weights[family] : 1.0;
     const newWeight = (v.weight ?? 1) * mult;
-    if (mult === 0) suppressedKeys.push(v.indicator);
-    else if (mult >= 1.3) boostedKeys.push(v.indicator);
+    if (mult === 0 && key) suppressedKeys.push(key);
+    else if (mult >= 1.3 && key) boostedKeys.push(key);
     return { ...v, weight: newWeight, _origWeight: v.weight ?? 1, _family: family, _mult: mult };
   });
   return { adjusted, suppressedKeys, boostedKeys };

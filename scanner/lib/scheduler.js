@@ -20,6 +20,7 @@ import { batchScan } from './scanner-engine.js';
 import { ensureConnection } from './tv-bridge.js';
 import { dispatchToOkxExecutor as dispatchToOkxExecutorShared } from './okx-dispatcher.js';
 import { isHalted, getHaltState } from './halt-state.js';
+import { isLive as isWrapperLive, getWrapperMode } from './learning/wrapper-mode.js';
 import {
   ALL_CATEGORIES,
   openMarkets,
@@ -68,6 +69,12 @@ function dispatchToOkxExecutor(signal) {
   if (!['A', 'B', 'C'].includes(signal.grade)) return;
   // Ladder filtresi: yalnizca league='real' sinyaller executor'a gider.
   if (signal.league && signal.league !== 'real') return;
+  // Faz 2 wrapper shadow mode: dispatch yok (operator /api/wrapper/mode ile live'a geçer)
+  if (!isWrapperLive()) {
+    const m = getWrapperMode();
+    console.log(`[scheduler] dispatch SHADOW MODE (${m.mode}) → ${signal.symbol}/${signal.timeframe} ${signal.grade} log'landı, executor'a gönderilmedi`);
+    return;
+  }
 
   const payload = {
     symbol_tv: signal.symbol,

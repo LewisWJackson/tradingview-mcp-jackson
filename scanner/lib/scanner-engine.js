@@ -558,15 +558,19 @@ async function _scanShortTermInner(symbol, options = {}) {
     const regime = regimeResult?.regime || 'neutral';
 
     // ====================================================================
-    // SHADOW MODE — Faz 1 İter 2 (Risk #4 azaltma)
-    // computeRegime() yeni 6-rejim taxonomisini hesaplar ve JSONL'e logger.
-    // Sinyal pipeline'ina HİÇBİR ETKİSİ YOK; try-catch içinde, hata olursa
-    // sadece warning log basar, ana akış devam eder.
+    // computeRegime() — Faz 1 shadow logger + Faz 2 wrapper kaynagı.
+    // Sonuc:
+    //   1. JSONL'e log dusurulur (Faz 1 ara rapor icin)
+    //   2. regimeContext olarak gradeShortTermSignal'a verilir (Faz 2 wrapper)
+    // Hata olursa shadowComputeOk=false, ana akis null regimeContext ile
+    // devam eder (eski davranis korunur).
     // ====================================================================
+    let shadowResult = null;
+    let shadowMarketType = null;
     try {
       const studyValuesForRegime = {
         adx: adxForRegime,
-        adxSlope: 0,  // tek skalar — slope için tarih lazım, İter 3'te eklenecek
+        adxSlope: 0,
         ema20: Number(data.studyValues?.ema20) || null,
         bbUpper: Number(data.studyValues?.bbUpper) || null,
         bbLower: Number(data.studyValues?.bbLower) || null,
@@ -579,25 +583,34 @@ async function _scanShortTermInner(symbol, options = {}) {
         usdtry_bist_rho_5d: macroState?.usdtry_bist_rho_5d ?? null,
         usdtry_return_1d: macroState?.usdtry_return_1d ?? null,
       };
-      const marketType = _shadowCategoryToMarketType(category);
-      const shadowResult = _shadowComputeRegime({
-        symbol, timeframe: String(tf), marketType,
+      shadowMarketType = _shadowCategoryToMarketType(category);
+      shadowResult = _shadowComputeRegime({
+        symbol, timeframe: String(tf), marketType: shadowMarketType,
         ohlcv: Array.isArray(data.ohlcv) ? data.ohlcv : [],
         studyValues: studyValuesForRegime,
         macro: macroForRegime,
-        chaosWindows: {},  // İter 3'te config/chaos-windows.json'dan yüklenecek
+        chaosWindows: {},
         events: [],
-        session: null,     // İter 3'te market-hours.js'ten beslenecek
+        session: null,
         now: Date.now(),
       });
       _shadowLogRegime({
-        symbol, timeframe: String(tf), marketType,
+        symbol, timeframe: String(tf), marketType: shadowMarketType,
         result: shadowResult, now: Date.now(),
       });
     } catch (shadowErr) {
-      // Shadow mode birinci kuralı: ana akışı asla bozma.
+      shadowResult = null;
       console.warn(`[shadow-regime] ${symbol}/${tf} hesaplama/log hatasi: ${shadowErr?.message || shadowErr}`);
     }
+
+    // Faz 2 wrapper icin regimeContext sozlesmesi
+    const regimeContextForGrader = shadowResult ? {
+      regime: shadowResult.regime,
+      subRegime: shadowResult.subRegime,
+      strategyHint: shadowResult.strategyHint,
+      confidence: shadowResult.confidence,
+      newPositionAllowed: shadowResult.newPositionAllowed,
+    } : null;
 
     const signal = gradeShortTermSignal({
       khanSaab: data.khanSaab,
@@ -618,6 +631,12 @@ async function _scanShortTermInner(symbol, options = {}) {
       smcSRLines: data.smcSRLines,
       khanSaabLabels: data.khanSaabLabels,
       regime,
+      // Faz 2 Commit 3 — wrapper'a regimeContext + marketType geçir
+      regimeContext: regimeContextForGrader,
+      marketType: shadowMarketType,
+      htfConfidence: higherTFTrend?.confidence ?? null,
+      // mtfAlignment Faz 2 Commit 4'te alignment-filters'tan beslenecek; şimdilik null
+      mtfAlignment: null,
     });
     signal.regime = regime;
 
