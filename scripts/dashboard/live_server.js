@@ -231,7 +231,15 @@ const stateStore = createStateStore({ filePath: POLLER_STATE_PATH });
 const livePoller = createLivePoller({
   getCandidates: () => readCandidates(SCANNER_RESULTS),
   chain: quoteChain,
+  // When MARKET_OPEN_OVERRIDE=1 (test-only), Yahoo returns the last regular-session
+  // close timestamp, so quoteAgeMs would be hours/days and the stale guard would
+  // suppress every fire. Bump the stale threshold to effectively infinite for tests.
+  detectorOptions: process.env.MARKET_OPEN_OVERRIDE === '1'
+    ? { staleQuoteMaxAgeMs: Number.MAX_SAFE_INTEGER }
+    : undefined,
   isMarketOpen: () => {
+    // Test-only override: lets tests force the poller to run regardless of clock.
+    if (process.env.MARKET_OPEN_OVERRIDE === '1') return true;
     const m = getMarketMode();
     return m.mode === 'REGULAR' || m.mode === 'PRE_WARM' || m.mode === 'CLOSE_CAPTURE';
   },
