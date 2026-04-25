@@ -60,9 +60,37 @@ The poller respects NYSE hours via `data/nyse_calendar.json`:
 
 PAUSED reasons surfaced: `weekend`, `holiday` (with `holiday: '<name>'`), `early_close`, `outside_hours`.
 
-## Autostart (Task 17)
+## Autostart on logon
 
-After Task 17 ships, you'll be able to register the server as a Windows scheduled task that auto-starts at logon. See `scripts/setup_autostart.ps1` once it lands.
+Register the live server as a Windows scheduled task so it boots automatically each time you log in:
+
+```powershell
+./scripts/setup_autostart.ps1
+```
+
+This adds a task named **"TradingView Live Dashboard"** that:
+
+- Triggers at logon of the current user
+- Runs `node scripts/dashboard/live_server.js` in a minimized window
+- Restarts up to 3 times if the process crashes (1-minute interval)
+- Has unlimited execution time
+- Logs combined stdout/stderr to `data/live_server.log`
+
+To verify after registering:
+
+```powershell
+Get-ScheduledTask -TaskName 'TradingView Live Dashboard' | Format-List
+```
+
+To remove:
+
+```powershell
+./scripts/setup_autostart.ps1 -Remove
+```
+
+The script runs as your normal user (not Administrator), creates an interactive task, and is idempotent — running it again replaces any existing task with the same name.
+
+**Shadow mode + autostart:** to run the autostarted server in shadow mode, edit the registered task's argument list and add `set SHADOW_MODE=1 &&` before the node invocation, OR re-register after exporting the variable persistently. (A `-ShadowMode` flag on the script is a future enhancement.)
 
 ## Reviewing a day's fires
 
