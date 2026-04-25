@@ -1,0 +1,36 @@
+{
+  "_meta": {
+    "version": "1.0",
+    "created": "2026-04-25",
+    "source": "docs/regime-taxonomy.md §7 baslangic tahminleri",
+    "calibration": "Faz 1 sonu (1 hafta shadow) ara raporu ile guncellenir; sonra 4 haftada bir",
+    "format": {
+      "start_offset_min": "Olay aninin (ev.at) chaos penceresi baslangicina gore offsetti (negatif = oncesi)",
+      "duration_min": "Pencere suresi (dakika); typical = ortalama beklenti, max = en kotu durum"
+    }
+  },
+
+  "crypto_liquidation_cascade": {
+    "min_minutes": 30,
+    "typical": 90,
+    "max": 1440,
+    "duration_min": 90,
+    "start_offset_min": 0,
+    "trigger": "Funding rate spike VEYA 24h |return| > %8 — runtime tespit"
+  },
+
+  "us_fomc":     { "start_offset_min": 0,   "duration_min": 120, "calendar": "Fed FOMC karar saati" },
+  "us_nfp":      { "start_offset_min": 0,   "duration_min": 60,  "calendar": "Ayin ilk Cuma 13:30 UTC" },
+  "us_cpi":      { "start_offset_min": 0,   "duration_min": 90,  "calendar": "BLS CPI release" },
+  "us_ppi":      { "start_offset_min": 0,   "duration_min": 60,  "calendar": "BLS PPI release" },
+  "us_earnings": { "start_offset_min": -15, "duration_min": 240, "calendar": "Sembol-spesifik earnings call" },
+
+  "bist_open_gap": { "start_offset_min": 0,   "duration_min": 15,  "calendar": "Hergun 07:00 UTC BIST acilis" },
+  "tcmb_rate":     { "start_offset_min": -30, "duration_min": 240, "calendar": "TCMB faiz karari" },
+
+  "opec_meeting": { "start_offset_min": 0,   "duration_min": 240, "calendar": "OPEC toplanti aciklamasi" },
+  "eia_release":  { "start_offset_min": 0,   "duration_min": 60,  "calendar": "Hafta Cars 14:30 UTC EIA stok" },
+
+  "usda_wasde":   { "start_offset_min": 0,   "duration_min": 120, "calendar": "USDA WASDE aylik raporu" },
+  "china_pmi":    { "start_offset_min": 0,   "duration_min": 120, "calendar": "China PMI ayin 1'i 01:00 UTC" }
+}
