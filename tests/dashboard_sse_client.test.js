@@ -51,3 +51,15 @@ test('CSS rules for new elements present', () => {
   assert.ok(html.includes('.cs-fire-badge'), 'CSS .cs-fire-badge not found');
   assert.ok(html.includes('.cs-live-price'), 'CSS .cs-live-price not found');
 });
+
+test('fire log payload with </script> in a field is escaped in hydration block', () => {
+  const html = fs.readFileSync(OUTPUT, 'utf8');
+  // The hydration line must NEVER contain a literal "</script>" inside the assignment string
+  // (it would close the surrounding tag). The fix replaces it with <\/script>.
+  // Find the line and assert: no </script> appears between "= " and the closing semicolon.
+  const m = html.match(/window\.__todaysFires = (.*?);<\/script>/s);
+  assert.ok(m, 'hydration line not found');
+  const payload = m[1];
+  // The payload must not contain a raw </script>
+  assert.ok(!/<\/script>/i.test(payload), 'raw </script> found in hydration payload');
+});

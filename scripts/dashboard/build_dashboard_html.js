@@ -2005,7 +2005,7 @@ function renderCoiledSpringCard(c) {
   // Confidence label for low
   const confLabel = c.scoreConfidence === 'low' ? '<div style="font-size:10px;color:var(--text-dim);text-align:center;margin-top:2px;">limited data</div>' : '';
 
-  return `<div class="exp-card" data-classification="${esc(c.setup_type || c.classification)}" data-cs-row="${esc(c.symbol)}" data-cs-trigger="${c.entry_trigger || ''}" style="border:${borderStyle};${dimOverlay}">
+  return `<div class="exp-card" data-classification="${esc(c.setup_type || c.classification)}" data-cs-row="${esc(c.symbol)}" data-cs-trigger="${esc(c.entry_trigger || '')}" style="border:${borderStyle};${dimOverlay}">
     <div class="exp-card-header">
       <div>
         <span style="font-size:18px;font-weight:700;">${esc(c.symbol)}</span>
@@ -3719,7 +3719,7 @@ document.querySelectorAll('.exp-filter').forEach(btn => {
 </script>
 
 <!-- ══════ Coiled Spring live-feed (SSE) — Task 13 ══════ -->
-<script>window.__todaysFires = ${JSON.stringify(todaysFires)};</script>
+<script>window.__todaysFires = ${JSON.stringify(todaysFires).replace(/<\/script>/gi, '<\\/script>')};</script>
 <script>
 (function () {
   if (typeof EventSource === 'undefined') return;
