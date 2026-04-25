@@ -22,7 +22,13 @@ export function createSseBroadcaster() {
       'Cache-Control': 'no-cache',
       'Connection': 'keep-alive',
     });
-    try { res.write(': connected\n\n'); } catch (e) { /* client already gone */ }
+    try {
+      res.write(': connected\n\n');
+    } catch (e) {
+      // Client gone before handshake completed — do not register, so we don't
+      // inflate clientCount or attempt doomed writes on every subsequent broadcast.
+      return;
+    }
     clients.add(res);
     req.on('close', () => clients.delete(res));
   }

@@ -70,17 +70,35 @@ test('client is removed from set when req emits close', () => {
 test('broadcast gracefully removes clients that throw on write', () => {
   const b = createSseBroadcaster();
   const goodReq = mockReq(), goodRes = mockRes();
-  const badReq = mockReq(), badRes = {
-    writeHead() {}, write(chunk) { throw new Error('EPIPE'); },
+  // This client succeeds on the initial handshake but then throws on subsequent broadcasts.
+  let writeCount = 0;
+  const flakyReq = mockReq(), flakyRes = {
+    writeHead() {},
+    write(chunk) {
+      writeCount++;
+      if (writeCount > 1) throw new Error('EPIPE');
+      return true;
+    },
   };
   b.handleClient(goodReq, goodRes);
-  b.handleClient(badReq, badRes);
+  b.handleClient(flakyReq, flakyRes);
   assert.strictEqual(b.clientCount(), 2);
   b.broadcast('tick', { symbol: 'X' });
-  // bad client should be pruned after write error
+  // flaky client should be pruned after the broadcast write error
   assert.strictEqual(b.clientCount(), 1);
   // good client still received the event
   assert.ok(goodRes.writes.some(w => w.includes('event: tick')));
+});
+
+test('handleClient does not register a client whose handshake write throws', () => {
+  const b = createSseBroadcaster();
+  const req = mockReq();
+  const deadRes = {
+    writeHead() {}, write() { throw new Error('socket already closed'); },
+  };
+  b.handleClient(req, deadRes);
+  // Dead client never made it into the set — no inflated count, no doomed broadcast attempts later
+  assert.strictEqual(b.clientCount(), 0);
 });
 
 test('broadcast serializes nested objects (trade plan contract propagates)', () => {
