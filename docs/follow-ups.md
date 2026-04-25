@@ -6,6 +6,37 @@ Non-blocking items surfaced during development. Each entry should have enough co
 
 ## Open
 
+### [BL-3] Strengthen Level 2 vs Level 3 visual differentiation in dashboard
+
+**Surfaced:** 2026-04-25 pre-merge sanity check.
+
+**What's brittle:** Banner background color is currently determined by `riskFlags.overallRiskBand` (red/yellow/green), not by `fireStrength`. A green-band Level 3 fire and a green-band Level 2 fire share identical banner styling — only the prefix text differs (`🔥 PRIORITY` vs `CONFIRMED`). For glance-readability during fast market reaction windows, a stronger visual cue is needed.
+
+**Suggested scope:**
+- Level 3 banner: gold/amber border, larger font, optional pulse animation, distinct toast sound
+- Level 3 row in Coiled Springs table: subtle gold left-border (parallel to the existing red `cs-fired-today` left-border)
+- Toast: prefix Level 3 with a unique emoji + bold first line
+- Update `dashboard_fire_banner.test.js` with assertions for the L3-specific markers
+
+**Estimated effort:** 1–2 hours, dashboard CSS + JS only, no schema changes.
+
+---
+
+### [BL-4] Refresh per-row risk chips from live fire payload
+
+**Surfaced:** 2026-04-25 pre-merge sanity check.
+
+**What's brittle:** The `cs-risk-chip` strip on each Coiled Springs row is rendered at build time from the scanner's stale row data. When a fire arrives via SSE, the live `riskFlags` (with current spread/liquidity/etc.) reach the banner's reason text but the per-row chips don't update.
+
+**Suggested scope:**
+- On `fire` SSE event, regenerate the chip HTML for the affected row from `f.riskFlags` (mirror the build-time `csRiskChipsHtml` logic in browser JS)
+- Add a tooltip on each chip showing the underlying threshold and current value (e.g. "spread 146 bps > 50 bps threshold")
+- Tests: assert that chips on a row reflect the post-fire `riskFlags` payload, not the scanner's at-build-time values
+
+**Estimated effort:** 1–2 hours. Adds a small `renderRiskChipsClient` function called from the SSE fire handler.
+
+---
+
 ### [BL-2] Isolate E2E test disk state to a tmp dir
 
 **Surfaced:** 2026-04-25, while applying audit fix F1 (restart recovery).
