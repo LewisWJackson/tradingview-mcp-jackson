@@ -180,3 +180,51 @@ test('chain.fetchQuotes error surfaces via onError (does not throw)', async () =
   assert.strictEqual(errors.length, 1);
   assert.strictEqual(errors[0].type, 'fetch_error');
 });
+
+test('fire event includes tradePlan placeholder with planGenerated=false', async () => {
+  const chain = mkFakeChain([{ X: 150 }, { X: 153 }, { X: 153.1 }]);
+  const fires = [];
+  const poller = createLivePoller({
+    getCandidates: () => ({ candidates: [{ symbol: 'X', trigger: 152.81, confidence: 'MOD', setupType: 'building_base', rank: 1, probabilityScore: 60 }] }),
+    chain, onFire: (e) => fires.push(e), onError: () => {}, isMarketOpen: () => true,
+  });
+  await poller.tick(); await poller.tick(); await poller.tick();
+  assert.strictEqual(fires.length, 1);
+  assert.ok(fires[0].tradePlan, 'tradePlan must be present');
+  assert.strictEqual(fires[0].tradePlan.planGenerated, false);
+  assert.strictEqual(fires[0].tradePlan.planReason, 'not_yet_implemented');
+  assert.strictEqual(fires[0].tradePlan.stock, null);
+  assert.strictEqual(fires[0].tradePlan.options, null);
+  assert.strictEqual(fires[0].tradePlan.finalRecommendation, null);
+});
+
+test('tradePlan.planReason reflects degraded source when chain was in fallback', async () => {
+  const chain = mkFakeChain(
+    [{ X: 150 }, { X: 153 }, { X: 153.1 }],
+    { activeSource: 'tv_cdp', degraded: true, sourceAttempts: [{ name: 'yahoo', ok: false, error: { kind: 'rate_limit', status: 429, message: '429' } }, { name: 'tv_cdp', ok: true, error: null }] }
+  );
+  const fires = [];
+  const poller = createLivePoller({
+    getCandidates: () => ({ candidates: [{ symbol: 'X', trigger: 152.81, confidence: 'MOD', setupType: 'building_base', rank: 1, probabilityScore: 60 }] }),
+    chain, onFire: (e) => fires.push(e), onError: () => {}, isMarketOpen: () => true,
+  });
+  await poller.tick(); await poller.tick(); await poller.tick();
+  assert.strictEqual(fires[0].tradePlan.planReason, 'degraded_source_no_plan');
+  assert.strictEqual(fires[0].tradePlan.stock, null);
+});
+
+test('tradePlan contract shape is stable: expected keys present even as placeholders', async () => {
+  const chain = mkFakeChain([{ X: 150 }, { X: 153 }, { X: 153.1 }]);
+  const fires = [];
+  const poller = createLivePoller({
+    getCandidates: () => ({ candidates: [{ symbol: 'X', trigger: 152.81, confidence: 'MOD', setupType: 'building_base', rank: 1, probabilityScore: 60 }] }),
+    chain, onFire: (e) => fires.push(e), onError: () => {}, isMarketOpen: () => true,
+  });
+  await poller.tick(); await poller.tick(); await poller.tick();
+  const tp = fires[0].tradePlan;
+  assert.ok('planGenerated' in tp);
+  assert.ok('planReason' in tp);
+  assert.ok('stock' in tp);
+  assert.ok('options' in tp);
+  assert.ok('finalRecommendation' in tp);
+});

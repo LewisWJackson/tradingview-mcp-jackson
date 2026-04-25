@@ -112,6 +112,14 @@ export function createLivePoller({
       });
 
       if (result.fired) {
+        // Trade-plan placeholder contract (§15). Logic lands post-ship; for now we
+        // ship the field shape so downstream consumers (Server/UI) can render a
+        // "pending" chip without a future schema change. planReason flags whether
+        // the chain was degraded at fire time so the UI can suppress the section.
+        const chainDegraded = fetchResult.degraded === true
+          || (fetchResult.activeSource && fetchResult.activeSource !== 'yahoo');
+        const planReason = chainDegraded ? 'degraded_source_no_plan' : 'not_yet_implemented';
+
         const event = {
           ticker: cand.symbol,
           trigger: {
@@ -162,6 +170,13 @@ export function createLivePoller({
             activeSource: fetchResult.activeSource,
             degraded: fetchResult.degraded,
             sourceAttempts: fetchResult.sourceAttempts,
+          },
+          tradePlan: {
+            planGenerated: false,
+            planReason,
+            stock: null,
+            options: null,
+            finalRecommendation: null,
           },
           pollSequence,
           timestamp: now.toISOString(),

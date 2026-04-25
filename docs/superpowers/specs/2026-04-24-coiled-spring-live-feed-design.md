@@ -555,7 +555,56 @@ After shadow mode, before enabling toasts:
 
 ---
 
-## 15. Implementation order (for the plan)
+## 15. Trade recommendation contract (future-facing)
+
+Fire events at Level 2 or 3 carry a `tradePlan` field so the Server/UI can render structured trade guidance. The **contract is shipped now**; the **logic lands later**. This lets us swap in generation logic without schema churn downstream.
+
+### Fields
+
+`tradePlan.planGenerated` — `boolean`. `false` until generation logic is implemented. UI shows a "trade plan coming" chip when `false`.
+
+`tradePlan.planReason` — why the plan is a placeholder:
+- `not_yet_implemented` — Level 2/3 fire on fresh data; awaiting generation logic
+- `degraded_source_no_plan` — chain was in fallback/stale mode at fire time; no plan until primary source recovers
+- `stale_data_no_plan` — defensive guard; should never be reached because stale data cannot fire
+- `level_1_watch_only` — reserved for future Level-1 onTick enrichment
+
+`tradePlan.stock` — `null` until implemented. Shape once populated:
+```
+{ entryPrice, stopLoss, takeProfit1, takeProfit2, takeProfit3, riskPerShare, reward, rr, decision: 'ENTER'|'WATCH'|'AVOID' }
+```
+
+`tradePlan.options` — `null` until implemented. Shape once populated:
+```
+{ strategy: 'CSP', action: 'SELL_OPEN', strike, expiration, premiumEstimate, breakEven, probabilityOfTouch, capitalRequired, decision }
+```
+
+`tradePlan.finalRecommendation` — `null` until implemented. Shape:
+```
+{ type: 'STOCK_ONLY' | 'CSP_ONLY' | 'BOTH' | 'AVOID', rationale }
+```
+
+### Level semantics
+
+| Fire level | tradePlan emitted? | Notes |
+|---|---|---|
+| 1 (WATCH) | No fire event — no tradePlan | Reserved onTick enrichment for future |
+| 2 (CONFIRMED) | Yes, placeholder | Stock plan + CSP plan + final recommendation expected once logic lands |
+| 3 (HIGH CONVICTION) | Yes, placeholder + priority | Same fields as Level 2, but UI may emphasize |
+
+### Stale/degraded data guardrails
+
+- Stale data never fires (§12.4), so `stale_data_no_plan` is defensive-only
+- Degraded-source fires (e.g., served from TV CDP after Yahoo rate-limit) emit `planReason: 'degraded_source_no_plan'` — the UI should suppress the trade-plan section entirely until the chain returns to primary
+
+### UI integration (Phase D-G consumers)
+
+- Phase D (current) — render `tradePlan` block with a "pending — logic coming" placeholder when `planGenerated === false`
+- Post-ship iteration — implement `src/lib/trade_planner.js` that consumes `{quote, candidate, riskFlags, fireStrength}` and populates the three sub-plans; flip `planGenerated = true`. No schema change at the event level.
+
+---
+
+## 16. Implementation order (for the plan)
 
 Each step is independently testable and leaves the system in a working state.
 
