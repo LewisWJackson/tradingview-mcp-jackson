@@ -143,8 +143,8 @@ async function runCli() {
       continue;
     }
     console.log('');
-    console.log(`  [${idx}/${log.fires.length}] ${fire.ticker} L${fire.fireStrength} fired @ $${fire.price.firedPrice} (trigger $${fire.trigger.level})`);
-    console.log(`    ${fire.firedAtET || fire.firedAt} | ${fire.setup.confidence} | risk: ${fire.riskFlags.overallRiskBand}`);
+    console.log(`  [${idx}/${log.fires.length}] ${fire.ticker || '?'} L${fire.fireStrength ?? '?'} fired @ $${fire.price?.firedPrice ?? 'N/A'} (trigger $${fire.trigger?.level ?? 'N/A'})`);
+    console.log(`    ${fire.firedAtET || fire.firedAt || '?'} | ${fire.setup?.confidence ?? '?'} | risk: ${fire.riskFlags?.overallRiskBand ?? '?'}`);
 
     const outcomeInput = (await ask(`    Outcome? [${VALID_OUTCOMES.join('/')}] (enter=skip): `)).trim().toLowerCase();
     if (!outcomeInput) { skipped++; continue; }
@@ -158,12 +158,16 @@ async function runCli() {
     const maeInput = (await ask(`    Max adverse excursion %? (e.g. 1.2, or - for unknown): `)).trim();
     const hindsightInput = (await ask(`    Hindsight plan? [${VALID_HINDSIGHT_PLANS.join('/')}] (- to skip): `)).trim().toUpperCase();
 
-    Object.assign(fire, applyTagging(fire, {
+    // Defense-in-depth: strip the `_skip` sentinel before persisting so a future
+    // validation rule change in applyTagging cannot leak it into the saved log.
+    const result = applyTagging(fire, {
       outcome: outcomeInput,
       mfe: mfeInput,
       mae: maeInput,
       hindsightPlan: hindsightInput,
-    }));
+    });
+    delete result._skip;
+    Object.assign(fire, result);
     tagged++;
   }
 
