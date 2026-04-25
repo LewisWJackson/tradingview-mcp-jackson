@@ -16,6 +16,7 @@ import { fileURLToPath } from 'url';
 import { scheduler } from './lib/scheduler.js';
 import { getHaltState, engageHalt, releaseHalt, refreshHaltState } from './lib/halt-state.js';
 import { cancelAllAndFlatten } from './lib/okx-dispatcher.js';
+import { getParserAlarmStats } from './lib/parser-validator.js';
 import { scanShortTerm, scanLongTerm, batchScan, customScan, isScanActive, getLockHolder, drainLockQueue, acquireScanLock, releaseScanLock } from './lib/scanner-engine.js';
 import { runBacktest, getAvailableStrategies } from './lib/backtest.js';
 import { getMacroState, formatMacroSummary, setMacroLockFunctions } from './lib/macro-filter.js';
@@ -92,6 +93,11 @@ app.get('/api/health', async (req, res) => {
 });
 
 // Get scheduler status
+// Risk #5 — Parser alarm sayaclarinin gunluk gorunurlugu (gunluk review icin)
+app.get('/api/parser-alarms', (_req, res) => {
+  res.json({ success: true, ...getParserAlarmStats() });
+});
+
 app.get('/api/scheduler/status', (req, res) => {
   res.json(scheduler.getStatus());
 });

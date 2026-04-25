@@ -22,6 +22,8 @@ import { classifyRegime } from './learning/regime-detector.js';
 import { computeRegime as _shadowComputeRegime } from './learning/compute-regime.js';
 import { logRegime as _shadowLogRegime } from './learning/regime-shadow-logger.js';
 import { categoryToMarketType as _shadowCategoryToMarketType } from './learning/regime-profiles.js';
+// Risk #5 — Parser kirilma korumasi (sema validation + alarm counter)
+import { gateTechnicals, gateSMC } from './parser-validator.js';
 import { recordSignal } from './learning/signal-tracker.js';
 import { loadWeights } from './learning/weight-adjuster.js';
 import { resolveSymbol, inferCategory } from './symbol-resolver.js';
@@ -333,8 +335,11 @@ async function collectShortTermData(symbol, tf) {
   }
 
   const bars = ohlcvData?.bars || [];
-  const parsedKS = calcTechnicals(bars);
-  const parsedSMC = parseSMCLabels(smc.labels);
+  // Risk #5 — Parser kirilma korumasi: parse sonrasi sema dogrulamasi.
+  // 'broken' (>=50% required eksik) → null doner, mevcut akis BEKLE'ye duser.
+  // 'partial' → veri gecer ama parser_alarm log dusturulur.
+  const parsedKS = gateTechnicals(calcTechnicals(bars), { symbol, timeframe: tf });
+  const parsedSMC = gateSMC(parseSMCLabels(smc.labels), { symbol, timeframe: tf });
   const parsedBoxes = parseSMCBoxes(smc.boxes);
   const parsedSRLines = parseSMCLines(smc.lines);
 
