@@ -10,6 +10,7 @@ import XLSX from 'xlsx';
 import fs from 'fs';
 import path from 'path';
 import https from 'https';
+import { createFireLog as createFireLogHydrate } from '../../src/lib/fire_events.js';
 
 // ═══ News fetcher — Yahoo Finance RSS per ticker + Google News for geopolitical/breaking ═══
 function httpGet(url) {
@@ -291,6 +292,18 @@ try {
   }
 } catch (e) {
   console.warn('Could not read coiled spring results:', e.message);
+}
+
+// Hydrate today's fires for the dashboard's sticky "FIRED TODAY" badges.
+// Read at build time so a freshly-opened (file://) Dashboard.html still shows
+// any fires that already happened today even before the SSE client connects.
+let todaysFires = [];
+try {
+  const FIRES_BASE_DIR_HYDRATE = path.resolve(path.dirname(process.argv[1] || '.'), '..', '..', 'data');
+  const hydrationLog = createFireLogHydrate({ baseDir: FIRES_BASE_DIR_HYDRATE });
+  todaysFires = hydrationLog.getTodaysFires();
+} catch (e) {
+  console.warn('[hydrate] could not load fires: ' + e.message);
 }
 
 // ---------- parsers ----------
@@ -1992,7 +2005,7 @@ function renderCoiledSpringCard(c) {
   // Confidence label for low
   const confLabel = c.scoreConfidence === 'low' ? '<div style="font-size:10px;color:var(--text-dim);text-align:center;margin-top:2px;">limited data</div>' : '';
 
-  return `<div class="exp-card" data-classification="${esc(c.setup_type || c.classification)}" style="border:${borderStyle};${dimOverlay}">
+  return `<div class="exp-card" data-classification="${esc(c.setup_type || c.classification)}" data-cs-row="${esc(c.symbol)}" data-cs-trigger="${c.entry_trigger || ''}" style="border:${borderStyle};${dimOverlay}">
     <div class="exp-card-header">
       <div>
         <span style="font-size:18px;font-weight:700;">${esc(c.symbol)}</span>
@@ -2000,6 +2013,9 @@ function renderCoiledSpringCard(c) {
         <div style="margin-top:4px;">
           <span style="font-size:15px;font-weight:600;">$${(c.price || 0).toFixed(2)}</span>
           <span style="font-size:12px;color:${changeColor};margin-left:6px;">${changePctStr}</span>
+          <span class="cs-live-price" data-sym="${esc(c.symbol)}">$${(c.price || 0).toFixed(2)}</span>
+          <span class="cs-delta-to-trigger" data-sym="${esc(c.symbol)}">—</span>
+          <span class="cs-fire-badge" data-sym="${esc(c.symbol)}" style="display:none;">FIRED TODAY</span>
         </div>
         <div style="margin-top:4px;">
           <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:4px;background:${cls.bg};color:${cls.color};">${cls.label}</span>
@@ -2063,6 +2079,7 @@ function buildCoiledSpringHtml() {
   const cards = r.results.map(renderCoiledSpringCard).join('\n');
   return `<div class="panel span-12">
     <h2>🌀 Coiled Springs</h2>
+    <div id="cs-source-banner" class="cs-source-banner"></div>
     ${regimeBanner}
     ${meta}
     ${filters}
@@ -2992,6 +3009,15 @@ const html = `<!DOCTYPE html>
   .exp-filter:hover { color: var(--text); border-color: var(--text-dim); }
   .exp-filter.active { color: var(--blue); border-color: var(--blue); background: rgba(59,130,246,0.1); }
 
+  /* Coiled Spring live-feed (SSE) — Task 13 */
+  .cs-fired-today { background: rgba(231,76,60,0.10); border-left: 3px solid #e74c3c; }
+  .cs-fire-badge { display: inline-block; background: #e74c3c; color: white; padding: 2px 8px; border-radius: 4px; font-weight: 600; font-size: 11px; margin-left: 6px; }
+  .cs-live-price { font-weight: 600; font-family: ui-monospace, monospace; margin-left: 6px; }
+  .cs-delta-to-trigger { font-size: 11px; color: var(--text-dim); margin-left: 6px; }
+  .cs-source-banner { display:none; background:rgba(241,196,15,0.18); color:#f1c40f; padding:8px 14px; border-radius:6px; margin-bottom:12px; font-size:14px; }
+  .cs-live-price.flash-up { background-color: rgba(46,204,113,0.3); transition: background-color 0.4s; }
+  .cs-live-price.flash-down { background-color: rgba(231,76,60,0.3); transition: background-color 0.4s; }
+
   /* Breaking News section */
   .news-list { display: flex; flex-direction: column; gap: 2px; }
   .news-item {
@@ -3690,6 +3716,105 @@ document.querySelectorAll('.exp-filter').forEach(btn => {
     });
   });
 });
+</script>
+
+<!-- ══════ Coiled Spring live-feed (SSE) — Task 13 ══════ -->
+<script>window.__todaysFires = ${JSON.stringify(todaysFires)};</script>
+<script>
+(function () {
+  if (typeof EventSource === 'undefined') return;
+
+  const banner = document.getElementById('cs-source-banner');
+  const showBanner = (msg, kind = 'warn') => {
+    if (!banner) return;
+    banner.textContent = msg;
+    banner.style.display = msg ? 'block' : 'none';
+  };
+  const hideBanner = () => banner && (banner.style.display = 'none');
+
+  // Hydrate today's fires onto the row badges
+  document.addEventListener('DOMContentLoaded', () => {
+    for (const f of (window.__todaysFires || [])) {
+      const badge = document.querySelector('.cs-fire-badge[data-sym="' + f.ticker + '"]');
+      if (badge) badge.style.display = 'inline-block';
+      const row = document.querySelector('[data-cs-row="' + f.ticker + '"]');
+      if (row) row.classList.add('cs-fired-today');
+    }
+  });
+
+  // ─── EventSource client ────────────────────────────────────────────────
+  const es = new EventSource('/events');
+
+  function updatePrice(sym, price) {
+    const el = document.querySelector('.cs-live-price[data-sym="' + sym + '"]');
+    if (!el) return;
+    const prev = parseFloat(el.textContent.replace('$', ''));
+    el.textContent = '$' + Number(price).toFixed(2);
+    if (!isNaN(prev)) {
+      el.classList.remove('flash-up', 'flash-down');
+      if (price > prev) el.classList.add('flash-up');
+      else if (price < prev) el.classList.add('flash-down');
+      setTimeout(() => el.classList.remove('flash-up', 'flash-down'), 400);
+    }
+  }
+
+  function updateDelta(sym, price, trigger) {
+    const el = document.querySelector('.cs-delta-to-trigger[data-sym="' + sym + '"]');
+    if (!el) return;
+    if (trigger == null) { el.textContent = '—'; return; }
+    const deltaPct = ((trigger - price) / price) * 100;
+    if (deltaPct > 0) {
+      el.textContent = '+' + deltaPct.toFixed(2) + '% to trigger';
+      el.style.color = 'var(--text-dim)';
+    } else {
+      el.textContent = 'FIRED';
+      el.style.color = '#2ecc71';
+    }
+  }
+
+  function markFired(sym) {
+    const badge = document.querySelector('.cs-fire-badge[data-sym="' + sym + '"]');
+    if (badge) badge.style.display = 'inline-block';
+    const row = document.querySelector('[data-cs-row="' + sym + '"]');
+    if (row) row.classList.add('cs-fired-today');
+  }
+
+  es.addEventListener('tick', (ev) => {
+    let d;
+    try { d = JSON.parse(ev.data); } catch { return; }
+    if (d.price == null) return;
+    updatePrice(d.symbol, d.price);
+    updateDelta(d.symbol, d.price, d.trigger);
+  });
+
+  es.addEventListener('fire', (ev) => {
+    let f;
+    try { f = JSON.parse(ev.data); } catch { return; }
+    markFired(f.ticker);
+    // Stash on window so Task 14 (fire banner / toast) can read the latest fire.
+    window.__lastFire = f;
+    if (typeof window.__onDashboardFire === 'function') {
+      try { window.__onDashboardFire(f); } catch (e) { console.warn('fire handler error:', e); }
+    }
+  });
+
+  es.addEventListener('source_status', (ev) => {
+    let s;
+    try { s = JSON.parse(ev.data); } catch { return; }
+    if (s && s.activeSource && s.activeSource !== 'yahoo') {
+      showBanner('⚠ Quote source: ' + s.activeSource + ' (' + (s.status || 'degraded') + ')');
+    } else {
+      hideBanner();
+    }
+  });
+
+  es.addEventListener('scan_refreshed', (ev) => {
+    // No-op for now; Task 14+ may use this to clear stale flags
+  });
+
+  es.onerror = () => showBanner('⚠ Live feed disconnected — reconnecting...');
+  es.onopen = () => hideBanner();
+})();
 </script>
 
 </body>
