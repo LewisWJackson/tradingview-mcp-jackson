@@ -3114,6 +3114,13 @@ const html = `<!DOCTYPE html>
   <span style="font-size:11px; opacity:0.7; margin-left:14px;">click to dismiss</span>
 </div>
 
+<!-- Coiled Spring notification permission prompt (Task 15) — bottom-right consent prompt, shown once -->
+<div id="cs-notif-prompt" style="display:none; position:fixed; bottom:20px; right:20px; background:#2c3e50; color:white; padding:14px 20px; border-radius:8px; box-shadow:0 4px 16px rgba(0,0,0,0.4); z-index:9998; max-width:340px; font-size:14px;">
+  <div style="margin-bottom:8px;">🔔 Enable desktop notifications to get alerts when a coiled spring fires — even when this tab is in the background.</div>
+  <button id="cs-notif-yes" style="background:#2ecc71;color:white;border:0;padding:8px 14px;border-radius:4px;cursor:pointer;margin-right:8px;">Enable</button>
+  <button id="cs-notif-no"  style="background:transparent;color:#bdc3c7;border:1px solid #7f8c8d;padding:8px 14px;border-radius:4px;cursor:pointer;">Not now</button>
+</div>
+
 <header>
   <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap;">
     <div>
@@ -3922,6 +3929,43 @@ function dispatchFireToast(f) {
     console.warn('Notification dispatch failed:', e);
   }
 }
+</script>
+
+<!-- Coiled Spring notification permission prompt logic (Task 15) -->
+<script>
+(function () {
+  if (!('Notification' in window)) return;
+  if (Notification.permission === 'granted') return;
+  if (Notification.permission === 'denied') return;
+  if (localStorage.getItem('cs-notif-declined') === '1') return;
+
+  function init() {
+    const prompt = document.getElementById('cs-notif-prompt');
+    const yes = document.getElementById('cs-notif-yes');
+    const no = document.getElementById('cs-notif-no');
+    if (!prompt || !yes || !no) return;
+    prompt.style.display = 'block';
+
+    yes.addEventListener('click', async () => {
+      prompt.style.display = 'none';
+      try {
+        await Notification.requestPermission();
+      } catch (e) {
+        console.warn('Permission request failed:', e);
+      }
+    });
+    no.addEventListener('click', () => {
+      prompt.style.display = 'none';
+      localStorage.setItem('cs-notif-declined', '1');
+    });
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+})();
 </script>
 
 </body>
