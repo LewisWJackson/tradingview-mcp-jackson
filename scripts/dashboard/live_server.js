@@ -255,12 +255,12 @@ const livePoller = createLivePoller({
   },
 });
 
-// Restore state on startup
+// Restore state on startup — single read (avoid double file-read race)
 (function restoreOnBoot() {
-  if (stateStore.isFresh()) {
-    const persisted = stateStore.read();
-    livePoller.detector.restoreState(persisted.tickers || {});
-    log(`[poller] restored state for ${Object.keys(persisted.tickers || {}).length} tickers`);
+  const persisted = stateStore.read();
+  if (stateStore.isFresh() && persisted.tickers) {
+    livePoller.detector.restoreState(persisted.tickers);
+    log(`[poller] restored state for ${Object.keys(persisted.tickers).length} tickers`);
   } else {
     log('[poller] no fresh state to restore — starting cold');
   }
