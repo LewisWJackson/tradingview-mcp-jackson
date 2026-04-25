@@ -782,11 +782,15 @@ export function calcADX(bars, period = 14) {
     plusDM.push(up > down && up > 0 ? up : 0);
     minusDM.push(down > up && down > 0 ? down : 0);
   }
+  // Risk #18 fix: Wilder RMA klasik formul.
+  // Onceki kod baslangic olarak TOPLAM aliyor (ortalama yerine), recurrence'ta
+  // arr[i]/p yerine arr[i] kullaniyor → cikis ~p kat sisirilmis (ADX 14x hata).
+  // Dogru formul: RMA[i] = (RMA[i-1] * (p-1) + arr[i]) / p, baslangic ortalama.
   function wilderRMA(arr, p) {
     if (arr.length < p) return [];
     const out = new Array(arr.length).fill(null);
-    out[p - 1] = arr.slice(0, p).reduce((a, b) => a + b, 0);
-    for (let i = p; i < arr.length; i++) out[i] = out[i - 1] - out[i - 1] / p + arr[i];
+    out[p - 1] = arr.slice(0, p).reduce((a, b) => a + b, 0) / p;
+    for (let i = p; i < arr.length; i++) out[i] = (out[i - 1] * (p - 1) + arr[i]) / p;
     return out;
   }
   const smoothTR = wilderRMA(trArr, period);
