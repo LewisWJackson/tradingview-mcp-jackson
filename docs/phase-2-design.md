@@ -237,6 +237,76 @@ Her commit ayrı PR / review noktası — toplu rollback kolay.
 
 ---
 
+## 6.5 Canlı gözlem keşfi: filtre eşikleri sahte ADX dönemine kalibre (2026-04-25)
+
+calcADX bug'ı (Risk #18) düzeltildikten sonra dashboard kartlarında
+gözlemlenen kalıp **Faz 2'nin aciliyetini somutlaştırdı.** Önceki dönemde:
+
+```
+Sahte ADX 200+ → STRONG_TREND → KhanSaab momentum oyları sayılıyor
+              → minGrade B + HTF güveni 60 + MTF uyumu 75 eşikleri kolay aşılıyor
+              → A/B sinyaller bol miktarda
+```
+
+Düzeltilmiş sistemde:
+
+```
+Gerçek ADX 10-18 → TREND-DISI rejim (Faz 0 patch b: KhanSaab full bypass)
+                 → Sadece SMC + yapısal bounce/reaction oyları
+                 → Aynı eşikler artık toplu BEKLE/IPTAL üretiyor
+                 → A/B sinyal SAYISI dramatik düştü
+```
+
+**Net keşif:** mevcut per-symbol filtre eşikleri (`minGrade B`, `HTF güveni
+≥60`, `MTF uyumu ≥75`) sahte ADX döneminde implicit kalibre edilmiş. Gerçek
+piyasa ranging'te olunca (BTCUSD ADX 13.5, SUIUSDC 13.5, LINKUSDT 10.6,
+ETHUSDT 18) bu eşikler aşılamıyor.
+
+**Yanlış müdahale (yapma):** Eşikleri şimdi gevşetmek (örn. minGrade B → C,
+MTF 75 → 60). Bu, sahte A/B üretim dönemine geri dönmek olur.
+
+**Doğru müdahale (Faz 2 wrapper'ın asıl iş tanımı):** Eşikler **rejim-aware**
+olmalı. Aynı sembol için:
+
+| Rejim | minGrade | HTF güveni | MTF uyumu | Strateji |
+|--|--|--|--|--|
+| `trending_up/down` | B | ≥60 | ≥75 | Pullback entry, momentum oyları sayılır |
+| `ranging` | C | ≥45 | ≥60 | **Mean-reversion oyları öne çıkarılır**, momentum bastırılır |
+| `breakout_pending` | B | ≥55 | ≥70 | Sıkışmada giriş yok, breakout confirm bekle |
+| `high_vol_chaos` | — | — | — | Yeni pozisyon yok |
+| `low_vol_drift` | — | — | — | Yeni pozisyon yok |
+
+Bu tabloyu **Faz 1 ara rapor verisiyle** kalibre edeceğiz (her rejimin
+gerçek dağılımını gördükten sonra). Şu anki sayılar tahmin.
+
+**Bu tablo, Bölüm 2'deki vote suppression tablosunun PARALEL bir uzantısı:**
+- Bölüm 2 → hangi göstergeler oylanır
+- Bölüm 6.5 → kaç oy alındığında sinyal geçer
+
+İkisi birlikte `applyRegimeStrategy()` wrapper'ının tam iş tanımını
+oluşturuyor.
+
+**Faz 2 implementasyonuna ek alan:**
+
+```js
+// regime-profiles.js — yeni alan
+export const REGIME_GATES = {
+  trending_up:      { minGrade: 'B', htfConfMin: 60, mtfAlignMin: 75 },
+  trending_down:    { minGrade: 'B', htfConfMin: 60, mtfAlignMin: 75 },
+  ranging:          { minGrade: 'C', htfConfMin: 45, mtfAlignMin: 60 },
+  breakout_pending: { minGrade: 'B', htfConfMin: 55, mtfAlignMin: 70 },
+  high_vol_chaos:   { minGrade: null }, // tüm sinyal red
+  low_vol_drift:    { minGrade: null },
+  market_closed:    { minGrade: null },
+};
+
+// applyRegimeStrategy() içinde
+if (REGIME_GATES[regime].minGrade === null) return { rejected: true };
+if (gradeRank(draft.grade) < gradeRank(REGIME_GATES[regime].minGrade)) ...
+```
+
+---
+
 ## 7. Bilinmeyenler / risk noktaları
 
 | Bilinmeyen | Açıklama | Karar zamanı |
@@ -269,3 +339,4 @@ DeepSeek bu tasarım notunda istediği:
 | Tarih | Versiyon | Değişiklik |
 |--|--|--|
 | 2026-04-25 | 1.0 | İlk tasarım — eşleme tablosu, wrapper mimarisi, geçiş planı, bilinmeyenler |
+| 2026-04-25 | 1.1 | **Bölüm 6.5 eklendi**: calcADX (Risk #18) fix sonrası canlı gözlem — filtre eşikleri sahte ADX dönemine kalibre olduğu somutlaştı. Rejim-aware eşik tablosu (REGIME_GATES) tasarıma eklendi. `applyRegimeStrategy()` artık iki paralel iş yapıyor: (a) vote suppression Bölüm 2, (b) gate eşikleri Bölüm 6.5. Faz 1 ara raporu bu eşikleri kalibre edecek. |
