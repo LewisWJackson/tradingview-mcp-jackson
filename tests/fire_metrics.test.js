@@ -218,3 +218,14 @@ test('loadFiresFromDir filters by --since', () => {
   const fires = loadFiresFromDir(dir, { since: '2026-04-23' });
   assert.strictEqual(fires.length, 2);
 });
+
+test('loadFiresFromDir tolerates malformed JSON (skips corrupt files)', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'fire-metrics-'));
+  fs.writeFileSync(path.join(dir, 'coiled_spring_fires_2026-04-22.json'),
+    JSON.stringify({ date: '2026-04-22', fires: [{ ticker: 'A', fireStrength: 2 }] }));
+  fs.writeFileSync(path.join(dir, 'coiled_spring_fires_2026-04-23.json'), '{not valid json');
+  const fires = loadFiresFromDir(dir);
+  assert.strictEqual(fires.length, 1, 'corrupt file is silently skipped, valid file loaded');
+  assert.strictEqual(fires[0].ticker, 'A');
+  assert.strictEqual(fires[0].date, '2026-04-22');
+});
