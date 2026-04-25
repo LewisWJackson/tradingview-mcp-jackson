@@ -3860,6 +3860,23 @@ document.querySelectorAll('.exp-filter').forEach(btn => {
     // No-op for now; Task 14+ may use this to clear stale flags
   });
 
+  // Coverage warning: fired by the poller when symbols are missing quotes or
+  // served stale due to chain degradation. Surfaces the gap so the user knows
+  // which candidates have no live data — instead of silently looking calm.
+  es.addEventListener('coverage_warning', (ev) => {
+    let w;
+    try { w = JSON.parse(ev.data); } catch { return; }
+    const noQuote = (w.symbolsWithNoQuote || []).join(', ');
+    const stale = (w.symbolsServedStale || []).join(', ');
+    const parts = [];
+    if (w.degraded && w.activeSource) parts.push('source: ' + w.activeSource + ' (degraded)');
+    if (noQuote) parts.push('no quote: ' + noQuote);
+    if (stale) parts.push('stale: ' + stale);
+    if (parts.length) {
+      showBanner('⚠ Coverage gap — ' + parts.join(' | '));
+    }
+  });
+
   es.onerror = () => showBanner('⚠ Live feed disconnected — reconnecting...');
   es.onopen = () => hideBanner();
 })();
