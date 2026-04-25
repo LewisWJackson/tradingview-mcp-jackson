@@ -29,6 +29,7 @@ const _reverseMap = new Map();
 let _ws = null;
 let _broadcastFn = null;
 let _reconnectTimer = null;
+let _heartbeatTimer = null;
 let _stopped = false;
 let _stats = {
   connected: false,
@@ -36,10 +37,20 @@ let _stats = {
   messagesReceived: 0,
   pricesTracked: 0,
   reconnects: 0,
+  idleReconnects: 0,        // zombi tespit ile force-reconnect sayisi
+  lastIdleDetectAt: null,
 };
 
 // Broadcast throttle: ayni sembol icin 1 saniyede 1 guncelleme yeterli
 const BROADCAST_THROTTLE_MS = 1000;
+
+// Zombi tespit (Risk #17 azaltma):
+//   Binance !miniTicker@arr stream'i normal kosullarda saniyede onlarca mesaj
+//   yayar. 60sn boyunca tek mesaj gelmiyorsa connection olu sayilir.
+//   Heartbeat timer her 15sn'de bir kontrol eder; idle ise ws.terminate()
+//   cagirir → on:close handler reconnect tetikler.
+const IDLE_TIMEOUT_MS = 60_000;
+const HEARTBEAT_INTERVAL_MS = 15_000;
 
 /**
  * TV sembolunu Binance spot sembolune normalize et.
@@ -194,7 +205,15 @@ function connect() {
 
   _ws.on('open', () => {
     _stats.connected = true;
+    // Idle-detect "ilk mesaj henuz gelmedi" senaryosunda hemen tetiklemesin
+    _stats.lastMessageAt = Date.now();
+    startHeartbeat();
     console.log(`[LiveFeed] Binance WS bagli — !miniTicker@arr (${_reverseMap.size} tv sembolu takipte)`);
+  });
+
+  _ws.on('pong', () => {
+    // Server pong cevabi geldi → connection saglikli (mesaj sayilmaz, sadece TCP canli isareti)
+    // Not: handleTicker zaten lastMessageAt guncelliyor, bu sadece sigorta
   });
 
   _ws.on('message', (raw) => {
@@ -206,6 +225,7 @@ function connect() {
 
   _ws.on('close', (code, reason) => {
     _stats.connected = false;
+    stopHeartbeat();
     console.log(`[LiveFeed] WS kapandi code=${code} reason=${(reason || '').toString()}`);
     scheduleReconnect();
   });
@@ -214,6 +234,40 @@ function connect() {
     console.log(`[LiveFeed] WS hatasi: ${err.message}`);
     // error event sonrasi close gelecek — reconnect orada tetiklenecek
   });
+}
+
+function startHeartbeat() {
+  stopHeartbeat();
+  _heartbeatTimer = setInterval(() => {
+    if (_stopped) return;
+    if (!_ws) return;
+    // Sadece OPEN durumdaki WS'lerde idle-detect anlamli
+    if (_ws.readyState !== WebSocket.OPEN) return;
+
+    const lastAt = _stats.lastMessageAt || 0;
+    const since = Date.now() - lastAt;
+
+    if (since > IDLE_TIMEOUT_MS) {
+      _stats.idleReconnects++;
+      _stats.lastIdleDetectAt = Date.now();
+      console.warn(`[LiveFeed] ZOMBI TESPIT: ${(since / 1000).toFixed(0)}sn mesaj yok → terminate + reconnect (idleReconnects=${_stats.idleReconnects})`);
+      try { _ws.terminate(); } catch {}
+      // close handler stopHeartbeat + scheduleReconnect cagiracak
+      return;
+    }
+
+    // Saglikli durum: proaktif TCP ping (server pong ile cevaplar; NAT/proxy
+    // timeout'larina karsi sigorta)
+    try { _ws.ping(); } catch {}
+  }, HEARTBEAT_INTERVAL_MS);
+  if (_heartbeatTimer.unref) _heartbeatTimer.unref();
+}
+
+function stopHeartbeat() {
+  if (_heartbeatTimer) {
+    clearInterval(_heartbeatTimer);
+    _heartbeatTimer = null;
+  }
 }
 
 function scheduleReconnect() {
@@ -243,10 +297,42 @@ export function startLivePriceFeed(options = {}) {
 
 export function stopLivePriceFeed() {
   _stopped = true;
+  stopHeartbeat();
   if (_reconnectTimer) { clearTimeout(_reconnectTimer); _reconnectTimer = null; }
   if (_ws) {
     try { _ws.close(); } catch {}
     _ws = null;
   }
   _stats.connected = false;
+}
+
+/**
+ * Feed sagligi snapshot — /api/feed-health endpoint'i kullanir.
+ * @returns {{
+ *   connected: bool, lastMessageAt: number|null, ageSeconds: number|null,
+ *   severity: 'ok'|'warning'|'critical',
+ *   stats: object
+ * }}
+ */
+export function getFeedHealth() {
+  const stats = getFeedStats();
+  const lastAt = stats.lastMessageAt;
+  const ageMs = lastAt ? Date.now() - lastAt : null;
+  const ageSeconds = ageMs != null ? Math.round(ageMs / 1000) : null;
+
+  let severity = 'ok';
+  if (!stats.connected) severity = 'critical';
+  else if (ageMs == null) severity = 'warning';
+  else if (ageMs > IDLE_TIMEOUT_MS) severity = 'critical';
+  else if (ageMs > 30_000) severity = 'warning';
+
+  return {
+    connected: stats.connected,
+    lastMessageAt: lastAt,
+    ageSeconds,
+    severity,
+    idleTimeoutSec: IDLE_TIMEOUT_MS / 1000,
+    heartbeatIntervalSec: HEARTBEAT_INTERVAL_MS / 1000,
+    stats,
+  };
 }

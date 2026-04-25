@@ -33,7 +33,7 @@ import { getCheckpointHistory } from './lib/learning/shadow-guard.js';
 import { getLadderSummary, getRecentTransitions, rebuildAndPersist, LADDER_CONSTANTS } from './lib/learning/ladder-engine.js';
 import { discoverExchange, lookupExchange, getCacheSnapshot as getExchangeCacheSnapshot } from './lib/exchange-cache.js';
 import { runHTFFibJob, ensureHTFFibCache, isFibCacheStale, loadFibCache, HTF_FIB_CONFIG } from './lib/fib-engine.js';
-import { startLivePriceFeed, getLivePrice, getAllLivePrices, getFeedStats, registerSymbols as registerLiveSymbols } from './lib/live-price-feed.js';
+import { startLivePriceFeed, getLivePrice, getAllLivePrices, getFeedStats, getFeedHealth, registerSymbols as registerLiveSymbols } from './lib/live-price-feed.js';
 import { wrapBroadcast as wrapLiveOutcome } from './lib/learning/live-outcome-processor.js';
 import { startYahooPriceFeed, getAllYahooPrices, getYahooFeedStats, registerSymbolsByCategory as registerYahooByCategory, registerSymbols as registerYahooSymbols } from './lib/yahoo-price-feed.js';
 
@@ -96,6 +96,12 @@ app.get('/api/health', async (req, res) => {
 // Risk #5 — Parser alarm sayaclarinin gunluk gorunurlugu (gunluk review icin)
 app.get('/api/parser-alarms', (_req, res) => {
   res.json({ success: true, ...getParserAlarmStats() });
+});
+
+// Risk #17 — Veri feed sagligi (Binance WS heartbeat + zombi tespit)
+// Severity: ok = mesaj akiyor, warning = >30sn idle, critical = >60sn veya disconnected
+app.get('/api/feed-health', (_req, res) => {
+  res.json({ success: true, ...getFeedHealth() });
 });
 
 app.get('/api/scheduler/status', (req, res) => {
