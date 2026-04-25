@@ -14,6 +14,7 @@ import fs from 'fs';
 import path from 'path';
 import { execFile } from 'child_process';
 import { fileURLToPath } from 'url';
+import { createSseBroadcaster } from '../../src/lib/sse_broadcaster.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -92,6 +93,9 @@ function runScanner() {
 let building = false;
 let buildCount = 0;
 
+// SSE subscribers registry — Task 12 will pump events into this.
+const sse = createSseBroadcaster();
+
 function rebuild() {
   if (building) {
     log('build already in progress, skipping');
@@ -135,6 +139,10 @@ function rebuild() {
 // ─── HTTP server ───
 
 function serveHtml(req, res) {
+  if (req.url === '/events') {
+    sse.handleClient(req, res);
+    return;
+  }
   if (req.url !== '/' && req.url !== '/index.html') {
     res.writeHead(404, { 'Content-Type': 'text/plain' });
     res.end('Not found');
@@ -172,6 +180,7 @@ server.listen(PORT, () => {
   console.log(`  Options:  cached, refreshed every ${OPTIONS_MAX_AGE_MS / 60000} min`);
   console.log(`  Scanner:  coiled spring scan every ${SCANNER_MAX_AGE_MS / 60000} min`);
   console.log(`  News:     refreshed every rebuild`);
+  console.log(`  SSE:      /events endpoint ready (0 subscribers)`);
   console.log(`  Output:   ${OUTPUT_HTML}`);
   console.log('='.repeat(56));
   console.log('');
