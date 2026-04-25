@@ -1912,7 +1912,7 @@ function csRiskChipsHtml(c) {
   const adv = details.averageDailyVolume10Day || details.adv10d;
   if (adv != null && adv < 200_000) chips.push({ text: `🚨 low vol`, color: '#e74c3c' });
   else if (adv != null && adv < 500_000) chips.push({ text: `⚠ moderate vol`, color: '#f1c40f' });
-  if (/merger[_ ]pending/i.test(c.notes || '')) chips.push({ text: '🚩 merger', color: '#e74c3c' });
+  if (/merger[_\- ]?pending/i.test(c.notes || '')) chips.push({ text: '🚩 merger', color: '#e74c3c' });
   if (details.shortFloat != null && details.shortFloat >= 20) chips.push({ text: `⚠ ${details.shortFloat}% short`, color: '#e74c3c' });
   return chips.map(ch => `<span class="cs-risk-chip" style="background:${ch.color}22;color:${ch.color};padding:2px 7px;border-radius:4px;font-size:10px;margin-right:4px;">${escChip(ch.text)}</span>`).join('');
 }
@@ -3887,7 +3887,10 @@ function showFireBanner(f) {
   }
 
   banner.style.background = band === 'red' ? '#c0392b' : band === 'yellow' ? '#d68910' : '#229954';
-  bannerText.innerHTML = emoji + ' <b>' + (f.ticker || '?') + '</b> ' + levelTag +
+  // Defense-in-depth: even though ticker is bounded server-side, a single inline
+  // escape stops any future scanner-output mishap from injecting HTML.
+  const escTicker = String(f.ticker || '?').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  bannerText.innerHTML = emoji + ' <b>' + escTicker + '</b> ' + levelTag +
     ' fired @ $' + (f.price && f.price.firedPrice != null ? Number(f.price.firedPrice).toFixed(2) : '—') +
     ' (trigger $' + (f.trigger && f.trigger.level != null ? Number(f.trigger.level).toFixed(2) : '—') + ')' +
     riskSuffix + planSuffix;
