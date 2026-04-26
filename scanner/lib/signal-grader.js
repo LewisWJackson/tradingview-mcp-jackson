@@ -778,26 +778,29 @@ export function gradeShortTermSignal({
     tally: null,
   };
 
-  // --- YATAY + TRANSITION REJIM: KhanSaab bypass ---
-  // CLAUDE.md "Volatilite & Trend Rejimi": net trend_up/trend_down DISINDA tum
-  // rejimlerde (sideways, transition, ADX<25) KhanSaab skoru ve TUM KhanSaab-
-  // turevi oylar (ema_cross, macd, vwap, rsi_level, adx_trend) gurultu uretir —
-  // YOKSAY. Sadece SMC yapisi, formasyon, cdv, volume_confirm, divergence,
-  // squeeze, stochRSI gibi bagimsiz oylar sayilir.
+  // ====================================================================
+  // Faz 2 v2.0 (Commit 5) — KhanSaab tam bypass KALDIRILDI.
+  //
+  // Eski Faz 0 patch (b): ADX<25 / sideways / transition'da KhanSaab
+  // tamamen siler (khanSaabForVotes=null) → MACD/EMA/RSI/ADX/Volume/VWAP
+  // oyları collectVotes'a hiç ulaşmaz → 4-7 oy (8-9 yerine) → düşük kanaat.
+  //
+  // Sorun: Faz 2 wrapper applyRegimeStrategy() zaten rejim-aware ağırlıklandırma
+  // yapıyor (ranging'de momentum 0.3 / mean_reversion 1.5). Patch (b) wrapper'a
+  // varmadan oyları siliyor → wrapper'ın suppress edebileceği bir şey yok →
+  // wrapper işlevsiz kalıyor.
+  //
+  // Çözüm: Patch (b) tamamen kaldırıldı. KhanSaab her zaman geçer; rejim-uyumlu
+  // bastırma applyRegimeStrategy() içinde REGIME_VOTE_WEIGHTS tablosuyla yapılır
+  // (signal-grader sonunda wrapper hook'u bunu uygular).
+  //
+  // Risk: shadow modda (dispatch yok) — wrapper'ın gerçek davranışı 24h shadow
+  // gözlem ile doğrulanacak. Riskliyse REGIME_VOTE_WEIGHTS sayıları kalibre olur.
+  // ====================================================================
   const adxForRegime = khanSaab?.adx != null ? Number(khanSaab.adx) : null;
-  const sidewaysByAdx = adxForRegime != null && adxForRegime < 25; // <25: transition + sideways kapsar
-  const regimeStr = typeof regime === 'string' ? regime : regime?.regime;
-  const nonTrendRegime = regimeStr === 'sideways' || regimeStr === 'transition';
-  const khanSaabDisabledFlag = sidewaysByAdx || nonTrendRegime;
-  let khanSaabForVotes = khanSaab;
-  if (khanSaabDisabledFlag) {
-    khanSaabForVotes = null;
-    result.khanSaabDisabled = true;
-    result.khanSaabDisabledReason = sidewaysByAdx
-      ? `ADX ${adxForRegime} < 25 (trend zayif/transition) — KhanSaab oylari devre disi`
-      : `${regimeStr.toUpperCase()} rejim — KhanSaab oylari devre disi`;
-    result.reasoning.push(`TREND-DISI REJIM: ${result.khanSaabDisabledReason}. Sadece SMC + yapisal bounce/reaction setuplari kullanilir.`);
-  }
+  // Wrapper REGIME_VOTE_WEIGHTS rejim-aware bastırmayı yapar; signal-grader
+  // burada KhanSaab'ı tam geçirir.
+  const khanSaabForVotes = khanSaab;
 
   // Sembol-spesifik ATR% medianini guncelle (vol tier cache'i besler) — fresh
   // olcum her grade'de EWMA ile entegre olur; tier rejim degisince kayar.
@@ -874,7 +877,7 @@ export function gradeShortTermSignal({
   // Volatility regime
   // Faz 0 patch (b): KhanSaab bypass modunda khanSaab.adx'i kullanma,
   // extractADX(studyValues) uzerinden ADX oku — volRegime dogru tier'a dussun.
-  const adxVal = (khanSaabDisabledFlag ? null : khanSaab?.adx) || extractADX(studyValues);
+  const adxVal = khanSaab?.adx || extractADX(studyValues);
   const volRegime = getVolatilityRegime(adxVal);
   result.volatilityRegime = volRegime;
 
@@ -1078,11 +1081,9 @@ export function gradeShortTermSignal({
     // Momentum Market-Entry bypass: guclu trend + yuksek skor varsa pullback
     // beklemeden anlik fiyattan gir — aksi halde hareket kacirilir.
     // Koşul: ADX >= 28 VE (yön skoru >= %71 VEYA MTF guclu uyum)
-    // Faz 0 patch (b): KhanSaab bypass modunda bull/bearScore'u momentum
-    // market-entry karari icin kullanma — ADX<25 rejimde yuksek score aldatici.
-    const _dirScore = khanSaabDisabledFlag
-      ? 0
-      : (tally.direction === 'long' ? (khanSaab?.bullScore || 0) : (khanSaab?.bearScore || 0));
+    // Faz 2 v2.0: ADX>=28 zaten "trending" rejim demek; wrapper rejim-aware
+    // ağırlıklandırma yaptıgı icin bull/bearScore burada direkt kullanilabilir.
+    const _dirScore = tally.direction === 'long' ? (khanSaab?.bullScore || 0) : (khanSaab?.bearScore || 0);
     const _mtfStrong = !!(result.mtfConfirmation && result.mtfConfirmation.confidence >= 85
       && result.mtfConfirmation.direction === tally.direction);
     const _adxStrong = (adxVal || 0) >= 28;
@@ -1119,10 +1120,10 @@ export function gradeShortTermSignal({
         currentPrice,
         atr,
         parsedBoxes: parsedBoxes || null,
-        // Faz 0 patch (b): KhanSaab label entry'sini bypass modunda null gecir.
-        // ADX<25 / transition rejimde KhanSaab label'lari gurultu — SMC yapisi
-        // (OB/FVG/boxes) tek basina entry seciyor olmali.
-        khanSaabEntry: khanSaabDisabledFlag ? null : (khanSaabLabels?.entryPrice || null),
+        // Faz 2 v2.0: KhanSaab label entry'si rejim filtresi olmadan gecer;
+        // wrapper'in rejim-aware oylama mantığı zaten kotu trending varsayimi
+        // bastırıyor.
+        khanSaabEntry: khanSaabLabels?.entryPrice || null,
       });
 
       // Pump-top tespit edildi ve smart-entry yapisal zone bulamadi (fallback
