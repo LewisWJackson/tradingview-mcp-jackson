@@ -78,10 +78,10 @@ export async function manageIndicator({ action, indicator, entity_id, inputs: in
   if (action === 'add') {
     const inputArr = inputs ? Object.entries(inputs).map(([k, v]) => ({ id: k, value: v })) : [];
     const before = await evaluate(`${CHART_API}.getAllStudies().map(function(s) { return s.id; })`);
-    await evaluate(`
+    await evaluateAsync(`
       (function() {
         var chart = ${CHART_API};
-        chart.createStudy('${indicator.replace(/'/g, "\\'")}', false, false, ${JSON.stringify(inputArr)});
+        return chart.createStudy('${indicator.replace(/'/g, "\\'")}', false, false, ${JSON.stringify(inputArr)});
       })()
     `);
     await new Promise(r => setTimeout(r, 1500));
