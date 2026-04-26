@@ -21,6 +21,7 @@ import { checkBlackout } from './blackout.js';
 // kapanış saatlerini zaten tutar. Saat tahmini bazlı statik blok artık yok.
 import { applyAlignmentFilters } from './alignment-filters.js';
 import { detectVolumeReaction } from './volume-reaction-detector.js';
+import { formatBarTime } from './formation-detector.js';
 import { detectPumpTop, pumpPullbackLevel } from './pump-guard.js';
 import { loadFibCache } from './fib-engine.js';
 import {
@@ -221,6 +222,33 @@ export { DEFAULT_VOTE_WEIGHTS };
  * Collect votes from all available indicators.
  * Each vote: { source, direction: 'long'|'short'|null, weight, reasoning }
  */
+/**
+ * Faz 2 v2.3 — Formasyon nokta rol etiketleri Türkçe.
+ * formation-detector.js `points` array'indeki role değerlerini kart
+ * mesajlarına okunabilir biçimde çevirir.
+ */
+function roleToTr(role) {
+  switch (role) {
+    case 'top1':           return 'Tepe 1';
+    case 'top2':           return 'Tepe 2';
+    case 'bottom1':        return 'Dip 1';
+    case 'bottom2':        return 'Dip 2';
+    case 'neckline':       return 'Boyun çizgisi';
+    case 'left_shoulder':  return 'Sol omuz';
+    case 'head':           return 'Baş';
+    case 'right_shoulder': return 'Sağ omuz';
+    case 'pole_start':     return 'Direk başı';
+    case 'pole_end':       return 'Direk sonu';
+    case 'flag_end':       return 'Bayrak sonu';
+    case 'target':         return 'Hedef';
+    default:
+      // resistance_1, support_2 gibi numaralı roller — direkt kullan
+      if (role.startsWith('resistance')) return 'Direnç ' + (role.split('_')[1] || '');
+      if (role.startsWith('support'))    return 'Destek ' + (role.split('_')[1] || '');
+      return role;
+  }
+}
+
 function collectVotes({ khanSaab, smc, studyValues, ohlcv, formation, squeeze, divergence, cdv, macroFilter, stochRSI, regime, symbol }) {
   const votes = [];
   const w = getWeights(regime);
@@ -364,11 +392,30 @@ function collectVotes({ khanSaab, smc, studyValues, ohlcv, formation, squeeze, d
         const maturityMult = f.maturity ? Math.min(f.maturity / 100, 1.0) : 0.7;
         // Broken formations (confirmed breakout) get extra weight
         const breakoutMult = f.broken ? 1.5 : 1.0;
+
+        // Faz 2 v2.3 — formasyon noktalari detayi (operatorun "hangi mum, hangi
+        // seviye" sorusuna cevap). Tek satir reasoning'in sonuna ' | nokta1 |
+        // nokta2 | ...' formatinda eklenir. Frontend bunu satira render eder.
+        let detailParts = [];
+        if (Array.isArray(f.points) && f.points.length > 0) {
+          for (const p of f.points) {
+            if (p.price == null) continue;
+            const tStr = formatBarTime(p.time);
+            const priceStr = Number(p.price).toFixed(p.price < 10 ? 4 : 2);
+            const roleLabel = roleToTr(p.role);
+            detailParts.push(tStr ? `${roleLabel}: ${priceStr} @ ${tStr}` : `${roleLabel}: ${priceStr}`);
+          }
+        }
+        const reasonHeader = `Formasyon: ${f.name} (${f.direction}, olgunluk: %${f.maturity || '?'}${f.broken ? ', KIRILIM TEYITLI' : ''})`;
+        const reasonFull = detailParts.length > 0
+          ? `${reasonHeader} | ${detailParts.join(' | ')}`
+          : reasonHeader;
+
         votes.push({
           source: 'formation',
           direction: dir,
           weight: voteWeight('formation') * maturityMult * breakoutMult,
-          reasoning: `Formasyon: ${f.name} (${f.direction}, olgunluk: %${f.maturity || '?'}${f.broken ? ', KIRILIM TEYITLI' : ''})`,
+          reasoning: reasonFull,
         });
       }
     }

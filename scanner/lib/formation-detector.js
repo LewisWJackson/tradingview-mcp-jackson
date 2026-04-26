@@ -4,6 +4,29 @@
  */
 
 /**
+ * Bar timestamp'i (unix saniye veya ms) okunabilir UTC formatına çevir.
+ * "MM-DD HH:MM UTC" — kompakt, dashboard kart için ideal.
+ * @param {number} time — unix saniye veya milisaniye (auto-detect)
+ */
+export function formatBarTime(time) {
+  if (time == null || !Number.isFinite(Number(time))) return null;
+  const t = Number(time);
+  // Saniye veya ms ayrımı: ~10 milyar = ~Y2286 → eşik 1e11 üzeri ise ms
+  const ms = t > 1e11 ? t : t * 1000;
+  const d = new Date(ms);
+  if (isNaN(d.getTime())) return null;
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())} UTC`;
+}
+
+/**
+ * Formasyon objesine eklenebilecek nokta yapısı: { role, time, price }
+ *   role: 'top1', 'top2', 'bottom1', 'bottom2', 'neckline',
+ *         'left_shoulder', 'head', 'right_shoulder',
+ *         'resistance_1', 'support_1', 'pole_start', 'pole_end', 'flag_end' vb.
+ */
+
+/**
  * Find swing highs and lows in OHLCV data.
  * A swing high has at least `lookback` bars on each side with lower highs.
  * A swing low has at least `lookback` bars on each side with higher lows.
@@ -78,6 +101,11 @@ function detectAscendingTriangle(swingHighs, swingLows, bars) {
       // Kirilim olmadan once target "projeksiyon" olarak raporlanir.
       target: resistance + height,
       height,
+      points: [
+        ...recentHighs.map((h, i) => ({ role: `resistance_${i + 1}`, time: h.time, price: h.price })),
+        ...recentLows.map((l, i)  => ({ role: `support_${i + 1}`,    time: l.time, price: l.price })),
+        { role: 'target',     time: null, price: resistance + height },
+      ],
     };
   }
   return null;
@@ -125,6 +153,11 @@ function detectDescendingTriangle(swingHighs, swingLows, bars) {
       broken,
       target: support - height,
       height,
+      points: [
+        ...recentHighs.map((h, i) => ({ role: `resistance_${i + 1}`, time: h.time, price: h.price })),
+        ...recentLows.map((l, i)  => ({ role: `support_${i + 1}`,    time: l.time, price: l.price })),
+        { role: 'target',     time: null, price: support - height },
+      ],
     };
   }
   return null;
@@ -146,7 +179,9 @@ function detectDoubleTop(swingHighs, swingLows, bars) {
   const middleLows = swingLows.filter(l => l.index > h1.index && l.index < h2.index);
   if (middleLows.length === 0) return null;
 
-  const neckline = Math.min(...middleLows.map(l => l.price));
+  // Neckline noktasi: aralarindaki en dusuk low (zamanli)
+  const necklinePoint = middleLows.reduce((min, l) => l.price < min.price ? l : min, middleLows[0]);
+  const neckline = necklinePoint.price;
   const height = ((h1.price + h2.price) / 2) - neckline;
   const lastPrice = bars[bars.length - 1].close;
 
@@ -166,6 +201,12 @@ function detectDoubleTop(swingHighs, swingLows, bars) {
     broken,
     target: neckline - height,
     height,
+    points: [
+      { role: 'top1',     time: h1.time, price: h1.price },
+      { role: 'neckline', time: necklinePoint.time, price: neckline },
+      { role: 'top2',     time: h2.time, price: h2.price },
+      { role: 'target',   time: null, price: neckline - height },
+    ],
   };
 }
 
@@ -184,7 +225,8 @@ function detectDoubleBottom(swingHighs, swingLows, bars) {
   const middleHighs = swingHighs.filter(h => h.index > l1.index && h.index < l2.index);
   if (middleHighs.length === 0) return null;
 
-  const neckline = Math.max(...middleHighs.map(h => h.price));
+  const necklinePoint = middleHighs.reduce((max, h) => h.price > max.price ? h : max, middleHighs[0]);
+  const neckline = necklinePoint.price;
   const height = neckline - ((l1.price + l2.price) / 2);
   const lastPrice = bars[bars.length - 1].close;
 
@@ -204,6 +246,12 @@ function detectDoubleBottom(swingHighs, swingLows, bars) {
     broken,
     target: neckline + height,
     height,
+    points: [
+      { role: 'bottom1',  time: l1.time, price: l1.price },
+      { role: 'neckline', time: necklinePoint.time, price: neckline },
+      { role: 'bottom2',  time: l2.time, price: l2.price },
+      { role: 'target',   time: null, price: neckline + height },
+    ],
   };
 }
 
@@ -225,6 +273,8 @@ function detectHeadAndShoulders(swingHighs, swingLows, bars) {
   if (neckLows.length < 1) return null;
 
   const neckline = neckLows.reduce((sum, l) => sum + l.price, 0) / neckLows.length;
+  // Ortalama neckline icin temsilci nokta: en dusuk neckLow (kirilim seviyesi olarak)
+  const necklinePoint = neckLows.reduce((min, l) => l.price < min.price ? l : min, neckLows[0]);
   const height = h[1].price - neckline;
   const lastPrice = bars[bars.length - 1].close;
 
@@ -248,6 +298,13 @@ function detectHeadAndShoulders(swingHighs, swingLows, bars) {
     broken,
     target: neckline - height,
     height,
+    points: [
+      { role: 'left_shoulder',  time: h[0].time, price: h[0].price },
+      { role: 'head',           time: h[1].time, price: h[1].price },
+      { role: 'right_shoulder', time: h[2].time, price: h[2].price },
+      { role: 'neckline',       time: necklinePoint.time, price: neckline },
+      { role: 'target',         time: null, price: neckline - height },
+    ],
   };
 }
 
@@ -266,6 +323,7 @@ function detectInverseHS(swingHighs, swingLows, bars) {
   if (neckHighs.length < 1) return null;
 
   const neckline = neckHighs.reduce((sum, h) => sum + h.price, 0) / neckHighs.length;
+  const necklinePoint = neckHighs.reduce((max, h) => h.price > max.price ? h : max, neckHighs[0]);
   const height = neckline - l[1].price;
   const lastPrice = bars[bars.length - 1].close;
 
@@ -288,6 +346,13 @@ function detectInverseHS(swingHighs, swingLows, bars) {
     broken,
     target: neckline + height,
     height,
+    points: [
+      { role: 'left_shoulder',  time: l[0].time, price: l[0].price },
+      { role: 'head',           time: l[1].time, price: l[1].price },
+      { role: 'right_shoulder', time: l[2].time, price: l[2].price },
+      { role: 'neckline',       time: necklinePoint.time, price: neckline },
+      { role: 'target',         time: null, price: neckline + height },
+    ],
   };
 }
 
@@ -347,6 +412,11 @@ function detectFlag(bars) {
   // Hedef fiyat: breakout noktasindan (flag siniri) pole yuksekligi kadar
   const target = isBullPole ? flagHigh + poleHeight : flagLow - poleHeight;
 
+  // Pole/flag zaman noktalari (bar.time)
+  const poleStartBar = bars[poleStart];
+  const poleEndBar = bars[flagStart - 1];
+  const flagEndBar = bars[bars.length - 1];
+
   return {
     name: isBullPole ? 'Boga Bayragi (Bull Flag)' : 'Ayi Bayragi (Bear Flag)',
     type: 'continuation',
@@ -357,6 +427,12 @@ function detectFlag(bars) {
     broken,
     target,
     height: poleHeight,
+    points: [
+      { role: 'pole_start',  time: poleStartBar?.time, price: isBullPole ? poleLow  : poleHigh },
+      { role: 'pole_end',    time: poleEndBar?.time,   price: isBullPole ? poleHigh : poleLow  },
+      { role: 'flag_end',    time: flagEndBar?.time,   price: isBullPole ? flagHigh : flagLow  },
+      { role: 'target',      time: null, price: target },
+    ],
   };
 }
 
