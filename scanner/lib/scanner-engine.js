@@ -568,9 +568,19 @@ async function _scanShortTermInner(symbol, options = {}) {
     let shadowResult = null;
     let shadowMarketType = null;
     try {
+      // Faz 2 v2.2 — ADX slope hesabı (3-bar fark, normalize edilmemiş).
+      // Pozitif = ADX yükseliyor (trend güçleniyor), negatif = düşüyor (zayıflıyor).
+      // computeRegime trending teşhisinde `adxSlope >= 0` koşulu kullanır.
+      const adxSeries = data.khanSaab?.adxSeries;
+      let adxSlope = 0;
+      if (Array.isArray(adxSeries) && adxSeries.length >= 3) {
+        const a = adxSeries[adxSeries.length - 1];
+        const b = adxSeries[adxSeries.length - 3];
+        if (Number.isFinite(a) && Number.isFinite(b)) adxSlope = (a - b) / 3;
+      }
       const studyValuesForRegime = {
         adx: adxForRegime,
-        adxSlope: 0,
+        adxSlope,
         ema20: Number(data.studyValues?.ema20) || null,
         bbUpper: Number(data.studyValues?.bbUpper) || null,
         bbLower: Number(data.studyValues?.bbLower) || null,

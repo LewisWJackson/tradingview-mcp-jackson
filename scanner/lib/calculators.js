@@ -809,7 +809,18 @@ export function calcADX(bars, period = 14) {
   const adxArr = wilderRMA(dxArr, period);
   const last = adxArr[adxArr.length - 1];
   if (last == null) return null;
-  return { adx: Math.round(last * 10) / 10 };
+
+  // Faz 2 v2.2 — ADX serisi (son 5 değer) eklendi → slope hesaplamaya yarıyor.
+  // Yalnız null olmayan tail değerleri al; round 1 ondalık hane.
+  const tail = [];
+  for (let i = adxArr.length - 1; i >= 0 && tail.length < 5; i--) {
+    if (adxArr[i] != null) tail.unshift(Math.round(adxArr[i] * 10) / 10);
+  }
+
+  return {
+    adx: Math.round(last * 10) / 10,
+    adxSeries: tail,  // son 5 ADX değeri (en eski → en yeni)
+  };
 }
 
 /**
@@ -834,6 +845,7 @@ export function calcTechnicals(bars) {
     macdMain: macdResult?.macdMain ?? null,
     macdSignal: macdResult?.macdSignal ?? null,
     adx: adxResult?.adx ?? null,
+    adxSeries: adxResult?.adxSeries ?? null,  // Faz 2 v2.2 — slope için son 5 ADX
     vwap: null,
     bias: null,
     signalStatus: null,

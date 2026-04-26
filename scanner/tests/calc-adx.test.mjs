@@ -95,3 +95,60 @@ test('5. Yetersiz bar → null', () => {
   const r = calcADX(bars);
   assert.equal(r, null);
 });
+
+// ---------------------------------------------------------------------------
+// Faz 2 v2.2 — ADX serisi + slope dogrulama
+// ---------------------------------------------------------------------------
+
+test('6. adxSeries son 5 deger doner, hepsi 0-100 araliginda', () => {
+  const bars = genBars(100, 'strong_trend');
+  const r = calcADX(bars);
+  assert.ok(r != null);
+  assert.ok(Array.isArray(r.adxSeries), 'adxSeries dizi olmali');
+  assert.ok(r.adxSeries.length > 0 && r.adxSeries.length <= 5);
+  for (const v of r.adxSeries) {
+    assert.ok(v >= 0 && v <= 100, `adxSeries deger 0-100 disinda: ${v}`);
+  }
+  // Son deger r.adx ile esit olmali
+  assert.equal(r.adxSeries[r.adxSeries.length - 1], r.adx);
+});
+
+test('7. Hizlanan trend: adxSeries son degeri ilkinden buyuk olmali', () => {
+  // Yavas baslayan, sonra hizlanan trend simulasyonu
+  const bars = [];
+  let close = 100;
+  for (let i = 0; i < 100; i++) {
+    const accel = i < 50 ? 0.3 : 1.5;  // 50. bar sonrasi hizlan
+    const delta = accel + (Math.random() - 0.5) * 0.4;
+    const open = close;
+    close = open + delta;
+    bars.push({
+      open, close,
+      high: Math.max(open, close) + Math.abs(delta) * 0.3,
+      low: Math.min(open, close) - Math.abs(delta) * 0.3,
+      volume: 1000,
+    });
+  }
+  const r = calcADX(bars);
+  assert.ok(r && r.adxSeries.length >= 3);
+  // Slope >= 0 olmali (trend hizlaniyor → ADX yukseliyor)
+  const slope = r.adxSeries[r.adxSeries.length - 1] - r.adxSeries[0];
+  assert.ok(slope >= 0, `hizlanan trendde slope >= 0 olmali, gelen: ${slope.toFixed(2)}`);
+});
+
+test('8. Sabit girdi: adxSeries elemanlari neredeyse esit', () => {
+  // Sabit DX → wilderRMA sabit ADX → adxSeries değişmez
+  // Tam sabit bar (zero TR) → null donduruyor; bu yuzden cok kucuk delta
+  const bars = [];
+  let close = 100;
+  for (let i = 0; i < 100; i++) {
+    close += 0.1 * (i % 2 === 0 ? 1 : -1);  // ±0.1 mikro osilasyon
+    const open = close;
+    bars.push({ open, close, high: open + 0.05, low: open - 0.05, volume: 1000 });
+  }
+  const r = calcADX(bars);
+  if (r && r.adxSeries.length >= 3) {
+    const range = Math.max(...r.adxSeries) - Math.min(...r.adxSeries);
+    assert.ok(range < 5, `sabit girdide aralik <5 olmali, gelen: ${range.toFixed(2)}`);
+  }
+});
