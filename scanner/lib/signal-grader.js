@@ -12,6 +12,8 @@ import { isDegradedMode } from './learning/anomaly-detector.js';
 import { pickRegimeWeights } from './learning/regime-detector.js';
 // Faz 2 Commit 2 — rejim-aware wrapper (shadow mode default)
 import { applyRegimeStrategy } from './learning/regime-strategy.js';
+// Faz 2 v2.1 — rejim-aware minRR (R:R rejim profilinden override)
+import { REGIME_GATES } from './learning/regime-profiles.js';
 import { resolveLeague } from './learning/ladder-engine.js';
 import { checkBlackout } from './blackout.js';
 // Faz 2 v1.9 — session-filter.js kaldırıldı. Çift sayım: low_vol_drift rejimi
@@ -1421,12 +1423,24 @@ export function gradeShortTermSignal({
     result.rr = risk > 0 ? `1:${(reward / risk).toFixed(1)}` : 'N/A';
     result.slDistancePct = ((risk / entryPrice) * 100).toFixed(2) + '%';
 
-    const minRR = gt.minRR || 2;
+    // Faz 2 v2.1 — Rejim-aware minRR override.
+    // Mevcut sistem: gt.minRR || 2 (grade-bağlı, klasik 1:2 sabit).
+    // Yeni: regimeContext varsa REGIME_GATES[regime].minRR'den oku.
+    //   ranging:          1.5 (mean-reversion: TP yakın, SL dar — taxonomy §2)
+    //   trending_up/down: 2.0 (klasik)
+    //   breakout_pending: 2.5 (breakout sonrası geniş hareket)
+    // chaos/drift/closed minRR=null — wrapper zaten REJECT eder.
+    let minRR = gt.minRR || 2;
+    let minRRSource = 'grade_default';
+    if (regimeContext?.regime && REGIME_GATES[regimeContext.regime]?.minRR != null) {
+      minRR = REGIME_GATES[regimeContext.regime].minRR;
+      minRRSource = `regime:${regimeContext.regime}`;
+    }
     if (risk > 0 && reward / risk < minRR) {
-      result.warnings.push(`R:R ${result.rr} < 1:${minRR} minimum`);
+      result.warnings.push(`R:R ${result.rr} < 1:${minRR} minimum (${minRRSource})`);
       result.grade = 'IPTAL';
       const rrNum = (reward / risk).toFixed(2);
-      result.reasoning.push(`--- SERT BLOK IPTAL: R:R 1:${rrNum} < 1:${minRR} minimum — pozisyon acilmaz`);
+      result.reasoning.push(`--- SERT BLOK IPTAL: R:R 1:${rrNum} < 1:${minRR} minimum (${minRRSource}) — pozisyon acilmaz`);
     }
   }
 

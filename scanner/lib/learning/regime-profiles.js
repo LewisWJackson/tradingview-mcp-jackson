@@ -126,13 +126,17 @@ export function getProfile(marketType, subClass = null) {
  *   - allowNewPosition: chaos/drift/closed → false (yeni pozisyon yok)
  */
 export const REGIME_GATES = {
-  trending_up:      { allowNewPosition: true, minGrade: 'B', htfConfMin: 60, mtfAlignMin: 75 },
-  trending_down:    { allowNewPosition: true, minGrade: 'B', htfConfMin: 60, mtfAlignMin: 75 },
-  ranging:          { allowNewPosition: true, minGrade: 'C', htfConfMin: 45, mtfAlignMin: 60 },
-  breakout_pending: { allowNewPosition: true, minGrade: 'B', htfConfMin: 55, mtfAlignMin: 70 },
-  high_vol_chaos:   { allowNewPosition: false, minGrade: null, htfConfMin: null, mtfAlignMin: null },
-  low_vol_drift:    { allowNewPosition: false, minGrade: null, htfConfMin: null, mtfAlignMin: null },
-  market_closed:    { allowNewPosition: false, minGrade: null, htfConfMin: null, mtfAlignMin: null },
+  // minRR: rejim-aware risk/reward minimum eşiği (Faz 2 v2.1, 2026-04-26).
+  // Klasik 1:2 sabit eşiği ranging için fazla agresif (mean-reversion doğası gereği TP yakın).
+  // taxonomy v1.0 §2: ranging SL profili ATR×1.5 (dar), trending ATR×2.5, breakout ATR×3.0.
+  // minRR sayıları May 2 raporu + outcome verisiyle kalibre edilecek.
+  trending_up:      { allowNewPosition: true, minGrade: 'B', htfConfMin: 60, mtfAlignMin: 75, minRR: 2.0 },
+  trending_down:    { allowNewPosition: true, minGrade: 'B', htfConfMin: 60, mtfAlignMin: 75, minRR: 2.0 },
+  ranging:          { allowNewPosition: true, minGrade: 'C', htfConfMin: 45, mtfAlignMin: 60, minRR: 1.5 },
+  breakout_pending: { allowNewPosition: true, minGrade: 'B', htfConfMin: 55, mtfAlignMin: 70, minRR: 2.5 },
+  high_vol_chaos:   { allowNewPosition: false, minGrade: null, htfConfMin: null, mtfAlignMin: null, minRR: null },
+  low_vol_drift:    { allowNewPosition: false, minGrade: null, htfConfMin: null, mtfAlignMin: null, minRR: null },
+  market_closed:    { allowNewPosition: false, minGrade: null, htfConfMin: null, mtfAlignMin: null, minRR: null },
 };
 
 /**

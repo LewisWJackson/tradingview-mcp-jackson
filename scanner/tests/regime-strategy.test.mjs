@@ -20,6 +20,7 @@ import {
   __internals,
 } from '../lib/learning/regime-strategy.js';
 import { _resetWrapperMode, setWrapperMode } from '../lib/learning/wrapper-mode.js';
+import { REGIME_GATES } from '../lib/learning/regime-profiles.js';
 
 // Test başında shadow mode default
 beforeEach(() => {
@@ -214,6 +215,19 @@ test('15a. signal-grader gerçek source key uyumu (vote.source)', () => {
   assert.ok(r.suppressedKeys.length === 0, 'ranging\'de tam 0 yok, sadece azaltma');
   assert.ok(r.boostedKeys.includes('rsi_level') || r.boostedKeys.includes('rsi_divergence'),
     'rsi-aile boost edildi');
+});
+
+test('15b. REGIME_GATES minRR alanı (Faz 2 v2.1)', () => {
+  // Rejim-aware R:R minimum eşikleri: ranging mean-reversion için gevşek,
+  // trending klasik 1:2, breakout geniş 1:2.5
+  assert.equal(REGIME_GATES.ranging.minRR, 1.5);
+  assert.equal(REGIME_GATES.trending_up.minRR, 2.0);
+  assert.equal(REGIME_GATES.trending_down.minRR, 2.0);
+  assert.equal(REGIME_GATES.breakout_pending.minRR, 2.5);
+  // chaos/drift/closed: null (wrapper zaten REJECT eder, minRR'a kadar gelmez)
+  assert.equal(REGIME_GATES.high_vol_chaos.minRR, null);
+  assert.equal(REGIME_GATES.low_vol_drift.minRR, null);
+  assert.equal(REGIME_GATES.market_closed.minRR, null);
 });
 
 test('15. JSONL log üretildi mi?', () => {
