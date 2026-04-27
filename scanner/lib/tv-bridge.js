@@ -60,8 +60,11 @@ async function waitForChartReady(expectedSymbol = null, expectedTf = null) {
 
       if (!state || state.isLoading) { stableCount = 0; await sleep(POLL_INTERVAL); continue; }
       if (expectedSymbol && state.currentSymbol) {
-        const bare = expectedSymbol.includes(':') ? expectedSymbol.split(':')[1] : expectedSymbol;
-        if (!state.currentSymbol.toUpperCase().includes(bare.toUpperCase())) {
+        // EXACT bare-symbol match — substring (.includes) yanlistir,
+        // "BA" istegi "BABA"/"BIST:BA" gibi sembollerde false-positive uretir.
+        const wantBare = bareOf(expectedSymbol);
+        const gotBare = bareOf(state.currentSymbol);
+        if (!gotBare || gotBare !== wantBare) {
           stableCount = 0; await sleep(POLL_INTERVAL); continue;
         }
       }
@@ -272,15 +275,19 @@ export async function waitForDataChange(prevSnapshot, timeoutMs = 10000) {
  * Parse timeframe string to seconds.
  */
 function parseTFToSeconds(tf) {
-  const s = String(tf).toUpperCase();
+  // 'M' (buyuk) = ay, 'm' (kucuk) = dakika ayrimi korunur. Eski kod toUpperCase
+  // yapip '1m'i '1M'e cevirip ay sayiyordu → maxAge 30 gun, staleness check'i devre disi.
+  const raw = String(tf);
+  const s = raw.toUpperCase();
   if (s === '1D' || s === 'D') return 86400;
   if (s === '1W' || s === 'W') return 604800;
-  if (s === '1M' || s === 'M') return 2592000;
+  // Ay yalniz buyuk M ile (TradingView konvansiyonu)
+  if (raw === '1M' || raw === 'M') return 2592000;
   const n = parseInt(s, 10);
   if (isNaN(n)) return 3600; // fallback 1h
-  // TradingView: numbers <= 60 are minutes, 'H' suffix for hours
   if (s.includes('H')) return n * 3600;
-  return n * 60; // minutes
+  // 'm' suffix veya cıplak sayı → dakika
+  return n * 60;
 }
 
 /**
@@ -327,7 +334,7 @@ export async function getStudyValues() {
               if (items) {
                 for (var i = 0; i < items.length; i++) {
                   var item = items[i];
-                  if (item._value && item._value !== '\\u2205' && item._title) values[item._title] = item._value;
+                  if (item._value && item._value !== '∅' && item._title) values[item._title] = item._value;
                 }
               }
             }
@@ -389,12 +396,17 @@ export async function getQuote(expectedSymbol = null) {
  * Falls back to getOhlcv if quote fails.
  */
 export async function getLastPrice(symbol) {
-  await setSymbol(symbol);
-  const quote = await getQuote();
-  if (quote && quote.last && quote.last > 0) return quote.last;
-  // Fallback
-  const ohlcv = await getOhlcv(1, false);
-  if (ohlcv && ohlcv.bars && ohlcv.bars.length > 0) return ohlcv.bars[ohlcv.bars.length - 1].close;
+  // setSymbol dogrulanamadiysa (success:false) chart hala eski sembolde olabilir;
+  // bu durumda yanlis-sembol fiyati donmesin.
+  const sw = await setSymbol(symbol);
+  if (sw && sw.success === false) return null;
+  const quote = await getQuote(symbol);
+  if (quote && !quote._symbolMismatch && quote.last && quote.last > 0) return quote.last;
+  // Fallback — expectedSymbol ile guard'li
+  const ohlcv = await getOhlcv(1, false, symbol);
+  if (ohlcv && !ohlcv._symbolMismatch && ohlcv.bars && ohlcv.bars.length > 0) {
+    return ohlcv.bars[ohlcv.bars.length - 1].close;
+  }
   return null;
 }
 
@@ -518,7 +530,11 @@ export async function getPineLines(filter) {
     for (const item of s.items) {
       const v = item.raw;
       const y1 = v.y1 != null ? Math.round(v.y1 * 100) / 100 : null;
-      if (y1 != null && v.y1 === v.y2 && !seen[y1]) { hLevels.push(y1); seen[y1] = true; }
+      // Yatay cizgi tespiti: float esitlik yerine fiyatin ~%0.01'i kadar epsilon.
+      // Tam yatay cizilenler bile renderda kucuk float drift gosterebiliyor.
+      const isHorizontal = v.y1 != null && v.y2 != null
+        && Math.abs(v.y1 - v.y2) <= Math.max(Math.abs(v.y1), 1e-9) * 0.0001;
+      if (y1 != null && isHorizontal && !seen[y1]) { hLevels.push(y1); seen[y1] = true; }
     }
     hLevels.sort((a, b) => b - a);
     return { name: s.name, total_lines: s.count, horizontal_levels: hLevels };
@@ -537,10 +553,22 @@ export async function readKhanSaab() {
 }
 
 export async function readSMC() {
+  // getPineX() bos sonucta throw ETMEZ → bos array doner. Eski .catch fallback'i
+  // hicbir zaman tetiklenmiyordu. LuxAlgo fallback'i bos sonuc kontrolu ile yap.
+  async function tryBoth(fn) {
+    try {
+      const primary = await fn('Smart Money');
+      if (Array.isArray(primary) && primary.length > 0) return primary;
+    } catch { /* ignore */ }
+    try {
+      const fallback = await fn('LuxAlgo');
+      return Array.isArray(fallback) ? fallback : [];
+    } catch { return []; }
+  }
   const [labels, boxes, lines] = await Promise.all([
-    getPineLabels('Smart Money').catch(() => getPineLabels('LuxAlgo').catch(() => [])),
-    getPineBoxes('Smart Money').catch(() => getPineBoxes('LuxAlgo').catch(() => [])),
-    getPineLines('Smart Money').catch(() => getPineLines('LuxAlgo').catch(() => [])),
+    tryBoth(getPineLabels),
+    tryBoth(getPineBoxes),
+    tryBoth(getPineLines),
   ]);
   return { labels, boxes, lines };
 }

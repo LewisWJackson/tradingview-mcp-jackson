@@ -24,7 +24,7 @@ import { getMacroState, formatMacroSummary, setMacroLockFunctions } from './lib/
 import { ensureConnection, getIndicators, addIndicator, removeIndicator, ensureIndicators, setupIndicatorsForScan, INDICATOR_PRESETS, readWithTempIndicator } from './lib/tv-bridge.js';
 import { startLearningLoop, stopLearningLoop, getLearningStatus, getLearningSummary, setIntegration as setLearningIntegration, forceAdjustment, forceOutcomeCheck } from './lib/learning/learning-loop.js';
 import { generateFullReport, generateQuickSummary, generate24hChangesReport, generateDigest } from './lib/learning/learning-reporter.js';
-import { getOpenSignals, getSignalHistory, cleanupDuplicateSignals } from './lib/learning/signal-tracker.js';
+import { getOpenSignals, getSignalHistory, cleanupDuplicateSignals, refreshHTFBarrierLevelsForOpenSignals } from './lib/learning/signal-tracker.js';
 import { getAllCachedStats, recomputeAllStats } from './lib/learning/stats-engine.js';
 import { scoreAllIndicators, generateIndicatorReport } from './lib/learning/indicator-scorer.js';
 import { loadWeights, resetWeights } from './lib/learning/weight-adjuster.js';
@@ -34,6 +34,7 @@ import { getCheckpointHistory } from './lib/learning/shadow-guard.js';
 import { getLadderSummary, getRecentTransitions, rebuildAndPersist, LADDER_CONSTANTS } from './lib/learning/ladder-engine.js';
 import { discoverExchange, lookupExchange, getCacheSnapshot as getExchangeCacheSnapshot } from './lib/exchange-cache.js';
 import { runHTFFibJob, ensureHTFFibCache, isFibCacheStale, loadFibCache, HTF_FIB_CONFIG } from './lib/fib-engine.js';
+import { formatBarrierFibBasis } from './lib/alignment-filters.js';
 import { startLivePriceFeed, getLivePrice, getAllLivePrices, getFeedStats, getFeedHealth, registerSymbols as registerLiveSymbols } from './lib/live-price-feed.js';
 import { wrapBroadcast as wrapLiveOutcome } from './lib/learning/live-outcome-processor.js';
 import { startYahooPriceFeed, getAllYahooPrices, getYahooFeedStats, registerSymbolsByCategory as registerYahooByCategory, registerSymbols as registerYahooSymbols } from './lib/yahoo-price-feed.js';
@@ -72,6 +73,53 @@ function broadcastWS(data) {
   for (const ws of wsClients) {
     try { ws.send(msg); } catch {}
   }
+}
+
+function findFibBasisForBarrierWarning(symbol, warning) {
+  if (!symbol || typeof warning !== 'string') return null;
+  if (!warning.includes('[HTF-Barrier]') || !warning.includes('htf_fib') || warning.includes('Fib dayanak:')) return null;
+  const match = warning.match(/\((1[DW]) @ ([0-9]+(?:\.[0-9]+)?)/);
+  if (!match) return null;
+  const [, tf, rawPrice] = match;
+  const barrierPrice = Number(rawPrice);
+  if (!Number.isFinite(barrierPrice)) return null;
+
+  const cache = loadFibCache(symbol);
+  const tfData = cache?.timeframes?.[tf];
+  const fib = tfData?.fib;
+  if (!fib) return null;
+
+  const tolerance = Math.max(Math.abs(barrierPrice) * 0.00005, 0.0001);
+  const details = [];
+  const collect = (items, kind) => {
+    for (const item of items || []) {
+      if (!item || typeof item.price !== 'number') continue;
+      if (Math.abs(item.price - barrierPrice) > tolerance) continue;
+      details.push({
+        tf,
+        kind,
+        level: item.level,
+        price: item.price,
+        direction: fib.direction || null,
+        swing: fib.swing || null,
+      });
+    }
+  };
+  collect(fib.retracement, 'retracement');
+  collect(fib.extensions || fib.extension, 'extension');
+  return formatBarrierFibBasis({ fibDetails: details });
+}
+
+function enrichDashboardWarnings(signal) {
+  if (!Array.isArray(signal?.warnings)) return signal?.warnings || [];
+  return signal.warnings.map(w => {
+    const basis = findFibBasisForBarrierWarning(signal.symbol, w);
+    if (basis) return `${w} | Fib dayanak: ${basis}`;
+    if (typeof w === 'string' && w.includes('[HTF-Barrier]') && w.includes('htf_fib')) {
+      return `${w} | Fib dayanak: mevcut HTF fib cache icinde bu bariyer seviyesi bulunamadi; sinyal kaydi stale olabilir, rescan/migration gerekli.`;
+    }
+    return w;
+  });
 }
 
 // Forward scheduler events to WebSocket
@@ -1003,7 +1051,7 @@ app.get('/api/signals/open-dashboard', (req, res) => {
         ageMinutes,
         createdAt: s.createdAt,
         lastCheckedAt: s.lastCheckedAt,
-        warnings: s.warnings,
+        warnings: enrichDashboardWarnings(s),
         // Tek-poz + reverse-yok alanlari
         reverseAttempts: Array.isArray(s.reverseAttempts) ? s.reverseAttempts : [],
         reverseAttemptCount: Array.isArray(s.reverseAttempts) ? s.reverseAttempts.length : 0,
@@ -1140,6 +1188,16 @@ app.post('/api/signals/cleanup-duplicates', (req, res) => {
   }
 });
 
+app.post('/api/admin/refresh-htf-barrier-levels', (req, res) => {
+  try {
+    const result = refreshHTFBarrierLevelsForOpenSignals({ symbol: req.body?.symbol || null });
+    res.json({ ok: true, ...result });
+  } catch (e) {
+    console.error('[API] /api/admin/refresh-htf-barrier-levels hatasi:', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // Current weights
 app.get('/api/learning/weights', (req, res) => {
   res.json(loadWeights());
@@ -1224,7 +1282,10 @@ let _htfFibTimer = null;
 async function startupHTFFibAndScheduler() {
   const status = isFibCacheStale();
   try {
-    if (status.stale) {
+    if (process.env.HTF_FIB_SKIP_STARTUP === '1') {
+      console.log('[Startup] HTF fib startup refresh env ile atlandi');
+      broadcastWS({ type: 'htf_fib_status', phase: 'startup_skipped_env', status });
+    } else if (status.stale) {
       console.log(`[Startup] HTF fib cache STALE (${status.reason || status.ageHours + 'h'}) — scheduler BEKLIYOR, once refresh calisacak`);
       broadcastWS({ type: 'htf_fib_status', phase: 'startup_refresh_start', status });
       _htfFibInProgress = true;

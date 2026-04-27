@@ -45,11 +45,22 @@ export function detectRSIDivergence(bars, rsiValue) {
 
   let divergence = null;
 
+  // Fiyat farki esigi: ATR-normalize (0.25 × ATR). Sabit %0.2 esigi forex'te
+  // cok gevsek, kriptoda cok sikiydi. ATR yoksa fallback olarak %0.2 kullan.
+  const atrEst = computeSimpleATR(recent, 14);
+  const minPriceDelta = atrEst != null ? atrEst * 0.25 : null;
+  // RSI farki esigi: divergence anlamli olsun diye min 2 puan.
+  const minRSIDelta = 2;
+
   // Bullish divergence: fiyat daha dusuk dip + RSI daha yuksek dip
   if (priceLows.length >= 2) {
     const prevLow = priceLows[priceLows.length - 2];
     const lastLow = priceLows[priceLows.length - 1];
-    if (lastLow.price < prevLow.price * 0.998 && lastLow.rsi > prevLow.rsi) {
+    const priceDrop = prevLow.price - lastLow.price;
+    const priceOK = minPriceDelta != null
+      ? priceDrop >= minPriceDelta
+      : lastLow.price < prevLow.price * 0.998;
+    if (priceOK && lastLow.rsi - prevLow.rsi >= minRSIDelta) {
       divergence = {
         type: 'bullish',
         description: `Bullish Divergence: fiyat ${prevLow.price.toFixed(2)} → ${lastLow.price.toFixed(2)} (dusuk), RSI ${prevLow.rsi.toFixed(1)} → ${lastLow.rsi.toFixed(1)} (yuksek)`,
@@ -63,7 +74,11 @@ export function detectRSIDivergence(bars, rsiValue) {
   if (!divergence && priceHighs.length >= 2) {
     const prevHigh = priceHighs[priceHighs.length - 2];
     const lastHigh = priceHighs[priceHighs.length - 1];
-    if (lastHigh.price > prevHigh.price * 1.002 && lastHigh.rsi < prevHigh.rsi) {
+    const priceRise = lastHigh.price - prevHigh.price;
+    const priceOK = minPriceDelta != null
+      ? priceRise >= minPriceDelta
+      : lastHigh.price > prevHigh.price * 1.002;
+    if (priceOK && prevHigh.rsi - lastHigh.rsi >= minRSIDelta) {
       divergence = {
         type: 'bearish',
         description: `Bearish Divergence: fiyat ${prevHigh.price.toFixed(2)} → ${lastHigh.price.toFixed(2)} (yuksek), RSI ${prevHigh.rsi.toFixed(1)} → ${lastHigh.rsi.toFixed(1)} (dusuk)`,
@@ -88,7 +103,9 @@ export function detectSqueeze(bars, currentATR) {
 
   // Calculate Wilder-smoothed ATR(14) from bars, then take 20-bar average
   const period = 14;
-  const recent = bars.slice(-Math.max(34, bars.length)); // en az 14 warmup + 20 analiz
+  // Son 60 bar (>= 14 warmup + 20 analiz). Eski kod Math.max kullanip
+  // tum diziyi aliyordu → seed cok eski TR'lerden hesaplaniyordu.
+  const recent = bars.slice(-Math.min(bars.length, 60));
   if (recent.length < period + 1) return null;
 
   const trValues = [];
@@ -249,8 +266,11 @@ export function parseKhanSaabDashboard(tableData) {
           else if (valueLower.includes('wait')) result.signalStatus = 'WAIT';
         }
 
-        // RSI: "RSI (14) | 33.4" — use value column, NOT label
-        if (label.includes('rsi') && !label.includes('5m')) {
+        // RSI: "RSI (14) | 33.4" — use value column, NOT label.
+        // Stoch RSI / RSI MA / RSI Div gibi satirlari haric tut (rsi'yi ezerlerdi).
+        if (label.includes('rsi') && !label.includes('5m')
+            && !label.includes('stoch') && !label.includes('ma')
+            && !label.includes('div')) {
           const m = value.match(/(\d+\.?\d*)/);
           if (m) result.rsi = parseFloat(m[1]);
         }
@@ -297,14 +317,18 @@ export function parseKhanSaabDashboard(tableData) {
           result.volume = valueLower.includes('high') ? 'HIGH' : 'LOW';
         }
 
-        // VWAP: "Price/VWAP | BELOW"
+        // VWAP: "Price/VWAP | BELOW" — sadece acik above/below isaretlerini kabul et.
+        // Aksi halde null birak (eski kod her bilinmeyen degeri BELOW yapip bias'i bozuyordu).
         if (label.includes('vwap')) {
-          result.vwap = valueLower.includes('above') || valueLower.includes('over') ? 'ABOVE' : 'BELOW';
+          if (valueLower.includes('above') || valueLower.includes('over')) result.vwap = 'ABOVE';
+          else if (valueLower.includes('below') || valueLower.includes('under')) result.vwap = 'BELOW';
         }
 
-        // EMA Cross: "EMA Cross | BEAR"
-        if (label.includes('ema')) {
-          result.emaStatus = valueLower.includes('bull') ? 'BULL' : valueLower.includes('bear') ? 'BEAR' : value.trim();
+        // EMA Cross: "EMA Cross | BEAR" — sadece cross/status satirini parse et.
+        // "EMA 9 | 152.34", "EMA 200 | ..." gibi salt-sayisal satirlar emaStatus'u bozuyordu.
+        if (label.includes('ema') && (label.includes('cross') || label.includes('status') || label.includes('trend'))) {
+          if (valueLower.includes('bull')) result.emaStatus = 'BULL';
+          else if (valueLower.includes('bear')) result.emaStatus = 'BEAR';
         }
 
         // Trend Strength: "Trend Str | STRONG"
@@ -351,24 +375,19 @@ export function parseSMCLabels(labelData) {
           || (label.color && /green|#00|#22|lime/i.test(label.color));
         const isBearish = textStr.includes('BEAR') || textStr.includes('↓') || textStr.includes('DOWN')
           || (label.color && /red|#ff0000|#ee|orange/i.test(label.color));
-        // Yon tespit edilemezse: eski BOS varsa fiyat karsilastirmasi ile
-        // tahmin et. Onceki BOS yoksa `null` don — yanlis "bearish"
-        // fallback'i (eski mantik) BOS'i bilmeden bearish sayiyordu.
-        const direction = isBullish ? 'bullish' : isBearish ? 'bearish' : (
-          result.lastBOS ? (price > result.lastBOS.price ? 'bullish' : 'bearish') : null
-        );
+        // Yon tespit edilemezse null don. Iki BOS etiketinin fiyat sirasi
+        // BOS yonu hakkinda bilgi vermez (BOS yonu kirilan onceki swing'e
+        // gore tanimli) — eski fiyat-karsilastirma fallback'i rastgele sonuc
+        // uretiyordu.
+        const direction = isBullish ? 'bullish' : isBearish ? 'bearish' : null;
         result.lastBOS = { direction, raw: textStr, price };
       }
-      if (textStr.includes('CHOCH') || textStr.includes('CHoCH')) {
+      if (textStr.includes('CHOCH')) {
         const isBullish = textStr.includes('BULL') || textStr.includes('↑') || textStr.includes('UP')
           || (label.color && /green|#00|#22|lime/i.test(label.color));
         const isBearish = textStr.includes('BEAR') || textStr.includes('↓') || textStr.includes('DOWN')
           || (label.color && /red|#ff0000|#ee|orange/i.test(label.color));
-        // Ayni fallback: onceki CHoCH yoksa null don, yanlis "bearish"
-        // varsayimi yapma.
-        const direction = isBullish ? 'bullish' : isBearish ? 'bearish' : (
-          result.lastCHoCH ? (price > result.lastCHoCH.price ? 'bullish' : 'bearish') : null
-        );
+        const direction = isBullish ? 'bullish' : isBearish ? 'bearish' : null;
         result.lastCHoCH = { direction, raw: textStr, price };
       }
       if (textStr.includes('EQH')) result.eqh.push({ text: textStr, price });
@@ -518,6 +537,26 @@ export function computeEffectiveSLMultiplier(volRegime, symbol, tf) {
   const tfBoost = getTFSLBoost(tf);
   // Final = base × category boost × TF boost, clamped between 1.5 and 5.0
   return Math.min(Math.max(Math.round(base * catBoost * tfBoost * 100) / 100, 1.5), 5.0);
+}
+
+/**
+ * Basit ATR hesabi (Wilder yerine SMA-of-TR). Divergence/box gibi yardimci
+ * fonksiyonlarda esik normalizasyonu icin yeterli.
+ */
+function computeSimpleATR(bars, period = 14) {
+  if (!Array.isArray(bars) || bars.length < period + 1) return null;
+  const trs = [];
+  for (let i = 1; i < bars.length; i++) {
+    trs.push(Math.max(
+      bars[i].high - bars[i].low,
+      Math.abs(bars[i].high - bars[i - 1].close),
+      Math.abs(bars[i].low - bars[i - 1].close)
+    ));
+  }
+  const tail = trs.slice(-period);
+  if (tail.length < period) return null;
+  const atr = tail.reduce((s, v) => s + v, 0) / tail.length;
+  return atr > 0 ? atr : null;
 }
 
 // --- StochRSI ---
@@ -865,10 +904,17 @@ export function calcTechnicals(bars) {
  * @param {Array} boxData - Raw box data from readSMC().boxes (getPineBoxes result)
  * @returns {{ orderBlocks: Array<{high, low, mid}>, fvgZones: Array<{high, low, mid}> }}
  */
-export function parseSMCBoxes(boxData) {
+export function parseSMCBoxes(boxData, opts = {}) {
   if (!boxData || !Array.isArray(boxData) || boxData.length === 0) {
     return { orderBlocks: [], fvgZones: [] };
   }
+
+  // ATR-normalize esik: zone yuksekligi < 0.5×ATR ise FVG, aksi halde OB.
+  // ATR yoksa eski %0.3 fallback'ine dus (instrument-bagimsiz olmasa da
+  // veri yoksa baska secenek yok).
+  const atr = typeof opts.atr === 'number' && opts.atr > 0 ? opts.atr : null;
+  const fvgAtrMult = 0.5;
+  const fvgPctFallback = 0.003;
 
   const orderBlocks = [];
   const fvgZones = [];
@@ -882,7 +928,6 @@ export function parseSMCBoxes(boxData) {
 
       const mid = (zone.high + zone.low) / 2;
       const height = zone.high - zone.low;
-      const heightPct = mid > 0 ? height / mid : 0;
 
       const entry = {
         high: zone.high,
@@ -891,12 +936,12 @@ export function parseSMCBoxes(boxData) {
         color: zone.color || zone.bgcolor || null,
       };
 
-      // FVG zones are typically narrow gaps, OBs are wider institutional zones
-      if (heightPct < 0.003) {
-        fvgZones.push(entry);
-      } else {
-        orderBlocks.push(entry);
-      }
+      const isFVG = atr != null
+        ? height < atr * fvgAtrMult
+        : (mid > 0 && height / mid < fvgPctFallback);
+
+      if (isFVG) fvgZones.push(entry);
+      else orderBlocks.push(entry);
     }
   }
 

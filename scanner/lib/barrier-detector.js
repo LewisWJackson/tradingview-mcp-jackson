@@ -36,9 +36,13 @@ function normalizeTF(tf) {
 }
 
 function noiseThreshold(entry, atr) {
+  // ATR-driven primary + kucuk %0.1 floor. Eski %2 floor FX gibi dusuk-volatilite
+  // enstrumanlarda tum HTF seviyeleri filtreliyordu (EURUSD@1.10, ATR=0.004 →
+  // eski noise 0.022, gunluk seviyelerin neredeyse hepsi entry'ye 2 cent'ten
+  // yakin → hicbir barrier kalmazdi).
   const byAtr = (atr > 0 ? atr : entry * 0.005) * 1.0;
-  const byPct = entry * 0.02;
-  return Math.max(byAtr, byPct);
+  const byPctFloor = entry * 0.001;
+  return Math.max(byAtr, byPctFloor);
 }
 
 /**
@@ -60,14 +64,32 @@ export function buildBarriers({ entry, atr, currentTF: _currentTF, currentTFSmcL
         }
       }
       if (tfData.fib) {
+        const fibBasis = {
+          direction: tfData.fib.direction || null,
+          swing: tfData.fib.swing || null,
+        };
         for (const r of (tfData.fib.retracement || [])) {
           if (r && typeof r.price === 'number' && isFinite(r.price) && r.price > 0) {
-            rawLevels.push({ price: r.price, tf, source: 'htf_fib' });
+            rawLevels.push({
+              price: r.price,
+              tf,
+              source: 'htf_fib',
+              fib: { ...fibBasis, kind: 'retracement', level: r.level, price: r.price },
+            });
           }
         }
-        for (const e of (tfData.fib.extension || [])) {
+        // fib-engine.computeFibLevels field adi `extensions` (cogul). Eski kod
+        // singular `extension` okuyup hicbir extension seviyesi (1.272/1.618/...)
+        // toplamiyordu — TP cap'te HTF extension'lar gorulmuyordu.
+        for (const e of (tfData.fib.extensions || tfData.fib.extension || [])) {
           if (e && typeof e.price === 'number' && isFinite(e.price) && e.price > 0) {
-            rawLevels.push({ price: e.price, tf, source: 'htf_fib', multiplier: 0.8 });
+            rawLevels.push({
+              price: e.price,
+              tf,
+              source: 'htf_fib',
+              multiplier: 0.8,
+              fib: { ...fibBasis, kind: 'extension', level: e.level, price: e.price },
+            });
           }
         }
       }
@@ -112,6 +134,16 @@ export function buildBarriers({ entry, atr, currentTF: _currentTF, currentTFSmcL
       const rep = z.members.slice().sort((a, b) => (TF_WEIGHT[b.tf] || 0) - (TF_WEIGHT[a.tf] || 0) || b.strength - a.strength)[0];
       const hasSMC = z.members.some(m => m.source === 'smc');
       const hasFib = z.members.some(m => m.source === 'htf_fib');
+      const fibDetails = z.members
+        .filter(m => m.source === 'htf_fib' && m.fib)
+        .map(m => ({
+          tf: m.tf,
+          kind: m.fib.kind,
+          level: m.fib.level,
+          price: m.fib.price,
+          direction: m.fib.direction,
+          swing: m.fib.swing,
+        }));
       let strength = z.members.reduce((s, m) => s + m.strength, 0);
       if (hasSMC && hasFib) strength *= 1.5;
       return {
@@ -122,15 +154,18 @@ export function buildBarriers({ entry, atr, currentTF: _currentTF, currentTFSmcL
         members: z.members.length,
         zoneLow: z.zoneLow,
         zoneHigh: z.zoneHigh,
+        fibDetails,
       };
     });
   };
 
+  const aboveBarriers = cluster(above, 'above');
+  const belowBarriers = cluster(below, 'below');
   return {
-    aboveBarriers: cluster(above, 'above'),
-    belowBarriers: cluster(below, 'below'),
+    aboveBarriers,
+    belowBarriers,
     totalLevels: prepared.length,
-    totalZones: 0,
+    totalZones: aboveBarriers.length + belowBarriers.length,
     debug: { rawCount: rawLevels.length, afterFilter: prepared.length, noiseThreshold: noise },
   };
 }

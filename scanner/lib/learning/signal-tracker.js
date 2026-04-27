@@ -6,6 +6,7 @@
 import { readJSON, writeJSON, dataPath, readAllArchives } from './persistence.js';
 import { inferCategory as resolveInferCategory, extractBaseAsset, getResolvedExchangeRank } from '../symbol-resolver.js';
 import { dispatchToOkxExecutor as dispatchToOkxExecutorShared } from '../okx-dispatcher.js';
+import { applyAlignmentFilters } from '../alignment-filters.js';
 
 /**
  * Dedup grup anahtari uretir.
@@ -36,6 +37,100 @@ const OPEN_PATH = dataPath('signals', 'open.json');
 
 // Max open BEKLE (virtual) signals per symbol. Eskiyi otomatik superseded_by_cap yap.
 const BEKLE_CAP_PER_SYMBOL = 5;
+
+function hasHTFBarrierContext(signal) {
+  const warnings = Array.isArray(signal?.warnings) ? signal.warnings : [];
+  const reasoning = Array.isArray(signal?.reasoning) ? signal.reasoning : [];
+  return warnings.some(w => typeof w === 'string' && w.includes('[HTF-Barrier]'))
+    || reasoning.some(r => typeof r === 'string' && r.startsWith('Barrier:'))
+    || !!signal?.barrierSummary;
+}
+
+function priceChanged(a, b) {
+  if (a == null && b == null) return false;
+  if (a == null || b == null) return true;
+  return Math.abs(Number(a) - Number(b)) > 1e-9;
+}
+
+export function shouldRefreshBarrierLevels(existing, scanResult, { levelsFrozen = false } = {}) {
+  if (levelsFrozen) return false;
+  if (!existing || !scanResult) return false;
+  if (existing.direction !== scanResult.direction) return false;
+  if (String(existing.timeframe ?? '') !== String(scanResult.timeframe ?? '')) return false;
+  if (!hasHTFBarrierContext(existing) && !hasHTFBarrierContext(scanResult)) return false;
+  return priceChanged(existing.tp1, scanResult.tp1)
+    || priceChanged(existing.tp2, scanResult.tp2)
+    || priceChanged(existing.tp3, scanResult.tp3)
+    || (scanResult.rr != null && existing.rr !== scanResult.rr);
+}
+
+function applyBarrierLevelRefresh(existing, scanResult) {
+  existing.tp1 = scanResult.tp1 ?? existing.tp1;
+  existing.tp2 = scanResult.tp2 ?? existing.tp2;
+  existing.tp3 = scanResult.tp3 ?? existing.tp3;
+  existing.rr = scanResult.rr || existing.rr;
+  existing.barrierSummary = scanResult.barrierSummary || existing.barrierSummary || null;
+}
+
+function inferStoredTpMultipliers(signal) {
+  if (signal?.tpRMultipliers?.tp1 && signal?.tpRMultipliers?.tp2) return signal.tpRMultipliers;
+  if (signal?.grade === 'A' || signal?.position_pct >= 100) return { tp1: 1.5, tp2: 2.8, tp3: 4.5 };
+  if (signal?.grade === 'C' || signal?.position_pct === 50) return { tp1: 1.0, tp2: 1.6, tp3: 2.4 };
+  return { tp1: 1.0, tp2: 2.2, tp3: 3.5 };
+}
+
+export function refreshHTFBarrierLevelsForOpenSignals({ symbol = null } = {}) {
+  const data = readJSON(OPEN_PATH, { signals: [] });
+  const patched = [];
+  for (const signal of data.signals || []) {
+    if (symbol && String(signal.symbol).toUpperCase() !== String(symbol).toUpperCase()) continue;
+    if (signal.status === 'tp1_hit' || signal.status === 'tp2_hit' || signal.tp1Hit || signal.tp2Hit) continue;
+    if (!hasHTFBarrierContext(signal)) continue;
+    const entry = Number(signal.entry);
+    const sl = Number(signal.sl);
+    const atr = Number(signal.atr);
+    if (!Number.isFinite(entry) || !Number.isFinite(sl) || !Number.isFinite(atr) || atr <= 0) continue;
+    const risk = Math.abs(entry - sl);
+    if (!(risk > 0)) continue;
+    const tpR = inferStoredTpMultipliers(signal);
+    const sign = signal.direction === 'short' ? -1 : 1;
+    const baseTP1 = entry + sign * risk * tpR.tp1;
+    const baseTP2 = entry + sign * risk * tpR.tp2;
+    const baseTP3 = signal.tp3 == null ? null : entry + sign * risk * tpR.tp3;
+    const align = applyAlignmentFilters({
+      symbol: signal.symbol,
+      direction: signal.direction,
+      entry,
+      sl,
+      tp1: baseTP1,
+      tp2: baseTP2,
+      tp3: baseTP3,
+      atr,
+      smc: null,
+      srLines: [],
+      currentTF: signal.timeframe,
+    });
+    signal.tp1 = align.adjusted.tp1;
+    signal.tp2 = align.adjusted.tp2;
+    signal.tp3 = align.adjusted.tp3;
+    signal.rr = risk > 0 && signal.tp2 != null ? `1:${(Math.abs(signal.tp2 - entry) / risk).toFixed(1)}` : signal.rr;
+    signal.barrierSummary = align.barrierSummary || signal.barrierSummary || null;
+    signal.htfFibSummary = align.htfSummary || signal.htfFibSummary || null;
+    signal.lastRefreshedAt = new Date().toISOString();
+    signal.refreshCount = (signal.refreshCount || 0) + 1;
+    signal.warnings = [
+      ...align.warnings,
+      ...(signal.warnings || []).filter(w => typeof w === 'string'
+        && !w.includes('[HTF-Barrier]')
+        && !w.startsWith('R:R ')
+        && !w.startsWith('GRADE DUSUS:')),
+      '[Migrate] HTF barrier levels refreshed from current fib cache',
+    ];
+    patched.push({ id: signal.id, symbol: signal.symbol, tp1: signal.tp1, tp2: signal.tp2, tp3: signal.tp3, rr: signal.rr, warnings: signal.warnings });
+  }
+  if (patched.length) writeJSON(OPEN_PATH, data);
+  return { patchedCount: patched.length, patched };
+}
 
 /**
  * OKX Executor'a sinyal POST et. Yalnizca kripto + A/B/C kaliteli.
@@ -293,6 +388,7 @@ export function recordSignal(scanResult) {
     // aksi halde tp1Hit:true + yeni tp1 degeri tutarsiz kayit olusturur.
     const levelsFrozen = sameDir.status === 'tp1_hit' || sameDir.status === 'tp2_hit';
     const shouldUpgradeLevels = (betterGrade || sameGradeHigherTF) && !levelsFrozen;
+    const shouldRefreshHTFBarrierLevels = shouldRefreshBarrierLevels(sameDir, scanResult, { levelsFrozen });
 
     // Ayni sembol icin ayni yonde BASKA TF'de acik sinyal var mi? (tek pozisyon kurali)
     const otherSameDirs = allForGroup.filter(s =>
@@ -312,6 +408,7 @@ export function recordSignal(scanResult) {
     sameDir.refreshCount = (sameDir.refreshCount || 0) + 1;
     sameDir.indicators = extractIndicatorSnapshot(scanResult);
     sameDir.reasoning = scanResult.reasoning || sameDir.reasoning;
+    sameDir.barrierSummary = scanResult.barrierSummary || sameDir.barrierSummary || null;
     sameDir.warnings = [
       ...(scanResult.warnings || []),
       ...(sameDir.warnings || []).filter(w => typeof w === 'string' && w.startsWith('REVERSE SINYAL:')),
@@ -363,17 +460,22 @@ export function recordSignal(scanResult) {
         sameDir.entryHit = true;
         sameDir.entryHitAt = sameDir.entryHitAt || now.toISOString();
       }
+    } else if (shouldRefreshHTFBarrierLevels) {
+      applyBarrierLevelRefresh(sameDir, scanResult);
     } else {
-      // Grade dustu ama TF ayni — sadece reasoning'e uyari ekle
-      if (!Array.isArray(sameDir.warnings)) sameDir.warnings = [];
-      sameDir.warnings.push(`GRADE DUSUS: ${sameDir.grade} → ${scanResult.grade} (pozisyon korundu)`);
+      // Grade dustuysa sadece reasoning'e uyari ekle. Ayni grade refresh'te
+      // gereksiz "GRADE DUSUS: B → B" metni yazma.
+      if (newGradeRank > existGradeRank) {
+        if (!Array.isArray(sameDir.warnings)) sameDir.warnings = [];
+        sameDir.warnings.push(`GRADE DUSUS: ${sameDir.grade} → ${scanResult.grade} (pozisyon korundu)`);
+      }
     }
 
     writeJSON(OPEN_PATH, data);
     console.log(`[Signal] ${scanResult.symbol} ${scanResult.direction}: upsert (grade=${sameDir.grade}, tf=${sameDir.timeframe}, refreshCount=${sameDir.refreshCount})`);
     // Executor dispatch — yalniz grade yukseldi/levels tazelendi ve A/B/C ise.
     // Duplicate id gelirse executor reddeder (idempotent).
-    if (shouldUpgradeLevels) dispatchToOkxExecutor(sameDir);
+    if (shouldUpgradeLevels || shouldRefreshHTFBarrierLevels) dispatchToOkxExecutor(sameDir);
     return sameDir;
   }
 
@@ -445,6 +547,7 @@ export function recordSignal(scanResult) {
     // Grading detail
     reasoning: scanResult.reasoning || [],
     warnings: scanResult.warnings || [],
+    barrierSummary: scanResult.barrierSummary || null,
 
     // Tracking state
     createdAt: now.toISOString(),

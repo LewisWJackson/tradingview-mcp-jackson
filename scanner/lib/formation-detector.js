@@ -55,6 +55,56 @@ export function findSwingPoints(bars, lookback = 3) {
   return { swingHighs, swingLows };
 }
 
+function isFiniteNumber(value) {
+  return Number.isFinite(Number(value));
+}
+
+function safeNumber(value, fallback = 0) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function hasEnoughPriorMove(bars, index, direction, minPct = 0.015, lookback = 10) {
+  const startIndex = Math.max(0, index - lookback);
+  if (startIndex >= index) return false;
+
+  const startClose = safeNumber(bars[startIndex]?.close, NaN);
+  if (!Number.isFinite(startClose) || startClose <= 0) return false;
+
+  if (direction === 'up') {
+    const peak = safeNumber(bars[index]?.high, NaN);
+    return Number.isFinite(peak) && (peak - startClose) / startClose >= minPct;
+  }
+
+  const trough = safeNumber(bars[index]?.low, NaN);
+  return Number.isFinite(trough) && (startClose - trough) / startClose >= minPct;
+}
+
+function hasMinimumSpan(points, minBars = 6) {
+  if (!Array.isArray(points) || points.length < 2) return false;
+  const indexes = points.map(p => p.index).filter(Number.isFinite);
+  if (indexes.length < 2) return false;
+  return Math.max(...indexes) - Math.min(...indexes) >= minBars;
+}
+
+function hasInterleavedSwings(highs, lows) {
+  const ordered = [...highs.map(p => ({ ...p, kind: 'H' })), ...lows.map(p => ({ ...p, kind: 'L' }))]
+    .sort((a, b) => a.index - b.index);
+  if (ordered.length < 4) return false;
+
+  let transitions = 0;
+  for (let i = 1; i < ordered.length; i++) {
+    if (ordered[i].kind !== ordered[i - 1].kind) transitions++;
+  }
+  return transitions >= 3;
+}
+
+function projectLineValue(p1, p2, index) {
+  if (!p1 || !p2 || p1.index === p2.index) return null;
+  const slope = (p2.price - p1.price) / (p2.index - p1.index);
+  return p1.price + slope * (index - p1.index);
+}
+
 /**
  * Detect ascending triangle: flat resistance + rising support.
  */
@@ -63,6 +113,7 @@ function detectAscendingTriangle(swingHighs, swingLows, bars) {
 
   const recentHighs = swingHighs.slice(-3);
   const recentLows = swingLows.slice(-3);
+  if (!hasMinimumSpan([...recentHighs, ...recentLows]) || !hasInterleavedSwings(recentHighs, recentLows)) return null;
 
   // Check flat resistance (highs within 1% range)
   const maxHigh = Math.max(...recentHighs.map(h => h.price));
@@ -119,6 +170,7 @@ function detectDescendingTriangle(swingHighs, swingLows, bars) {
 
   const recentHighs = swingHighs.slice(-3);
   const recentLows = swingLows.slice(-3);
+  if (!hasMinimumSpan([...recentHighs, ...recentLows]) || !hasInterleavedSwings(recentHighs, recentLows)) return null;
 
   const maxLow = Math.max(...recentLows.map(l => l.price));
   const minLow = Math.min(...recentLows.map(l => l.price));
@@ -171,6 +223,8 @@ function detectDoubleTop(swingHighs, swingLows, bars) {
 
   const h1 = swingHighs[swingHighs.length - 2];
   const h2 = swingHighs[swingHighs.length - 1];
+  if (h2.index - h1.index < 5) return null;
+  if (!hasEnoughPriorMove(bars, h1.index, 'up')) return null;
 
   const priceDiff = Math.abs(h1.price - h2.price) / h1.price;
   if (priceDiff > 0.02) return null; // highs must be within 2%
@@ -183,7 +237,10 @@ function detectDoubleTop(swingHighs, swingLows, bars) {
   const necklinePoint = middleLows.reduce((min, l) => l.price < min.price ? l : min, middleLows[0]);
   const neckline = necklinePoint.price;
   const height = ((h1.price + h2.price) / 2) - neckline;
+  const avgTop = (h1.price + h2.price) / 2;
+  if (height <= 0 || height / avgTop < 0.01) return null;
   const lastPrice = bars[bars.length - 1].close;
+  if (lastPrice > Math.max(h1.price, h2.price) * 1.002) return null;
 
   let maturity = 75;
   const broken = lastPrice < neckline * 0.998;
@@ -218,6 +275,8 @@ function detectDoubleBottom(swingHighs, swingLows, bars) {
 
   const l1 = swingLows[swingLows.length - 2];
   const l2 = swingLows[swingLows.length - 1];
+  if (l2.index - l1.index < 5) return null;
+  if (!hasEnoughPriorMove(bars, l1.index, 'down')) return null;
 
   const priceDiff = Math.abs(l1.price - l2.price) / l1.price;
   if (priceDiff > 0.02) return null;
@@ -228,7 +287,10 @@ function detectDoubleBottom(swingHighs, swingLows, bars) {
   const necklinePoint = middleHighs.reduce((max, h) => h.price > max.price ? h : max, middleHighs[0]);
   const neckline = necklinePoint.price;
   const height = neckline - ((l1.price + l2.price) / 2);
+  const avgBottom = (l1.price + l2.price) / 2;
+  if (height <= 0 || height / avgBottom < 0.01) return null;
   const lastPrice = bars[bars.length - 1].close;
+  if (lastPrice < Math.min(l1.price, l2.price) * 0.998) return null;
 
   let maturity = 75;
   const broken = lastPrice > neckline * 1.002;
@@ -262,6 +324,8 @@ function detectHeadAndShoulders(swingHighs, swingLows, bars) {
   if (swingHighs.length < 3) return null;
 
   const h = swingHighs.slice(-3);
+  if (!hasMinimumSpan(h)) return null;
+  if (!hasEnoughPriorMove(bars, h[0].index, 'up')) return null;
   // Head must be higher than both shoulders
   if (h[1].price <= h[0].price || h[1].price <= h[2].price) return null;
   // Shoulders should be roughly equal (within 5%)
@@ -269,13 +333,17 @@ function detectHeadAndShoulders(swingHighs, swingLows, bars) {
   if (shoulderDiff > 0.05) return null;
 
   // Find neckline from lows between shoulders
-  const neckLows = swingLows.filter(l => l.index > h[0].index && l.index < h[2].index);
-  if (neckLows.length < 1) return null;
+  const leftNeckLows = swingLows.filter(l => l.index > h[0].index && l.index < h[1].index);
+  const rightNeckLows = swingLows.filter(l => l.index > h[1].index && l.index < h[2].index);
+  if (leftNeckLows.length < 1 || rightNeckLows.length < 1) return null;
 
-  const neckline = neckLows.reduce((sum, l) => sum + l.price, 0) / neckLows.length;
-  // Ortalama neckline icin temsilci nokta: en dusuk neckLow (kirilim seviyesi olarak)
-  const necklinePoint = neckLows.reduce((min, l) => l.price < min.price ? l : min, neckLows[0]);
+  const neck1 = leftNeckLows.reduce((min, l) => l.price < min.price ? l : min, leftNeckLows[0]);
+  const neck2 = rightNeckLows.reduce((min, l) => l.price < min.price ? l : min, rightNeckLows[0]);
+  const neckline = projectLineValue(neck1, neck2, bars.length - 1);
+  if (!Number.isFinite(neckline)) return null;
+  const necklinePoint = neck2;
   const height = h[1].price - neckline;
+  if (height <= 0 || height / h[1].price < 0.01) return null;
   const lastPrice = bars[bars.length - 1].close;
 
   let maturity = 70;
@@ -315,16 +383,23 @@ function detectInverseHS(swingHighs, swingLows, bars) {
   if (swingLows.length < 3) return null;
 
   const l = swingLows.slice(-3);
+  if (!hasMinimumSpan(l)) return null;
+  if (!hasEnoughPriorMove(bars, l[0].index, 'down')) return null;
   if (l[1].price >= l[0].price || l[1].price >= l[2].price) return null;
   const shoulderDiff = Math.abs(l[0].price - l[2].price) / l[0].price;
   if (shoulderDiff > 0.05) return null;
 
-  const neckHighs = swingHighs.filter(h => h.index > l[0].index && h.index < l[2].index);
-  if (neckHighs.length < 1) return null;
+  const leftNeckHighs = swingHighs.filter(h => h.index > l[0].index && h.index < l[1].index);
+  const rightNeckHighs = swingHighs.filter(h => h.index > l[1].index && h.index < l[2].index);
+  if (leftNeckHighs.length < 1 || rightNeckHighs.length < 1) return null;
 
-  const neckline = neckHighs.reduce((sum, h) => sum + h.price, 0) / neckHighs.length;
-  const necklinePoint = neckHighs.reduce((max, h) => h.price > max.price ? h : max, neckHighs[0]);
+  const neck1 = leftNeckHighs.reduce((max, h) => h.price > max.price ? h : max, leftNeckHighs[0]);
+  const neck2 = rightNeckHighs.reduce((max, h) => h.price > max.price ? h : max, rightNeckHighs[0]);
+  const neckline = projectLineValue(neck1, neck2, bars.length - 1);
+  if (!Number.isFinite(neckline)) return null;
+  const necklinePoint = neck2;
   const height = neckline - l[1].price;
+  if (height <= 0 || height / neckline < 0.01) return null;
   const lastPrice = bars[bars.length - 1].close;
 
   let maturity = 70;
@@ -373,9 +448,16 @@ function detectFlag(bars) {
   // Pole should be significant (> 3% move)
   if (poleRange < 0.03) return null;
 
-  const flagBars = bars.slice(flagStart);
-  const flagHigh = Math.max(...flagBars.map(b => b.high));
-  const flagLow = Math.min(...flagBars.map(b => b.low));
+  const priorFlagBars = bars.slice(flagStart, -1);
+  if (priorFlagBars.length < 5) return null;
+  const flagHigh = Math.max(...priorFlagBars.map(b => b.high));
+  const flagLow = Math.min(...priorFlagBars.map(b => b.low));
+  const projectedUpper = priorFlagBars[0].high +
+    ((priorFlagBars[priorFlagBars.length - 1].high - priorFlagBars[0].high) / (priorFlagBars.length - 1)) *
+    priorFlagBars.length;
+  const projectedLower = priorFlagBars[0].low +
+    ((priorFlagBars[priorFlagBars.length - 1].low - priorFlagBars[0].low) / (priorFlagBars.length - 1)) *
+    priorFlagBars.length;
   const flagRange = (flagHigh - flagLow) / flagLow;
 
   // Flag should be narrow (< 40% of pole)
@@ -396,7 +478,7 @@ function detectFlag(bars) {
   const isBullPole = closeUp;
 
   // Flag should slope against pole
-  const flagSlope = (flagBars[flagBars.length - 1].close - flagBars[0].close) / flagBars[0].close;
+  const flagSlope = (priorFlagBars[priorFlagBars.length - 1].close - priorFlagBars[0].close) / priorFlagBars[0].close;
   const correctSlope = isBullPole ? flagSlope < 0 : flagSlope > 0;
 
   if (!correctSlope) return null;
@@ -405,12 +487,13 @@ function detectFlag(bars) {
   const poleHeight = poleHigh - poleLow; // high/low arasi — tam pole yuksekligi
 
   let maturity = 70;
-  const broken = (isBullPole && lastPrice > flagHigh) || (!isBullPole && lastPrice < flagLow);
+  const broken = (isBullPole && lastPrice > projectedUpper) || (!isBullPole && lastPrice < projectedLower);
   if (broken) maturity = 100;
   else maturity = 80;
 
   // Hedef fiyat: breakout noktasindan (flag siniri) pole yuksekligi kadar
-  const target = isBullPole ? flagHigh + poleHeight : flagLow - poleHeight;
+  const breakoutLevel = isBullPole ? projectedUpper : projectedLower;
+  const target = isBullPole ? breakoutLevel + poleHeight : breakoutLevel - poleHeight;
 
   // Pole/flag zaman noktalari (bar.time)
   const poleStartBar = bars[poleStart];
@@ -430,7 +513,7 @@ function detectFlag(bars) {
     points: [
       { role: 'pole_start',  time: poleStartBar?.time, price: isBullPole ? poleLow  : poleHigh },
       { role: 'pole_end',    time: poleEndBar?.time,   price: isBullPole ? poleHigh : poleLow  },
-      { role: 'flag_end',    time: flagEndBar?.time,   price: isBullPole ? flagHigh : flagLow  },
+      { role: 'flag_end',    time: flagEndBar?.time,   price: breakoutLevel },
       { role: 'target',      time: null, price: target },
     ],
   };
@@ -561,12 +644,30 @@ export function detectCandlePatterns(bars) {
  * @param {Array} bars - OHLCV bar data
  * @param {Object} options - Optional: { timeframe } to tag detected formations with TF
  *
- * IMPORTANT: If no valid formation is detected, returns empty array.
+ * IMPORTANT: If no valid formation is detected, returns an object with empty arrays.
  * Never fabricates or forces a formation — only reports genuine patterns.
  */
 export function detectFormations(bars, options = {}) {
   if (!bars || bars.length < 20) {
-    return { formations: [], candles: [], swingPoints: null };
+    return { formations: [], candles: [], swingPoints: null, detectorErrors: [] };
+  }
+
+  const invalidIndex = bars.findIndex(b =>
+    !b ||
+    !isFiniteNumber(b.open) ||
+    !isFiniteNumber(b.high) ||
+    !isFiniteNumber(b.low) ||
+    !isFiniteNumber(b.close) ||
+    safeNumber(b.high, -Infinity) < Math.max(safeNumber(b.open, Infinity), safeNumber(b.close, Infinity)) ||
+    safeNumber(b.low, Infinity) > Math.min(safeNumber(b.open, -Infinity), safeNumber(b.close, -Infinity))
+  );
+  if (invalidIndex !== -1) {
+    return {
+      formations: [],
+      candles: [],
+      swingPoints: null,
+      detectorErrors: [{ detector: 'input', message: `Invalid OHLC bar at index ${invalidIndex}` }],
+    };
   }
 
   const { swingHighs, swingLows } = findSwingPoints(bars, 3);
@@ -585,8 +686,16 @@ export function detectFormations(bars, options = {}) {
     () => detectFlag(bars),
   ];
 
+  const detectorErrors = [];
   const formations = detectors
-    .map(fn => { try { return fn(); } catch { return null; } })
+    .map((fn, index) => {
+      try {
+        return fn();
+      } catch (err) {
+        detectorErrors.push({ detector: index, message: err?.message || String(err) });
+        return null;
+      }
+    })
     .filter(Boolean)
     .map(f => ({
       ...f,
@@ -596,7 +705,7 @@ export function detectFormations(bars, options = {}) {
 
   const candles = detectCandlePatterns(bars);
 
-  return { formations, candles, swingPoints: { swingHighs, swingLows } };
+  return { formations, candles, swingPoints: { swingHighs, swingLows }, detectorErrors };
 }
 
 /**
@@ -605,9 +714,9 @@ export function detectFormations(bars, options = {}) {
 export function checkVolumeConfirmation(bars, lookback = 20) {
   if (!bars || bars.length < lookback + 1) return { confirmed: false, ratio: 0 };
 
-  const recentVols = bars.slice(-lookback - 1, -1).map(b => b.volume);
+  const recentVols = bars.slice(-lookback - 1, -1).map(b => safeNumber(b.volume, 0));
   const avgVol = recentVols.reduce((a, b) => a + b, 0) / recentVols.length;
-  const lastVol = bars[bars.length - 1].volume;
+  const lastVol = safeNumber(bars[bars.length - 1].volume, 0);
   const ratio = avgVol > 0 ? lastVol / avgVol : 0;
 
   return {

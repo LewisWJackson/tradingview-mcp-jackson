@@ -25,7 +25,22 @@ const EXTENSION_LEVELS = [1.272, 1.414, 1.618, 2.0, 2.618];
 // 24h refresh periyoduyla uyumlu olmak icin sadece 1D ve 1W. 4H swing'ler 24h'te
 // guncelligini yitiriyordu; LTF sinyali zaten 15m/30m/1h'da kendi trend'ini okuyor.
 const HTF_TFS = ['1D', '1W'];
-const BAR_COUNT = 200; // swing tespiti icin yeterli
+
+// TF-aware bar fetch: 1D icin ~14 ay, 1W icin ~4 yil pencere. Daha uzun pencere
+// = ana swing'leri (FSLR 285.99 zirvesi gibi) kacirma riskini azaltir.
+const BAR_COUNT_BY_TF = { '1D': 300, '1W': 200 };
+const DEFAULT_BAR_COUNT = 200;
+
+// Zeiierman indikatoru "prd" parametresi varsayilan 100 bar. Otomasyonda
+// 1D ve 1W icin de 100 yeterli (1D ~5 ay, 1W ~2 yil). Stale durumlarda
+// pencere kucukse fib gurultu legi vereceginden ATR magnitude filtresi
+// ile cifte kontrol uygulanir.
+const SWING_WINDOW_BY_TF = { '1D': 100, '1W': 100 };
+const DEFAULT_SWING_WINDOW = 100;
+
+// Dominant leg en az MIN_LEG_RANGE_ATR * ATR(14) olmali; aksi halde
+// `weak: true` isaretlenir. Indikatorde yok ama otonom sistem icin gerekli.
+const MIN_LEG_RANGE_ATR = 3;
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
@@ -89,34 +104,63 @@ function computeATR(bars, period = 14) {
 }
 
 /**
- * Dominant swing secimi: son N barin en yuksek swing-high ve en dusuk
- * swing-low noktalari. Zaman sirasi yonu belirler:
- *   low.time < high.time => "up" swing (fib retracement long)
- *   low.time > high.time => "down" swing (fib retracement short)
+ * Dominant swing secimi — Zeiierman "Fibonacci Projection" indikatoru ile
+ * birebir uyumlu mantik + ATR magnitude filtresi.
+ *
+ * Pine kaynagi:
+ *   hi = ta.highest(high, prd)
+ *   lo = ta.lowest(low,  prd)
+ *   isHi = high == hi
+ *   isLo = low  == lo
+ *   hiPrice = ta.valuewhen(isHi, high, 0)
+ *   loPrice = ta.valuewhen(isLo, low,  0)
+ *   // Yon: hangi bar daha yeniyse — hiBar > loBar => up swing
+ *
+ * Otomasyon icin gurultu kontrolu eklendi: bulunan swing'in mesafesi
+ * `MIN_LEG_RANGE_ATR * ATR(14)` esiginden kucukse `weak: true` isaretlenir
+ * (caller filtreleyebilir).
  */
-function pickDominantSwing(bars) {
-  const { swingHighs, swingLows } = findSwingPoints(bars, 5);
-  if (!swingHighs.length || !swingLows.length) {
-    // Fallback: kullan absolute high/low
-    let hi = bars[0], lo = bars[0];
-    for (const b of bars) {
-      if (b.high > hi.high) hi = b;
-      if (b.low < lo.low) lo = b;
-    }
-    return {
-      high: { price: hi.high, time: hi.time },
-      low: { price: lo.low, time: lo.time },
-      direction: hi.time > lo.time ? 'up' : 'down',
-      source: 'absolute',
-    };
+function pickDominantSwing(bars, tf) {
+  const window = SWING_WINDOW_BY_TF[tf] ?? DEFAULT_SWING_WINDOW;
+  const atr = computeATR(bars) ?? 0;
+
+  if (!bars || bars.length < 2) return null;
+
+  // Indikator semantigi: son `window` bardan tepe/dip ara. Daha az bar varsa
+  // mevcut pencereyi kullan.
+  const sliceStart = Math.max(0, bars.length - window);
+  const slice = bars.slice(sliceStart);
+
+  let hiBar = slice[0];
+  let loBar = slice[0];
+  for (const b of slice) {
+    if (b.high > hiBar.high) hiBar = b;
+    if (b.low < loBar.low) loBar = b;
   }
-  const hi = swingHighs.reduce((a, b) => (b.price > a.price ? b : a), swingHighs[0]);
-  const lo = swingLows.reduce((a, b) => (b.price < a.price ? b : a), swingLows[0]);
+
+  // ta.valuewhen(..., 0): en sondan geriye dogru ilk eslesme — burada zaten
+  // kayit en yuksek/dusuk degeri tutuyor; ayni degere sahip birden fazla
+  // bar varsa indikator en yenisini secer.
+  for (let i = slice.length - 1; i >= 0; i--) {
+    if (slice[i].high === hiBar.high) { hiBar = slice[i]; break; }
+  }
+  for (let i = slice.length - 1; i >= 0; i--) {
+    if (slice[i].low === loBar.low) { loBar = slice[i]; break; }
+  }
+
+  const direction = hiBar.time > loBar.time ? 'up' : 'down';
+  const range = hiBar.high - loBar.low;
+  const confidence = atr > 0 ? range / atr : null;
+  const weak = confidence != null && confidence < MIN_LEG_RANGE_ATR;
+
   return {
-    high: { price: hi.price, time: hi.time, index: hi.index },
-    low: { price: lo.price, time: lo.time, index: lo.index },
-    direction: hi.time > lo.time ? 'up' : 'down',
-    source: 'swing',
+    high: { price: hiBar.high, time: hiBar.time },
+    low: { price: loBar.low, time: loBar.time },
+    direction,
+    source: `indicator_window_${direction}`,
+    confidence: confidence != null ? Number(confidence.toFixed(2)) : null,
+    weak,
+    window,
   };
 }
 
@@ -127,7 +171,8 @@ function pickDominantSwing(bars) {
  */
 export function computeFibLevels(bars, tf) {
   if (!bars || bars.length < 20) return null;
-  const swing = pickDominantSwing(bars);
+  const swing = pickDominantSwing(bars, tf);
+  if (!swing) return null;
   const { high, low, direction } = swing;
   const range = high.price - low.price;
   if (range <= 0) return null;
@@ -157,6 +202,10 @@ export function computeFibLevels(bars, tf) {
     swing: {
       high: { price: high.price, time: high.time },
       low: { price: low.price, time: low.time },
+      source: swing.source,
+      confidence: swing.confidence ?? null,
+      weak: !!swing.weak,
+      window: swing.window ?? null,
     },
     range: Number(range.toFixed(6)),
     retracement,
@@ -176,10 +225,31 @@ function detectStructuralTrend(bars) {
   }
   const lastHs = swingHighs.slice(-3);
   const lastLs = swingLows.slice(-3);
-  const hhOk = lastHs.every((h, i) => i === 0 || h.price > lastHs[i - 1].price);
-  const hlOk = lastLs.every((l, i) => i === 0 || l.price > lastLs[i - 1].price);
-  const lhOk = lastHs.every((h, i) => i === 0 || h.price < lastHs[i - 1].price);
-  const llOk = lastLs.every((l, i) => i === 0 || l.price < lastLs[i - 1].price);
+  // Strict monotonik yerine "majority" tolerant kontrol: 3 swing icinde 2 adimdan
+  // en az 1'i dogru yonde + son adim mutlaka dogru. Tek ara pullback HH/HL
+  // serisini bozmasin (gercek trendlerde sik gorulur).
+  const cmpUp = (arr) => {
+    if (arr.length < 2) return false;
+    const last = arr.length - 1;
+    const lastStepOk = arr[last].price > arr[last - 1].price;
+    if (!lastStepOk) return false;
+    let okSteps = 0, totalSteps = 0;
+    for (let i = 1; i < arr.length; i++) { totalSteps++; if (arr[i].price > arr[i - 1].price) okSteps++; }
+    return okSteps >= Math.ceil(totalSteps / 2);
+  };
+  const cmpDown = (arr) => {
+    if (arr.length < 2) return false;
+    const last = arr.length - 1;
+    const lastStepOk = arr[last].price < arr[last - 1].price;
+    if (!lastStepOk) return false;
+    let okSteps = 0, totalSteps = 0;
+    for (let i = 1; i < arr.length; i++) { totalSteps++; if (arr[i].price < arr[i - 1].price) okSteps++; }
+    return okSteps >= Math.ceil(totalSteps / 2);
+  };
+  const hhOk = cmpUp(lastHs);
+  const hlOk = cmpUp(lastLs);
+  const lhOk = cmpDown(lastHs);
+  const llOk = cmpDown(lastLs);
 
   if (hhOk && hlOk) return { structural: 'up', reason: 'HH + HL' };
   if (lhOk && llOk) return { structural: 'down', reason: 'LH + LL' };
@@ -201,6 +271,9 @@ function detectStructuralTrend(bars) {
  *   YATAY: ADX<20 veya yapisal sideways
  */
 export function classifyHTFTrend(bars) {
+  // ADX esikleri calculators.js getVolatilityRegime ile ayni: 35/25/20.
+  // Sistem capi tutarsizligini ortadan kaldir (LTF rejim ile HTF rejim farkli
+  // sinirlar kullanmasin).
   const adx = computeADX(bars);
   const struct = detectStructuralTrend(bars);
   let regime = 'transition';
@@ -234,7 +307,8 @@ export async function computeHTFFibsForSymbol(symbol) {
     try {
       await bridge.setTimeframe(tf);
       await sleep(1500);
-      const ohlcv = await bridge.getOhlcv(BAR_COUNT, false, symbol);
+      const barCount = BAR_COUNT_BY_TF[tf] ?? DEFAULT_BAR_COUNT;
+      const ohlcv = await bridge.getOhlcv(barCount, false, symbol);
       if (ohlcv && ohlcv._symbolMismatch) {
         perTF[tf] = { error: `symbol mismatch: beklenen ${ohlcv._expected}, alinan ${ohlcv._got}` };
         continue;
@@ -459,7 +533,9 @@ export async function ensureHTFFibCache() {
 
 export const HTF_FIB_CONFIG = {
   HTF_TFS,
-  BAR_COUNT,
+  BAR_COUNT_BY_TF,
+  SWING_WINDOW_BY_TF,
   RETRACEMENT_LEVELS,
   EXTENSION_LEVELS,
+  MIN_LEG_RANGE_ATR,
 };

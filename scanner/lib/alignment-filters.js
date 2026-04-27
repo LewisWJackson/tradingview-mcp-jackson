@@ -13,6 +13,7 @@
 
 import { loadFibCache, checkFibCacheAge, recordStaleFibUsage } from './fib-engine.js';
 import { buildBarriers, classifyEntryVsBarriers } from './barrier-detector.js';
+import { formatBarTime } from './formation-detector.js';
 
 /**
  * Aşama A — Bariyer cap reddetme kuralı (geçici köprü, Faz 4 unified-levels öncesi).
@@ -30,6 +31,25 @@ export function shouldRefuseBarrierCap({ entry, sl, capped, minDistRatio = 1.3 }
   const cappedDist = Math.abs(entry - capped);
   const minTpDist = slDist * minDistRatio;
   return { refused: cappedDist < minTpDist, slDist, cappedDist, minTpDist };
+}
+
+function fmtBarrierPrice(n) {
+  return typeof n === 'number' && Number.isFinite(n) ? n.toFixed(4) : '?';
+}
+
+function fmtFibPoint(point) {
+  if (!point) return '?';
+  const time = formatBarTime(point.time) || '?';
+  return `${fmtBarrierPrice(point.price)} @ ${time}`;
+}
+
+export function formatBarrierFibBasis(zone) {
+  const details = Array.isArray(zone?.fibDetails) ? zone.fibDetails : [];
+  if (!details.length) return null;
+  return details.slice(0, 3).map(d => {
+    const swing = d.swing || {};
+    return `${d.tf} ${d.kind} ${d.level} @ ${fmtBarrierPrice(d.price)}; top ${fmtFibPoint(swing.high)}; bottom ${fmtFibPoint(swing.low)}; swing=${d.direction || '?'}`;
+  }).join(' | ');
 }
 
 /**
@@ -455,13 +475,15 @@ export function applyAlignmentFilters({
   if (majorZone) {
     const buffer = Math.max(atr * 0.15, majorZone.price * 0.0015);
     const capped = direction === 'long' ? majorZone.price - buffer : majorZone.price + buffer;
+    const fibBasis = formatBarrierFibBasis(majorZone);
+    const fibBasisText = fibBasis ? ` | Fib dayanak: ${fibBasis}` : '';
 
     // Aşama A — bariyer min-distance kuralı (geçici köprü, Faz 4'te
     // unified-levels.js ile yerini alacak).
     const refuseCheck = shouldRefuseBarrierCap({ entry, sl: adjustedSL, capped });
 
     if (refuseCheck.refused) {
-      warnings.push(`[HTF-Barrier] Cap REDDEDILDI — bariyer (${majorZone.tf} @ ${majorZone.price.toFixed(4)}) çok yakın: cap mesafesi ${refuseCheck.cappedDist.toFixed(4)} < min ${refuseCheck.minTpDist.toFixed(4)} (1.3×SL). Orijinal TP'ler korundu (Aşama A geçici kural, Faz 4 unified-levels öncesi).`);
+      warnings.push(`[HTF-Barrier] Cap REDDEDILDI — bariyer (${majorZone.tf} @ ${majorZone.price.toFixed(4)}) çok yakın: cap mesafesi ${refuseCheck.cappedDist.toFixed(4)} < min ${refuseCheck.minTpDist.toFixed(4)} (1.3×SL). Orijinal TP'ler korundu (Aşama A geçici kural, Faz 4 unified-levels öncesi).${fibBasisText}`);
     } else {
       const cap = (tp) => {
         if (tp == null) return tp;
@@ -471,7 +493,7 @@ export function applyAlignmentFilters({
       const tp1New = cap(adjTP1), tp2New = cap(adjTP2), tp3New = cap(adjTP3);
       const anyChanged = tp1New !== adjTP1 || tp2New !== adjTP2 || tp3New !== adjTP3;
       if (anyChanged) {
-        warnings.push(`[HTF-Barrier] TP'ler onemli HTF ${majorZone.sources.join('+')} seviyesinin (${majorZone.tf} @ ${majorZone.price.toFixed(4)}, strength=${majorZone.strength}) onune cekildi → ${capped.toFixed(4)}`);
+        warnings.push(`[HTF-Barrier] TP'ler onemli HTF ${majorZone.sources.join('+')} seviyesinin (${majorZone.tf} @ ${majorZone.price.toFixed(4)}, strength=${majorZone.strength}) onune cekildi → ${capped.toFixed(4)}${fibBasisText}`);
       }
       adjTP1 = tp1New; adjTP2 = tp2New; adjTP3 = tp3New;
     }

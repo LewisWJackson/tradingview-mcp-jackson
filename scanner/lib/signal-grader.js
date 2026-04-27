@@ -60,14 +60,21 @@ const SQUEEZE_RATIO_HIGHVOL = 1.40;
  */
 function computeEmaSeparation(bars) {
   if (!Array.isArray(bars) || bars.length < 22) return null;
+  // SMA-seed Wilder/standart EMA: ilk `period` barin SMA'si seed, sonrasinda
+  // klasik EMA recurrence. Eski seed (bars[0].close) period 21'de ~21 bar'lik
+  // gevsek warmup uretiyordu.
   const calcEma = (period) => {
+    if (bars.length < period) return null;
     const k = 2 / (period + 1);
-    let ema = bars[0].close;
-    for (let i = 1; i < bars.length; i++) ema = bars[i].close * k + ema * (1 - k);
+    let sum = 0;
+    for (let i = 0; i < period; i++) sum += bars[i].close;
+    let ema = sum / period;
+    for (let i = period; i < bars.length; i++) ema = bars[i].close * k + ema * (1 - k);
     return ema;
   };
   const ema9 = calcEma(9);
   const ema21 = calcEma(21);
+  if (ema9 == null || ema21 == null) return null;
   const price = bars[bars.length - 1].close;
   if (!price) return null;
   return Math.abs(ema9 - ema21) / price;
@@ -105,12 +112,19 @@ function detectLiquiditySweep(bars, lookback = 20) {
   const prev = bars.slice(-(lookback + 1), -1); // son barin oncesi
   let prevHi = -Infinity, prevLo = Infinity;
   for (const b of prev) { if (b.high > prevHi) prevHi = b.high; if (b.low < prevLo) prevLo = b.low; }
+  // Volume teyidi: gercek likidite sweep stop-hunt hacmiyle gelir. Hacim ortalamanin
+  // 1.2x'inden dusukse weekend gap / tatil acilis spike'i olabilir, sweep sayma.
+  const avgVol = prev.reduce((s, b) => s + (b.volume || 0), 0) / prev.length;
+  const lastVol = last.volume || 0;
+  // Hacim verisi yoksa (bazi FX feed'leri) volume kontrolunu skip et — sadece veri varsa zorunlu.
+  const volOK = !avgVol || avgVol <= 0 || lastVol >= avgVol * 1.2;
+  if (!volOK) return null;
   // Bearish sweep: sweep upward, close back below
   if (last.high > prevHi && last.close < prevHi) {
-    return { direction: 'short', level: prevHi, sweepBy: last.high - prevHi, close: last.close };
+    return { direction: 'short', level: prevHi, sweepBy: last.high - prevHi, close: last.close, volRatio: avgVol > 0 ? lastVol / avgVol : null };
   }
   if (last.low < prevLo && last.close > prevLo) {
-    return { direction: 'long', level: prevLo, sweepBy: prevLo - last.low, close: last.close };
+    return { direction: 'long', level: prevLo, sweepBy: prevLo - last.low, close: last.close, volRatio: avgVol > 0 ? lastVol / avgVol : null };
   }
   return null;
 }
@@ -207,6 +221,7 @@ const DEFAULT_VOTE_WEIGHTS = {
   volume_reaction: 2.2, // Hacimli bar uclarinda kontra tepki setup (5-teyit >=3) — counter-trend, yuksek gudum
   liquidity_sweep: 1.8, // Swing high/low sweep-and-reclaim — SMC'nin en guvenilir reversal setup'i
   premium_discount: 1.0, // Fiyat aralik icinde premium/discount konumu — mean-reversion bias
+  vwap_position: 0.8,   // VWAP ust/alt — KhanSaab-turevli, korelasyon decay grubunda
 };
 
 // KhanSaab-turevli oylar (hepsi KhanSaab dashboard'undan + ayni trend'den turer):
@@ -214,6 +229,12 @@ const DEFAULT_VOTE_WEIGHTS = {
 // return uygulanir — 1. oy tam, 2. %60, 3. %40, 4.+ %25 agirlikla sayilir.
 const KHANSAAB_CORRELATED_GROUP = new Set(['khanSaab', 'ema_cross', 'macd', 'vwap_position']);
 const KHANSAAB_DECAY = [1.0, 0.6, 0.4, 0.25];
+
+// SMC OB grubu: smc_ob (zone varlik oyu) ve sr_awareness (fiyat OB icinde) ayni
+// yapidan turer — uzlastiklarinda decay uygulanir, aksi halde bir destek/direnc
+// hem OB hem SR'den iki tam oy alir (cift sayim).
+const SMC_OB_GROUP = new Set(['smc_ob', 'sr_awareness']);
+const SMC_OB_DECAY = [1.0, 0.5];
 
 // Export for learning-reporter: raporlarda baz agirlik + learned + efektif gostermek icin
 export { DEFAULT_VOTE_WEIGHTS };
@@ -341,12 +362,14 @@ function collectVotes({ khanSaab, smc, studyValues, ohlcv, formation, squeeze, d
       }
     }
 
-    // VWAP position — key S&R for liquid instruments (KhanSaab: "VWAP acts as magnet and S&R")
+    // VWAP position — key S&R for liquid instruments (KhanSaab: "VWAP acts as magnet and S&R").
+    // voteWeight() ile learned + category multiplier'lara dahil ol; sabit 0.8
+    // korelasyon decay ve learning kanalini bypass ediyordu.
     if (khanSaab.vwap) {
       if (khanSaab.vwap === 'ABOVE') {
-        votes.push({ source: 'vwap_position', direction: 'long', weight: 0.8, reasoning: `Fiyat VWAP uzerinde — long destekli` });
+        votes.push({ source: 'vwap_position', direction: 'long', weight: voteWeight('vwap_position'), reasoning: `Fiyat VWAP uzerinde — long destekli` });
       } else if (khanSaab.vwap === 'BELOW') {
-        votes.push({ source: 'vwap_position', direction: 'short', weight: 0.8, reasoning: `Fiyat VWAP altinda — short destekli` });
+        votes.push({ source: 'vwap_position', direction: 'short', weight: voteWeight('vwap_position'), reasoning: `Fiyat VWAP altinda — short destekli` });
       }
     }
 
@@ -516,7 +539,12 @@ function collectVotes({ khanSaab, smc, studyValues, ohlcv, formation, squeeze, d
   }
 
   // --- 12. Premium / Discount (range location bias) ---
-  const pd = computePremiumDiscount(ohlcv?.bars);
+  // Trend ortaminda (ADX > 25) "premium" konum trendin dogal sonucudur, bu yuzden
+  // mean-reversion karakterli PD oyunu sadece range/zayif-trend rejiminde say.
+  // ADX yoksa varsayilan: oy ekle (eski davranis).
+  const _adxForPD = khanSaab?.adx != null ? Number(khanSaab.adx) : null;
+  const _pdAllowed = _adxForPD == null || _adxForPD <= 25;
+  const pd = _pdAllowed ? computePremiumDiscount(ohlcv?.bars) : null;
   if (pd) {
     votes.push({
       source: 'premium_discount',
@@ -532,18 +560,26 @@ function collectVotes({ khanSaab, smc, studyValues, ohlcv, formation, squeeze, d
   // ile carpanlanir. Gucluden zayifa siralanir.
   const groupLong = votes.filter(v => KHANSAAB_CORRELATED_GROUP.has(v.source) && v.direction === 'long');
   const groupShort = votes.filter(v => KHANSAAB_CORRELATED_GROUP.has(v.source) && v.direction === 'short');
-  const applyDecay = (group) => {
+  const applyDecay = (group, table = KHANSAAB_DECAY, label = 'korelasyon decay') => {
     group.sort((a, b) => b.weight - a.weight);
     group.forEach((v, i) => {
-      const mult = KHANSAAB_DECAY[Math.min(i, KHANSAAB_DECAY.length - 1)];
+      const mult = table[Math.min(i, table.length - 1)];
       if (mult < 1) {
         v.weight = v.weight * mult;
-        v.reasoning += ` [korelasyon decay ×${mult}]`;
+        v.reasoning += ` [${label} ×${mult}]`;
       }
     });
   };
   applyDecay(groupLong);
   applyDecay(groupShort);
+
+  // SMC OB grubu: smc_ob ve sr_awareness ayni OB'den dogan teyitler — yon-bazli
+  // gruplandirip decay uygula. smc_ob direction:null (amplifier) olabilir; sadece
+  // direction !== null oylari ayni yonde gruplaniyor.
+  const obLong = votes.filter(v => SMC_OB_GROUP.has(v.source) && v.direction === 'long');
+  const obShort = votes.filter(v => SMC_OB_GROUP.has(v.source) && v.direction === 'short');
+  applyDecay(obLong, SMC_OB_DECAY, 'SMC OB decay');
+  applyDecay(obShort, SMC_OB_DECAY, 'SMC OB decay');
 
   return votes;
 }
@@ -644,108 +680,28 @@ function evaluateHighVolumeCandleTrap(ohlcv) {
   const isBigBody = lastBody > avgBody * 2;
 
   if (isHighVolume && isBigBody) {
+    // Hard-block veto YON-NOTR olmali: vote sayimina girip yon belirlemeyi
+    // kontamine etmemeli. direction:null + weight:0 ile sadece metadata tasi;
+    // gercek IPTAL akisi votes.find(v => v.hardBlock) ile yapilir.
     if (isBullish) {
-      // Big green candle — NEVER go LONG at the top (hard block)
       return {
         source: 'candle_trap_filter',
-        direction: 'short',
-        weight: 1.0,
-        hardBlock: 'long', // SERT BLOK: bu yonde sinyal verilmez
+        direction: null,
+        weight: 0,
+        hardBlock: 'long',
         reasoning: `SERT BLOK: Hacimli buyuk yesil mum — ustten long KESINLIKLE onerilmez (hacim: ${(lastVol/avgVol).toFixed(1)}x ort, govde: ${(lastBody/avgBody).toFixed(1)}x ort)`,
       };
     } else {
-      // Big red candle — NEVER go SHORT at the bottom (hard block)
       return {
         source: 'candle_trap_filter',
-        direction: 'long',
-        weight: 1.0,
-        hardBlock: 'short', // SERT BLOK: bu yonde sinyal verilmez
+        direction: null,
+        weight: 0,
+        hardBlock: 'short',
         reasoning: `SERT BLOK: Hacimli buyuk kirmizi mum — alttan short KESINLIKLE onerilmez (hacim: ${(lastVol/avgVol).toFixed(1)}x ort, govde: ${(lastBody/avgBody).toFixed(1)}x ort)`,
       };
     }
   }
 
-  return null;
-}
-
-/**
- * Volume veto filter — context-aware (Option C, 2026-04-19).
- *
- * Onceki davranis: sinyal mumunda hacim 20-bar ortalamasinin %80'inin
- * altindaysa sart siz IPTAL. Bu cok agresifti: trend ortasinda dusuk hacim
- * normaldir (retracement fazinda hacim duser), sadece kirilim barlarinda
- * hacim teyidi kritiktir.
- *
- * Yeni mantik:
- *   - Kirilim bari (formasyon.broken = true, ayni yonde):
- *       ratio < 0.8  → IPTAL (klasik sahte kirilim filtresi)
- *       ratio < 1.2  → warn (teyit zayif, grade degismez)
- *       ratio >= 1.2 → temiz
- *   - Kirilim dısı (trend devami / mean-reversion):
- *       ratio < 0.4  → downgrade (1 kademe dusur)
- *       ratio >= 0.4 → temiz
- *   - Override: ADX >= 30 + en az 3 kaynak + uyum %70+ → IPTAL yerine
- *     downgrade (guclu teyit dusuk hacmin sinyal degerini kismen telafi eder).
- *
- * Donen: null | { action: 'iptal'|'downgrade'|'warn', reasoning, ratio, isBreakoutBar }
- */
-function evaluateVolumeVeto(ohlcv, ctx = {}) {
-  if (!ohlcv?.bars || ohlcv.bars.length < 21) return null;
-  const lastBar = ohlcv.bars[ohlcv.bars.length - 1];
-  const prev20 = ohlcv.bars.slice(-21, -1);
-  const avgVol = prev20.reduce((s, b) => s + (b.volume || 0), 0) / prev20.length;
-  if (!avgVol || avgVol <= 0) return null; // volume verisi yoksa veto etme (ornegin bazi FX feedleri)
-  const lastVol = lastBar.volume || 0;
-  const ratio = lastVol / avgVol;
-  const pct = (ratio * 100).toFixed(0);
-
-  const { formation, tally, adx, direction } = ctx;
-
-  // Kirilim bari tespiti: dominant yonde kirilimi teyit edilmis formasyon var mi?
-  const isBreakoutBar = !!(formation?.formations?.some(f => {
-    if (!f.broken) return false;
-    const fDir = f.direction === 'bullish' ? 'long' : f.direction === 'bearish' ? 'short' : null;
-    return fDir && fDir === direction;
-  }));
-
-  // Guclu teyit override'i
-  const strongConfirm = (adx || 0) >= 30
-    && (tally?.voterCount || 0) >= 3
-    && (tally?.agreement || 0) >= 70;
-
-  if (isBreakoutBar) {
-    if (ratio < 0.8) {
-      if (strongConfirm) {
-        return {
-          action: 'downgrade',
-          reasoning: `Kirilim barinda hacim %${pct} (esik %80) — ADX ${(adx || 0).toFixed(0)}, ${tally.voterCount} kaynak, uyum %${tally.agreement} oldugu icin IPTAL yerine 1 kademe dusuruldu`,
-          ratio, isBreakoutBar,
-        };
-      }
-      return {
-        action: 'iptal',
-        reasoning: `Kirilim barinda hacim 20-bar ortalamasinin %${pct}'i (esik %80). Sahte kirilim riski yuksek.`,
-        ratio, isBreakoutBar,
-      };
-    }
-    if (ratio < 1.2) {
-      return {
-        action: 'warn',
-        reasoning: `Kirilim barinda hacim %${pct} (ideal >= %120) — teyit zayif, dikkat`,
-        ratio, isBreakoutBar,
-      };
-    }
-    return null;
-  }
-
-  // Trend ortasi / kirilim disi: sadece cok olu hacimde downgrade
-  if (ratio < 0.4) {
-    return {
-      action: 'downgrade',
-      reasoning: `Hacim 20-bar ortalamasinin %${pct}'i — cok dusuk, kalite 1 kademe dusuruldu (kirilim bari degil, IPTAL degil)`,
-      ratio, isBreakoutBar,
-    };
-  }
   return null;
 }
 
@@ -884,17 +840,25 @@ export function gradeShortTermSignal({
     result.warnings.push(`volume_reaction detector hata: ${err.message}`);
   }
   if (volumeReaction) {
+    // collectVotes icindeki voteWeight() helper'i ile ayni kanali kullan:
+    // base × learned × category multiplier. Eski kod kategori carpanini atliyordu.
+    const wAll = getWeights(regime);
+    const learned = wAll.indicatorWeights?.volume_reaction ?? 1.0;
     const baseW = DEFAULT_VOTE_WEIGHTS.volume_reaction || 2.0;
-    const learned = getWeights(regime).indicatorWeights?.volume_reaction ?? 1.0;
+    const catMult = getCategoryWeightMultiplier(wAll, symbol, 'volume_reaction');
     const zoneBonus = volumeReaction.smcZoneOk ? 1.2 : 1.0;
     votes.push({
       source: 'volume_reaction',
       direction: volumeReaction.direction,
-      weight: baseW * learned * zoneBonus,
+      weight: baseW * learned * catMult * zoneBonus,
       reasoning: volumeReaction.reasoning,
     });
     result.volumeReaction = volumeReaction;
-    result.reasoning.push(`Volume Reaction setup: ${volumeReaction.direction.toUpperCase()} (${volumeReaction.count}/5 teyit${volumeReaction.smcZoneOk ? ', SMC zone ✓' : ', SMC zone yok — kalite 1 kademe dusecek'})`);
+    // Vote loop volumeReaction.reasoning'i zaten basacak; burada sadece SMC zone
+    // teyidi yoksa kalite-dusus uyarisini ekle (vote reasoning'inde olmayan bilgi).
+    if (!volumeReaction.smcZoneOk) {
+      result.reasoning.push(`Volume Reaction: SMC zone teyidi yok — kalite 1 kademe dusecek`);
+    }
   }
 
   // No data at all
@@ -944,7 +908,9 @@ export function gradeShortTermSignal({
     result.direction = tally.direction;
     result.position_pct = 0;
     result.warnings.push(`SERT BLOK: Hacimli mum tuzagi — ${hvTrap.hardBlock} yonunde sinyal iptal edildi`);
-    result.reasoning.push(`--- SERT BLOK IPTAL: ${hvTrap.reasoning}`);
+    // Vote loop reasoning'i zaten basti (collectVotes -> result.reasoning.push).
+    // Burada sadece IPTAL nedenini ozetleyen header birak — icerigi tekrar etmeyelim.
+    result.reasoning.push(`--- SERT BLOK IPTAL: hacimli mum tuzagi (${hvTrap.hardBlock} yonunde)`);
     return result;
   }
 
@@ -1744,6 +1710,11 @@ function extractADX(studyValues) {
   if (!studyValues) return null;
   for (const study of (Array.isArray(studyValues) ? studyValues : [])) {
     if (!study.values) continue;
+    // Study adi ADX/DMI ailesinden olmali — herhangi bir indicator'in "ADX"
+    // anahtari (ornegin baska trend strength metric'i) yanlis okunmasin.
+    const sname = String(study.name || '').toLowerCase();
+    const isAdxStudy = sname.includes('adx') || sname.includes('directional') || sname.includes('dmi');
+    if (!isAdxStudy) continue;
     for (const [key, val] of Object.entries(study.values)) {
       const k = key.toLowerCase();
       if (!k.includes('adx') || k.includes('+di') || k.includes('-di')) continue;
