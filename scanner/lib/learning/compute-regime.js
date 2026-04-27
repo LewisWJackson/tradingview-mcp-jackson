@@ -13,21 +13,85 @@
  * Bu modül SHADOW-ONLY'dir (Faz 1). Hiçbir sinyal akışına bağlanmamıştır;
  * log üretir, strateji seçicisi Faz 2'de devreye girer.
  *
- * Saf fonksiyon + iç state Map. State persist edilmez (in-memory); shadow
- * logger her cycle çağrısını bağımsız olarak JSONL'e yazar, restart sonrası
- * log'lardan replay edilebilir.
+ * Saf fonksiyon + iç state Map. State `scanner/data/regime-state.json`'a
+ * persist edilir (debounced) — restart sonrası histerezis warmup'ı baştan
+ * ödemeyiz, kaldığı yerden devam.
  */
+
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { getProfile, REGIME_PROFILES } from './regime-profiles.js';
 
 const HYSTERESIS_BARS = 3;
 const MAX_TRANSITIONS_PER_DAY = 4;
 
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const STATE_PATH = path.resolve(__dirname, '..', '..', 'data', 'regime-state.json');
+const STATE_VERSION = 1;
+const FLUSH_DEBOUNCE_MS = 500;
+
 // Per-(symbol, TF) histerezis + transition state
 const _state = new Map();
+let _flushTimer = null;
+let _dirty = false;
+let _exitHookInstalled = false;
 
 function stateKey(symbol, tf) {
   return `${symbol}|${tf}`;
+}
+
+function _loadSync() {
+  try {
+    if (!fs.existsSync(STATE_PATH)) return;
+    const obj = JSON.parse(fs.readFileSync(STATE_PATH, 'utf8'));
+    if (!obj || obj.version !== STATE_VERSION || !obj.entries) return;
+    for (const [k, v] of Object.entries(obj.entries)) _state.set(k, v);
+  } catch (err) {
+    console.warn('[compute-regime] state load failed:', err.message);
+  }
+}
+
+function _flushSync() {
+  if (!_dirty) return;
+  _dirty = false;
+  if (_flushTimer) {
+    clearTimeout(_flushTimer);
+    _flushTimer = null;
+  }
+  try {
+    fs.mkdirSync(path.dirname(STATE_PATH), { recursive: true });
+    const entries = {};
+    for (const [k, v] of _state.entries()) entries[k] = v;
+    const payload = JSON.stringify({ version: STATE_VERSION, savedAt: new Date().toISOString(), entries });
+    const tmp = STATE_PATH + '.tmp';
+    fs.writeFileSync(tmp, payload);
+    fs.renameSync(tmp, STATE_PATH);
+  } catch (err) {
+    console.warn('[compute-regime] state flush failed:', err.message);
+  }
+}
+
+function _scheduleFlush() {
+  _dirty = true;
+  if (!_exitHookInstalled) {
+    _exitHookInstalled = true;
+    process.on('exit', _flushSync);
+  }
+  if (_flushTimer) return;
+  _flushTimer = setTimeout(() => {
+    _flushTimer = null;
+    _flushSync();
+  }, FLUSH_DEBOUNCE_MS);
+  _flushTimer.unref?.();
+}
+
+_loadSync();
+
+/** Test/operasyonel: pending yazımı zorla diske flush et. */
+export function _flushStateNow() {
+  _flushSync();
 }
 
 function newState() {
@@ -45,6 +109,7 @@ function newState() {
 export function _resetState(key = null) {
   if (key == null) _state.clear();
   else _state.delete(key);
+  _scheduleFlush();
 }
 
 // ---------------------------------------------------------------------------
@@ -367,6 +432,7 @@ export function computeRegime({
   }
 
   _state.set(key, st);
+  _scheduleFlush();
 
   // Güven skoru: stableBars yükseldikçe artar, histerezis doldukça 0.3→0.9 bandı
   const confidence = Math.min(0.95, 0.3 + 0.1 * Math.min(st.stableBars, 7));

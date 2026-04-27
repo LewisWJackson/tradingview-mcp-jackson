@@ -340,7 +340,9 @@ async function collectShortTermData(symbol, tf) {
   // 'partial' → veri gecer ama parser_alarm log dusturulur.
   const parsedKS = gateTechnicals(calcTechnicals(bars), { symbol, timeframe: tf });
   const parsedSMC = gateSMC(parseSMCLabels(smc.labels), { symbol, timeframe: tf });
-  const parsedBoxes = parseSMCBoxes(smc.boxes);
+  // ATR-aware FVG/OB ayrimi icin atr ge geçir (parsedKS.atr veya KhanSaab study).
+  const _atrForBoxes = parsedKS?.atr != null ? parsedKS.atr : parseFloat(extractATRFromStudy(studyValues));
+  const parsedBoxes = parseSMCBoxes(smc.boxes, { atr: isFinite(_atrForBoxes) ? _atrForBoxes : null });
   const parsedSRLines = parseSMCLines(smc.lines);
 
   const formation = detectFormations(bars, { timeframe: tf });
@@ -620,6 +622,9 @@ async function _scanShortTermInner(symbol, options = {}) {
       strategyHint: shadowResult.strategyHint,
       confidence: shadowResult.confidence,
       newPositionAllowed: shadowResult.newPositionAllowed,
+      unstable: shadowResult.unstable,
+      stableBars: shadowResult.stableBars,
+      transitioned: shadowResult.transitioned,
     } : null;
 
     const signal = gradeShortTermSignal({

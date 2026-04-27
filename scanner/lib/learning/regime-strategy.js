@@ -166,13 +166,22 @@ export function applyRegimeStrategy({
 
   // 1. computeRegime'in newPositionAllowed=false dediği durumlar — anında red
   if (regimeContext && regimeContext.newPositionAllowed === false) {
+    // Etiketi *sebebe* göre seç. Aksi halde ranging/trending gibi rejimlerde
+    // warmup/unstable durumları yanlışlıkla "REJECT_TRANSITION" olarak loglanır
+    // ve shadow log debug edilemez hale gelir.
+    let decision;
+    if (regime === 'high_vol_chaos') decision = 'REJECT_CHAOS';
+    else if (regime === 'market_closed') decision = 'REJECT_CLOSED';
+    else if (regime === 'low_vol_drift') decision = 'REJECT_DRIFT';
+    else if (regimeContext.unstable === true) decision = 'REJECT_UNSTABLE';
+    else if (typeof regimeContext.stableBars === 'number'
+             && regimeContext.stableBars < 3) decision = 'REJECT_WARMUP';
+    else if (regimeContext.transitioned === true) decision = 'REJECT_TRANSITION';
+    else decision = 'REJECT_TRANSITION';
     const result = {
       rejected: true,
-      rejectionReason: `rejim ${regime} yeni pozisyon kapali (computeRegime)`,
-      decision: regime === 'high_vol_chaos' ? 'REJECT_CHAOS'
-              : regime === 'low_vol_drift' ? 'REJECT_DRIFT'
-              : regime === 'market_closed' ? 'REJECT_CLOSED'
-              : 'REJECT_TRANSITION',
+      rejectionReason: `rejim ${regime} yeni pozisyon kapali (${decision})`,
+      decision,
       adjustedVotes: votes,
       suppressedVotes: [],
       boostedVotes: [],
