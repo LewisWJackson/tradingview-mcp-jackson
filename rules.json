@@ -397,6 +397,18 @@
         "deriva_11": {
           "risco": "Identificar zona S&D a partir de uma vela isolada (comportamento de OB) em vez da base de consolidação antes do impulso",
           "correcao": "Zona S&D é sempre definida pela BASE (consolidação antes do impulso). Pode ser uma ou várias velas de consolidação. Nunca usar uma vela bearish/bullish isolada como definição da zona — isso é OB, não S&D."
+        },
+        "deriva_12": {
+          "risco": "Usar valores de sessões anteriores, resumos de contexto ou memória sem verificar com as ferramentas na sessão actual",
+          "correcao": "PROIBIDO usar qualquer valor de análise anterior sem o confirmar com draw_get_properties ou data_get_ohlcv na sessão actual. Resumos e memória são auxiliares de contexto — nunca fonte de valores para análise."
+        },
+        "deriva_13": {
+          "risco": "Inferir níveis não marcados (Asia Low, sessão específica, suporte/resistência) a partir de heurísticas como volume, hora ou leitura visual",
+          "correcao": "Se o nível não está num drawing do utilizador e não pode ser confirmado por data_get_ohlcv de forma inequívoca → PERGUNTAR antes de apresentar. 'Não tenho este nível confirmado — qual é o valor que consideras?' é sempre a resposta correcta."
+        },
+        "deriva_14": {
+          "risco": "Assumir que um sweep ou tomada de nível ocorreu sem confirmação explícita do utilizador ou verificação rigorosa dos dados",
+          "correcao": "Um nível só foi 'tomado' quando: (a) o utilizador confirma explicitamente, OU (b) o preço fechou além do nível num TF relevante com dados OHLCV que o comprovam. Wicks que tocam mas não fecham além do nível NÃO constituem tomada do nível."
         }
       },
       "formato_obrigatorio_zona": {
@@ -411,16 +423,49 @@
           "PROIBIDO usar 'OB' em qualquer parte da apresentação da zona"
         ]
       },
+      "protocolo_inicio_sessao": {
+        "descricao": "Protocolo obrigatório no início de CADA sessão de análise, antes de apresentar qualquer nível ou zona. Garante qualidade à primeira — elimina iterações de correcção e desperdício de créditos.",
+        "passo_1_drawings": {
+          "acao": "draw_list + draw_get_properties para TODOS os drawings presentes no tab CLAUDE",
+          "regra": "NUNCA usar valores de sessões anteriores, resumos ou memória. Sempre ler os dados frescos directamente das ferramentas.",
+          "output_obrigatorio": "Tabela com todos os drawings: ID | Label | Tipo | Valor exacto lido agora"
+        },
+        "passo_2_dados_ohlcv": {
+          "acao": "data_get_ohlcv em cascata 4H → 1H → 15M para confirmar estrutura actual",
+          "regra": "Cada nível estrutural (BOS, CHoCH, zona S&D) tem de ser confirmado pelo timestamp e OHLCV da vela específica. Nunca citar um nível sem a vela de origem."
+        },
+        "passo_3_niveis_sem_drawing": {
+          "regra": "Se um nível relevante (ex: Asia Low, sessão específica) NÃO está marcado num drawing → PERGUNTAR ao utilizador antes de continuar. NUNCA inferir a partir de volume, hora ou outras heurísticas.",
+          "exemplo_correcto": "Não tenho o Asia Low marcado no chart — qual é o nível que consideras?",
+          "exemplo_proibido": "Inferi o Asia Low a partir das barras de baixo volume como sendo 1.17032"
+        },
+        "passo_4_citacao_de_fonte": {
+          "regra": "Cada valor apresentado na análise indica obrigatoriamente a sua origem: 'drawing X (lido agora)' ou 'vela timestamp Y, OHLCV confirmado'. Proibido apresentar qualquer valor sem fonte explícita.",
+          "formatos_aceites": [
+            "1.16924 — drawing 0NtZnF (lido agora)",
+            "H:1.17137 — vela 1776904200, data_get_ohlcv confirmado",
+            "1.17002 — ponto do rectângulo CFHCQJ (draw_get_properties)"
+          ]
+        },
+        "passo_5_tab": {
+          "regra": "NUNCA mudar de tab sem instrução explícita do utilizador. Toda a análise é feita no tab CLAUDE (Tab 0). Se o utilizador diz 've as marcações' = ver no tab actualmente aberto (CLAUDE), não mudar para outros tabs."
+        },
+        "beneficio": "Seguindo estes 5 passos na ordem correcta, a análise é completa, rigorosa e correcta à primeira — sem iterações de correcção, sem créditos desperdiçados."
+      },
       "auto_verificacao": {
         "descricao": "Antes de apresentar qualquer nível ou zona, o Claude verifica internamente:",
         "checklist": [
+          "✓ Li os drawings com draw_get_properties esta sessão (não usei valores de memória)?",
+          "✓ Todos os valores têm fonte explícita (drawing ID ou timestamp de vela)?",
+          "✓ Algum nível necessário não está num drawing? Se sim, perguntei ao utilizador?",
           "✓ Corri data_get_ohlcv para esta vela específica?",
           "✓ Os valores que vou apresentar vêm de dados reais, não de estimativa visual?",
           "✓ Confirmei o FVG com valores OHLCV e não apenas visualmente?",
           "✓ A zona é Unmitigated — o preço não regressou a ela?",
-          "✓ Estou a usar linguagem precisa (valores exactos) e não vaga ('cerca de', 'perto de')?"
+          "✓ Estou a usar linguagem precisa (valores exactos) e não vaga ('cerca de', 'perto de')?",
+          "✓ Estou no tab CLAUDE sem ter mudado de tab?"
         ],
-        "regra": "Se a resposta a qualquer ponto for NÃO — parar, correr as ferramentas necessárias, e só então apresentar os resultados."
+        "regra": "Se a resposta a qualquer ponto for NÃO — parar, correr as ferramentas necessárias ou perguntar ao utilizador, e só então apresentar os resultados."
       },
       "regra_imutavel": "Este procedimento não pode ser simplificado, acelerado ou substituído por estimativas visuais, mesmo que a análise demore mais. Velocidade nunca justifica falta de rigor. Se o utilizador não tiver dado permissão explícita para alterar qualquer ponto deste procedimento, ele mantém-se intacto. Qualquer deriva detectada pelo utilizador deve ser corrigida imediatamente e o motivo da deriva explicado."
     },
@@ -666,6 +711,33 @@
       "Apresentar uma zona S&D sem especificar o TF — toda a zona inclui sempre o TF na designação (ex: 'Zona Supply 1H')",
       "Identificar zonas S&D em 15M ou 5M — esses TF são exclusivamente para entradas (CHoCH/MSS trigger)",
       "Definir uma zona S&D a partir de uma vela isolada — a zona é sempre definida pela base de consolidação antes do impulso"
-    ]
+    ],
+    "session_setup": {
+      "description": "Comandos e procedimentos para iniciar uma sessão de análise com Claude + TradingView MCP",
+      "chrome_command": {
+        "comando": "chrome.exe --remote-debugging-port=9222 --user-data-dir=\"C:\\Users\\mrasp\\chrome-debug\"",
+        "nota": "Executar este comando no terminal/PowerShell para abrir o Chrome com CDP ativo. Obrigatório antes de qualquer sessão de análise com o TradingView MCP.",
+        "onde_executar": "PowerShell ou CMD — navegar para qualquer diretoria e correr o comando",
+        "alternativa_run": "Windows + R → colar: chrome.exe --remote-debugging-port=9222 --user-data-dir=\"C:\\Users\\mrasp\\chrome-debug\""
+      },
+      "mcp_config": {
+        "ficheiro": "C:\\Users\\mrasp\\.claude\\mcp.json",
+        "conteudo": "{\"mcpServers\":{\"tradingview\":{\"command\":\"node\",\"args\":[\"C:\\\\Users\\\\mrasp\\\\tradingview-mcp-jackson\\\\src\\\\server.js\"]}}}"
+      },
+      "ordem_arranque": [
+        "1. Abrir PowerShell e correr: chrome.exe --remote-debugging-port=9222 --user-data-dir=\"C:\\Users\\mrasp\\chrome-debug\"",
+        "2. No Chrome que abre — navegar para tradingview.com e abrir um gráfico",
+        "3. Abrir Claude Code CLI no terminal: claude",
+        "4. Confirmar ligação: pedir ao Claude para fazer tv_health_check",
+        "5. Iniciar análise pela ordem: DXY → N1 (EUR, XAU, NAS) → N2 se necessário"
+      ],
+      "tab_architecture": {
+        "tab_0_claude": "Tab CLAUDE — tab de análise. Claude muda símbolos livremente aqui. Sem marcações do utilizador.",
+        "tab_1_eur": "Tab pessoal do utilizador — EURUSD com zonas e marcações próprias.",
+        "tab_2_xau": "Tab pessoal do utilizador — XAUUSD com zonas e marcações próprias.",
+        "tab_3_btc": "Tab pessoal do utilizador — BTCUSD com zonas e marcações próprias.",
+        "nota": "Nunca alterar os tabs pessoais do utilizador (1, 2, 3). Análise do Claude sempre no tab 0."
+      }
+    }
   }
 }
