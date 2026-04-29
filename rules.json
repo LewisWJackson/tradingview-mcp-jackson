@@ -244,6 +244,67 @@
         "abordagem": "Não mecânico — depende do que o preço está a fazer"
       }
     },
+    "fvg_mid": {
+      "description": "FVG e MID são ferramentas de refinamento de entrada dentro de uma zona S/D 1H já identificada. Não substituem a zona — precisam-na. A zona define a ÁREA, o FVG e o MID definem o PONTO dentro dessa área.",
+      "nomenclatura": {
+        "CE": "Confirmation Entry — tipo de entrada após CHoCH/MSS confirmado no LTF. Conceito de execução.",
+        "MID": "Midpoint da zona — ponto a 50% entre proximal e distal da zona S/D. Cálculo: (proximal + distal) / 2. Sempre disponível — fallback quando não existe FVG.",
+        "FVG": "Fair Value Gap — desequilíbrio de 3 velas onde a vela central se move tão rápido que deixa uma lacuna entre high da vela N e low da vela N+2 (bullish) ou low da vela N e high da vela N+2 (bearish). O mercado não transacionou nesse espaço — tende a regressar a preenchê-lo."
+      },
+      "fvg_definicao": {
+        "bullish_fvg": "High da vela N < Low da vela N+2. A lacuna entre esses dois valores é o FVG bullish. Preço tende a regressar a este espaço antes de continuar para cima.",
+        "bearish_fvg": "Low da vela N > High da vela N+2. A lacuna entre esses dois valores é o FVG bearish. Preço tende a regressar a este espaço antes de continuar para baixo.",
+        "confirmacao": "FVG só é válido se confirmado com data_get_ohlcv — verificar que High vela N < Low vela N+2 (bullish) ou Low vela N > High vela N+2 (bearish). NUNCA confirmar FVG apenas visualmente.",
+        "tf_valido": "FVG identificado no mesmo TF da zona (1H) ou no TF de execução (15M/5M) dentro da zona. Acima de 1H o FVG é contexto macro, não ponto de entrada."
+      },
+      "hierarquia_entrada_na_zona": {
+        "nivel_1": {
+          "condicao": "FVG + MID coincidem dentro da zona",
+          "qualidade": "🥇 Máxima convicção",
+          "stop": "Mínimo — abaixo do FVG ou do distal da zona",
+          "nota": "Quando o FVG inclui ou está muito próximo do MID — confluência máxima. Entrada de maior convicção e melhor R:R."
+        },
+        "nivel_2": {
+          "condicao": "FVG dentro da zona (sem confluência com MID)",
+          "qualidade": "🥈 Alta precisão",
+          "stop": "Pequeno — abaixo do FVG",
+          "nota": "FVG sozinho já dá entrada precisa. Melhor R:R que entrar pelo MID."
+        },
+        "nivel_3": {
+          "condicao": "MID da zona (sem FVG identificado)",
+          "qualidade": "🥉 Standard — fallback",
+          "stop": "Médio — abaixo do distal da zona",
+          "nota": "Sempre disponível. Usado quando não existe FVG dentro da zona. Cálculo: (proximal + distal) / 2."
+        },
+        "nivel_4": {
+          "condicao": "Sem FVG e sem MID claramente definido",
+          "qualidade": "⚠️ Baixa — RE apenas",
+          "stop": "Maior",
+          "nota": "RE só se a zona for muito óbvia com contexto HTF muito forte. Nunca CE sem ponto de entrada definido."
+        }
+      },
+      "processo_identificacao_fvg": [
+        "1. Screenshot para localizar visualmente a vela de impulso que criou a zona",
+        "2. data_get_ohlcv na vela N (antes do impulso) e vela N+2 (após o impulso)",
+        "3. Bullish: confirmar High(N) < Low(N+2). Bearish: confirmar Low(N) > High(N+2)",
+        "4. FVG range = High(N) a Low(N+2) para bullish | Low(N) a High(N+2) para bearish",
+        "5. Verificar se FVG está dentro dos limites da zona S/D 1H — se não estiver, não é válido para entrada",
+        "6. Calcular MID do FVG: (topo do FVG + fundo do FVG) / 2 — esse é o ponto de entrada ideal dentro do FVG"
+      ],
+      "regras": [
+        "FVG e MID são refinadores — só fazem sentido DENTRO de uma zona S/D 1H já validada",
+        "Nunca usar FVG fora de uma zona S/D como POI autónomo — é refinamento, não setup",
+        "FVG confirmado com data_get_ohlcv obrigatório — proibido confirmar apenas visualmente",
+        "Se FVG já foi preenchido pelo preço (mitigated) — não é válido para entrada",
+        "MID é sempre calculado: (proximal + distal) / 2 — nunca estimado visualmente",
+        "Quando FVG e MID coexistem — FVG tem prioridade como ponto de entrada",
+        "FVG parcialmente preenchido mas não totalmente: entrada válida no fundo do FVG restante"
+      ],
+      "formato_apresentacao": {
+        "fvg": "FVG [Bullish/Bearish] [TF] | Range: X.XXXXX → X.XXXXX | MID FVG: X.XXXXX | Dentro de zona [TF]: Sim/Não | Mitigated: Sim/Não",
+        "mid_zona": "MID Zona [TF]: X.XXXXX | Cálculo: (X.XXXXX + X.XXXXX) / 2"
+      }
+    },
     "timeframe_hierarchy": {
       "weekly_daily": "Bias direcional principal. DXY primeiro. Grandes zonas Smart Money. Premium vs Discount. Volume Profile semanal.",
       "4H": "Gráfico de trabalho principal. Validar BOS e narrativa semanal. Supply/Demand + FVG. Weekly VWAP.",
@@ -505,7 +566,10 @@
           "✓ Algum nível necessário não está num drawing? Se sim, perguntei ao utilizador?",
           "✓ Corri data_get_ohlcv para esta vela específica?",
           "✓ Os valores que vou apresentar vêm de dados reais, não de estimativa visual?",
-          "✓ Confirmei o FVG com valores OHLCV e não apenas visualmente?",
+          "✓ Confirmei o FVG com valores OHLCV (High vela N < Low vela N+2 para bullish) e não apenas visualmente?",
+          "✓ O FVG identificado está dentro dos limites da zona S/D 1H — não é um POI autónomo?",
+          "✓ Calculei o MID da zona com a fórmula (proximal + distal) / 2 e não por estimativa visual?",
+          "✓ Se existe FVG na zona, estou a usar o FVG como ponto de entrada e não o MID (FVG tem prioridade)?",
           "✓ A zona é Unmitigated — o preço não regressou a ela?",
           "✓ Estou a usar linguagem precisa (valores exactos) e não vaga ('cerca de', 'perto de')?",
           "✓ Estou no tab CLAUDE sem ter mudado de tab?"
@@ -612,6 +676,7 @@
       "4. VWAP: Daily/Weekly VWAP confirma o bias?",
       "5. LIQUIDEZ: EQH/EQL/SSL/BSL identificado?",
       "6. ZONA: Unmitigated com FVG/IMB forte?",
+      "6B. FVG/MID: Existe FVG dentro da zona? Se sim — FVG é o ponto de entrada. Se não — usar MID da zona como fallback.",
       "7. SWEEP: Price fez sweep da liquidez?",
       "8. CONFIRMAÇÃO: CHoCH/MSS no 15M/5M confirmado?",
       "9. CVD: Divergência ou spike confirma pressão institucional?",
@@ -755,7 +820,12 @@
       "Usar terminologia 'Order Block (OB)' ou 'OB' — a estratégia JEAFX usa exclusivamente zonas Supply e Demand",
       "Apresentar uma zona S&D sem especificar o TF — toda a zona inclui sempre o TF na designação (ex: 'Zona Supply 1H')",
       "Identificar zonas S&D em 15M ou 5M — esses TF são exclusivamente para entradas (CHoCH/MSS trigger)",
-      "Definir uma zona S&D a partir de uma vela isolada — a zona é sempre definida pela base de consolidação antes do impulso"
+      "Definir uma zona S&D a partir de uma vela isolada — a zona é sempre definida pela base de consolidação antes do impulso",
+      "Usar FVG como POI autónomo fora de uma zona S/D 1H — FVG é refinamento de entrada dentro da zona, não setup independente",
+      "Confirmar FVG apenas visualmente sem verificar High(N) < Low(N+2) com data_get_ohlcv",
+      "Usar MID como ponto de entrada quando existe FVG válido dentro da zona — FVG tem sempre prioridade sobre MID",
+      "Estimar o MID da zona visualmente — MID = (proximal + distal) / 2, sempre calculado com valores exactos",
+      "Usar terminologia 'CE' para referir o midpoint da zona — CE é exclusivamente Confirmation Entry (após CHoCH/MSS). O midpoint chama-se MID."
     ],
     "session_setup": {
       "description": "Comandos e procedimentos para iniciar uma sessão de análise com Claude + TradingView MCP",
