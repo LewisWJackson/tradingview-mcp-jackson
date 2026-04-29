@@ -100,6 +100,51 @@
       "asia_range": "Monitorizar para Asia Liquidity Run (ALS) — oportunidade diária recorrente",
       "transition_filter": "1H usado para ver transição entre sessões e encontrar FVGs"
     },
+    "killzones": {
+      "description": "Janelas de sessão onde os Market Makers movem preço com intenção. Fora destas janelas a liquidez é baixa e os movimentos são pouco confiáveis. Aplicação diferenciada por nível de ativo.",
+      "conceito": "Cada sessão tem 3 fases: Acumulação (range) → Manipulação (spike/sweep) → Distribuição (movimento real). O spike de London de manhã é a fase de Manipulação clássica — reconhecer em que fase se está evita entrar na armadilha e permite esperar pela Distribuição.",
+      "janelas": {
+        "london_open": {
+          "hora_lisboa": "08:00–10:00",
+          "hora_utc": "07:00–09:00",
+          "descricao": "Killzone principal. Fase de Manipulação seguida do movimento real de London. Sweeps de liquidez asiática acontecem aqui. Maior probabilidade de setup diário."
+        },
+        "new_york_open": {
+          "hora_lisboa": "13:00–16:00",
+          "hora_utc": "12:00–15:00",
+          "descricao": "Segunda Killzone principal. Confirma ou inverte o movimento de London. NY frequentemente colhe a liquidez criada por London antes de distribuir."
+        },
+        "london_close": {
+          "hora_lisboa": "21:00–23:00",
+          "hora_utc": "20:00–22:00",
+          "descricao": "Killzone menor. Relevante principalmente para N2/N3 e em dias com confluência HTF clara. Evitar em N1 salvo setup muito óbvio."
+        },
+        "tokyo_session": {
+          "hora_lisboa": "01:00–04:00",
+          "hora_utc": "00:00–03:00",
+          "descricao": "Killzone asiática. Relevante para USDJPY e BTCUSD (N2). Cria o range asiático (Asia High / Asia Low) que London frequentemente vai testar."
+        }
+      },
+      "regras_por_nivel": {
+        "nivel_1": {
+          "assets": ["EURUSD", "XAUUSD", "NAS100"],
+          "regra": "Preferência total pelas Killzones London (08:00–10:00) e NY (13:00–16:00). Fora do horário apenas observação e preparação.",
+          "excepcao": "Pode entrar fora de Killzone SE a formação for claramente justificada: zona limpa unmitigated + confluência HTF forte + contexto macro favorável. A excepção exige nível de convicção superior ao normal — não é desculpa para entrar em qualquer setup."
+        },
+        "nivel_2": {
+          "assets": ["BTCUSD", "USDJPY", "XAGUSD"],
+          "regra": "Qualquer sessão é válida. USDJPY e BTC podem ter setups relevantes na Tokyo Session (01:00–04:00). Silver segue as mesmas janelas do ouro mas sem restrição."
+        },
+        "nivel_3": {
+          "assets": ["GBPUSD", "EURGBP", "US30"],
+          "regra": "Qualquer sessão é válida. O próprio TF mínimo de 30M já filtra naturalmente o ruído. Sem restrição de sessão."
+        }
+      },
+      "fora_de_killzone": {
+        "n1": "Observar, preparar zonas, colocar alertas, definir cenários A/B. NÃO entrar salvo excepção justificada.",
+        "n2_n3": "Avaliar normalmente — sem restrição de sessão."
+      }
+    },
     "risk_management": {
       "objective_monthly_eur": 5000,
       "note_objective": "Objetivo de €5.000/mês mas sem limite de lucro — se o setup for válido continuar. Nunca parar por excesso de lucro.",
