@@ -361,32 +361,52 @@ export function parseSMCLabels(labelData) {
     weakLow: null,
   };
 
+  // RGB kanal karsilastirmasi: belirgin yesil → bullish, belirgin kirmizi/turuncu → bearish.
+  // LuxAlgo gibi indikatorler ozel hex paleti (#819908, #f23645, #4536f2 ...) kullanabilir;
+  // sabit hex listesi tutmak yerine kanallari karsilastirmak daha guvenilir.
+  const colorDirection = (label) => {
+    const hint = `${label.color ?? ''} ${label.textColor ?? ''}`;
+    if (/\b(green|lime|teal)\b/i.test(hint)) return 'bullish';
+    if (/\b(red|orange|crimson|maroon)\b/i.test(hint)) return 'bearish';
+    const matches = hint.match(/#([0-9a-f]{6})/gi) || [];
+    let bull = 0, bear = 0;
+    for (const m of matches) {
+      const n = parseInt(m.slice(1), 16);
+      const r = (n >> 16) & 0xff, g = (n >> 8) & 0xff, b = n & 0xff;
+      if (r === g && g === b) continue; // gri/siyah/beyaz: bilgi yok
+      const max = Math.max(r, g, b), min = Math.min(r, g, b);
+      // Bullish: G dominant kanal (yesil/teal/olive aileleri).
+      // Bearish: G en zayif kanal (kirmizi/turuncu/pembe/mor/magenta).
+      if (g === max && max - min > 10) bull++;
+      else if ((r === max || (b === max && g === min)) && max - min > 10) bear++;
+    }
+    if (bull > bear) return 'bullish';
+    if (bear > bull) return 'bearish';
+    return null;
+  };
+
   for (const study of labelData) {
     if (!study.labels) continue;
     for (const label of study.labels) {
       const labelText = label.text || '';
       const textStr = String(labelText).toUpperCase();
       const price = label.price;
+      const colDir = colorDirection(label);
 
       if (textStr.includes('BOS')) {
-        // Yon tespiti: 1) Text'te acik yon varsa kullan, 2) yoksa renk/ok isareti,
-        // 3) hicbiri yoksa onceki BOS'un fiyatiyla karsilastir
+        // Yon tespiti: 1) Text'te acik yon, 2) ok isareti, 3) renk kanalindan tahmin.
         const isBullish = textStr.includes('BULL') || textStr.includes('↑') || textStr.includes('UP')
-          || (label.color && /green|#00|#22|lime/i.test(label.color));
+          || colDir === 'bullish';
         const isBearish = textStr.includes('BEAR') || textStr.includes('↓') || textStr.includes('DOWN')
-          || (label.color && /red|#ff0000|#ee|orange/i.test(label.color));
-        // Yon tespit edilemezse null don. Iki BOS etiketinin fiyat sirasi
-        // BOS yonu hakkinda bilgi vermez (BOS yonu kirilan onceki swing'e
-        // gore tanimli) — eski fiyat-karsilastirma fallback'i rastgele sonuc
-        // uretiyordu.
+          || colDir === 'bearish';
         const direction = isBullish ? 'bullish' : isBearish ? 'bearish' : null;
         result.lastBOS = { direction, raw: textStr, price };
       }
       if (textStr.includes('CHOCH')) {
         const isBullish = textStr.includes('BULL') || textStr.includes('↑') || textStr.includes('UP')
-          || (label.color && /green|#00|#22|lime/i.test(label.color));
+          || colDir === 'bullish';
         const isBearish = textStr.includes('BEAR') || textStr.includes('↓') || textStr.includes('DOWN')
-          || (label.color && /red|#ff0000|#ee|orange/i.test(label.color));
+          || colDir === 'bearish';
         const direction = isBullish ? 'bullish' : isBearish ? 'bearish' : null;
         result.lastCHoCH = { direction, raw: textStr, price };
       }

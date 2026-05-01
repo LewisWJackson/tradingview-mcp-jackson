@@ -151,6 +151,15 @@ export function bareOf(symbol) {
   return s.includes(':') ? s.split(':')[1] : s;
 }
 
+export function normalizeTradingViewColor(value) {
+  if (typeof value === 'number' && Number.isFinite(value) && value !== 0) {
+    // TradingView verir: 0xAARRGGBB (alpha en yuksek byte). RGB'yi alip #rrggbb'ye cevir.
+    const rgb = (value & 0x00ffffff).toString(16).padStart(6, '0');
+    return `#${rgb}`;
+  }
+  return value ?? null;
+}
+
 export async function setTimeframe(tf) {
   const safeTf = JSON.stringify(tf);
   await evaluate(`
@@ -497,7 +506,12 @@ export async function getPineLabels(filter) {
   return raw.map(s => {
     let labels = s.items.map(item => {
       const v = item.raw;
-      return { text: v.t || '', price: v.y != null ? Math.round(v.y * 100) / 100 : null };
+      return {
+        text: v.t || '',
+        price: v.y != null ? Math.round(v.y * 100) / 100 : null,
+        color: normalizeTradingViewColor(v.ci),
+        textColor: normalizeTradingViewColor(v.tci),
+      };
     }).filter(l => l.text || l.price != null);
     if (labels.length > 50) labels = labels.slice(-50);
     return { name: s.name, total_labels: s.count, showing: labels.length, labels };

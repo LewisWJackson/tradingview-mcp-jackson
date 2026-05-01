@@ -24,7 +24,7 @@ import { getMacroState, formatMacroSummary, setMacroLockFunctions } from './lib/
 import { ensureConnection, getIndicators, addIndicator, removeIndicator, ensureIndicators, setupIndicatorsForScan, INDICATOR_PRESETS, readWithTempIndicator } from './lib/tv-bridge.js';
 import { startLearningLoop, stopLearningLoop, getLearningStatus, getLearningSummary, setIntegration as setLearningIntegration, forceAdjustment, forceOutcomeCheck } from './lib/learning/learning-loop.js';
 import { generateFullReport, generateQuickSummary, generate24hChangesReport, generateDigest } from './lib/learning/learning-reporter.js';
-import { getOpenSignals, getSignalHistory, cleanupDuplicateSignals, refreshHTFBarrierLevelsForOpenSignals } from './lib/learning/signal-tracker.js';
+import { getOpenSignals, getSignalHistory, cleanupDuplicateSignals, refreshHTFBarrierLevelsForOpenSignals, sanitizeReverseAttemptsForDashboard } from './lib/learning/signal-tracker.js';
 import { getAllCachedStats, recomputeAllStats } from './lib/learning/stats-engine.js';
 import { scoreAllIndicators, generateIndicatorReport } from './lib/learning/indicator-scorer.js';
 import { loadWeights, resetWeights } from './lib/learning/weight-adjuster.js';
@@ -1024,6 +1024,8 @@ app.get('/api/signals/open-dashboard', (req, res) => {
       // Age in minutes
       const ageMinutes = s.createdAt ? Math.round((Date.now() - new Date(s.createdAt).getTime()) / 60000) : null;
 
+      const reverseAttempts = sanitizeReverseAttemptsForDashboard(s.reverseAttempts);
+
       return {
         id: s.id,
         symbol: s.symbol,
@@ -1053,8 +1055,8 @@ app.get('/api/signals/open-dashboard', (req, res) => {
         lastCheckedAt: s.lastCheckedAt,
         warnings: enrichDashboardWarnings(s),
         // Tek-poz + reverse-yok alanlari
-        reverseAttempts: Array.isArray(s.reverseAttempts) ? s.reverseAttempts : [],
-        reverseAttemptCount: Array.isArray(s.reverseAttempts) ? s.reverseAttempts.length : 0,
+        reverseAttempts,
+        reverseAttemptCount: reverseAttempts.length,
         trailingStopActive: !!s.trailingStopActive,
         trailingStopLevel: s.trailingStopLevel || null,
         refreshCount: s.refreshCount || 0,

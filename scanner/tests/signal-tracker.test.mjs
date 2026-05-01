@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { shouldRefreshBarrierLevels } from '../lib/learning/signal-tracker.js';
+import { sanitizeReverseAttemptsForDashboard, shouldRefreshBarrierLevels } from '../lib/learning/signal-tracker.js';
 
 test('same grade and TF refreshes TP levels when old HTF barrier cap changes', () => {
   const existing = {
@@ -62,4 +62,27 @@ test('does not refresh unrelated non-barrier TP changes', () => {
   };
 
   assert.equal(shouldRefreshBarrierLevels(existing, scanResult), false);
+});
+
+test('dashboard reverse attempts omit null-direction SMC artifacts', () => {
+  const attempts = sanitizeReverseAttemptsForDashboard([
+    {
+      reasoning: [
+        'MACD Trend: BEAR',
+        'SMC BOS: null',
+        'SMC CHoCH: null — yapisal degisim',
+      ],
+      indicatorSnapshot: {
+        smc: {
+          lastBOS: { direction: null, raw: 'BOS', price: 100 },
+          lastCHoCH: { direction: null, raw: 'CHOCH', price: 99 },
+          hasOB: false,
+          hasFVG: false,
+        },
+      },
+    },
+  ]);
+
+  assert.deepEqual(attempts[0].reasoning, ['MACD Trend: BEAR']);
+  assert.equal(attempts[0].indicatorSnapshot.smc, null);
 });

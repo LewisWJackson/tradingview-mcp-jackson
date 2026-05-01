@@ -270,6 +270,12 @@ function roleToTr(role) {
   }
 }
 
+function smcDirectionToTradeDirection(direction) {
+  if (direction === 'bullish') return 'long';
+  if (direction === 'bearish') return 'short';
+  return null;
+}
+
 function collectVotes({ khanSaab, smc, studyValues, ohlcv, formation, squeeze, divergence, cdv, macroFilter, stochRSI, regime, symbol }) {
   const votes = [];
   const w = getWeights(regime);
@@ -387,13 +393,13 @@ function collectVotes({ khanSaab, smc, studyValues, ohlcv, formation, squeeze, d
 
   // --- 2. Smart Money Concepts (independent votes) ---
   if (smc) {
-    if (smc.lastBOS) {
-      const bosDir = smc.lastBOS.direction === 'bullish' ? 'long' : 'short';
+    const bosDir = smcDirectionToTradeDirection(smc.lastBOS?.direction);
+    if (bosDir) {
       votes.push({ source: 'smc_bos', direction: bosDir, weight: voteWeight('smc_bos'), reasoning: `SMC BOS: ${smc.lastBOS.direction}` });
     }
 
-    if (smc.lastCHoCH) {
-      const chochDir = smc.lastCHoCH.direction === 'bullish' ? 'long' : 'short';
+    const chochDir = smcDirectionToTradeDirection(smc.lastCHoCH?.direction);
+    if (chochDir) {
       votes.push({ source: 'smc_choch', direction: chochDir, weight: voteWeight('smc_choch'), reasoning: `SMC CHoCH: ${smc.lastCHoCH.direction} — yapisal degisim` });
     }
 

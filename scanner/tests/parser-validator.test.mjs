@@ -93,6 +93,15 @@ test('10. validateSMC: hicbiri yoksa → broken', () => {
   assert.equal(v.severity, 'broken');
 });
 
+test('10b. validateSMC: BOS/CHoCH direction null ise broken', () => {
+  const v = validateSMC({
+    lastBOS: { direction: null, raw: 'BOS', price: 100 },
+    lastCHoCH: { direction: null, raw: 'CHOCH', price: 99 },
+  });
+  assert.equal(v.severity, 'broken');
+  assert.equal(v.ok, false);
+});
+
 // ---------------------------------------------------------------------------
 // gateTechnicals + alarm counter
 // ---------------------------------------------------------------------------

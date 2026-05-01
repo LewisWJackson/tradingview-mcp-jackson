@@ -83,6 +83,11 @@ function isFilled(v) {
   return true;
 }
 
+function isValidSMCStructure(v) {
+  if (!v || typeof v !== 'object') return false;
+  return v.direction === 'bullish' || v.direction === 'bearish';
+}
+
 /**
  * KhanSaab parsed objesini sema'ya gore dogrula.
  * @returns {{ok: boolean, missingRequired: string[], filledRatio: number, severity: 'ok'|'partial'|'broken'}}
@@ -123,8 +128,8 @@ export function validateSMC(parsed) {
   if (!parsed || typeof parsed !== 'object') {
     return { ok: false, missingRequired: SMC_SCHEMA.oneOf, filledRatio: 0, severity: 'broken' };
   }
-  const oneOfFilled = SMC_SCHEMA.oneOf.some(f => isFilled(parsed[f]));
-  const missing = oneOfFilled ? [] : SMC_SCHEMA.oneOf;
+  const oneOfFilled = SMC_SCHEMA.oneOf.some(f => isValidSMCStructure(parsed[f]));
+  const missing = oneOfFilled ? [] : SMC_SCHEMA.oneOf.map(f => `${f}.direction`);
   const severity = oneOfFilled ? 'ok' : 'broken';
   return { ok: oneOfFilled, missingRequired: missing, filledRatio: oneOfFilled ? 1 : 0, severity };
 }

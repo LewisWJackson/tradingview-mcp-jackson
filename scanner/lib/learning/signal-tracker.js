@@ -46,6 +46,43 @@ function hasHTFBarrierContext(signal) {
     || !!signal?.barrierSummary;
 }
 
+function isValidSMCStructure(structure) {
+  return !!structure && (structure.direction === 'bullish' || structure.direction === 'bearish');
+}
+
+function sanitizeSMCSnapshotForDashboard(smc) {
+  if (!smc || typeof smc !== 'object') return null;
+  const lastBOS = isValidSMCStructure(smc.lastBOS) ? smc.lastBOS : null;
+  const lastCHoCH = isValidSMCStructure(smc.lastCHoCH) ? smc.lastCHoCH : null;
+  const hasOB = !!smc.hasOB;
+  const hasFVG = !!smc.hasFVG;
+  if (!lastBOS && !lastCHoCH && !hasOB && !hasFVG) return null;
+  return { ...smc, lastBOS, lastCHoCH, hasOB, hasFVG };
+}
+
+function isNullDirectionSMCReason(reason) {
+  if (typeof reason !== 'string') return false;
+  return reason === 'SMC BOS: null' || reason === 'SMC CHoCH: null — yapisal degisim';
+}
+
+export function sanitizeReverseAttemptsForDashboard(reverseAttempts) {
+  if (!Array.isArray(reverseAttempts)) return [];
+  return reverseAttempts.map((attempt) => {
+    if (!attempt || typeof attempt !== 'object') return attempt;
+    const out = { ...attempt };
+    if (Array.isArray(out.reasoning)) {
+      out.reasoning = out.reasoning.filter(r => !isNullDirectionSMCReason(r));
+    }
+    if (out.indicatorSnapshot && typeof out.indicatorSnapshot === 'object') {
+      out.indicatorSnapshot = {
+        ...out.indicatorSnapshot,
+        smc: sanitizeSMCSnapshotForDashboard(out.indicatorSnapshot.smc),
+      };
+    }
+    return out;
+  });
+}
+
 function priceChanged(a, b) {
   if (a == null && b == null) return false;
   if (a == null || b == null) return true;
