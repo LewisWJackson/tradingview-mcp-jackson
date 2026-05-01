@@ -11,8 +11,6 @@
       "MONUSD",
       "RENDERUSDC",
       "LINKUSDT.P",
-      "BTCUSDT.P",
-      "ETHUSDT.P",
       "HYPEUSDT.P",
       "XRPUSDT.P",
       "SOLUSDT.P"
@@ -38,9 +36,11 @@
       "FSLR",
       "PG",
       "CRCL",
-      "INTL",
       "PLTR",
-      "TESLA"
+      "INTC",
+      "TSLA",
+      "FLNC",
+      "COP"
     ],
     "bist": [
       "PEKGY",
