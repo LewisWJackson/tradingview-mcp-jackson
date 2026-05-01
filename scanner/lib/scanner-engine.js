@@ -556,8 +556,9 @@ async function _scanShortTermInner(symbol, options = {}) {
       : 'long';
     const macroFilter = macroState ? applyMacroFilter(macroState, symbol, direction) : null;
     const adxForRegime = Number(data.khanSaab?.adx) || null;
+    // Legacy 5-rejim — shadow hesaplama düşerse fallback olarak korunur.
     const regimeResult = classifyRegime(macroState || {}, adxForRegime);
-    const regime = regimeResult?.regime || 'neutral';
+    const legacyRegime = regimeResult?.regime || 'neutral';
 
     // ====================================================================
     // computeRegime() — Faz 1 shadow logger + Faz 2 wrapper kaynagı.
@@ -626,6 +627,11 @@ async function _scanShortTermInner(symbol, options = {}) {
       stableBars: shadowResult.stableBars,
       transitioned: shadowResult.transitioned,
     } : null;
+
+    // Faz 2 Commit 4 — kanonik regime alanı yeni 6-rejim taxonomy'sine geçti.
+    // weight-adjuster.REGIMES_TRACKED ile aynı anahtar uzayı kullanılıyor;
+    // shadowResult.regime varsa o, yoksa legacy fallback.
+    const regime = shadowResult?.regime || legacyRegime;
 
     const signal = gradeShortTermSignal({
       khanSaab: data.khanSaab,
