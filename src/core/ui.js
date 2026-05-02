@@ -191,6 +191,17 @@ export async function typeText({ text }) {
 }
 
 export async function hover({ by, value }) {
+  // Support raw coordinate hover: by='coords', value='x,y'
+  if (by === 'coords') {
+    const parts = value.split(',');
+    const x = parseFloat(parts[0]);
+    const y = parseFloat(parts[1]);
+    if (isNaN(x) || isNaN(y)) throw new Error('Invalid coords format. Use "x,y" e.g. "256,393"');
+    const c = await getClient();
+    await c.Input.dispatchMouseEvent({ type: 'mouseMoved', x, y });
+    return { success: true, hovered: { by: 'coords', value, tag: 'coords', x, y } };
+  }
+
   const coords = await evaluate(`
     (function() {
       var by = ${JSON.stringify(by)};
