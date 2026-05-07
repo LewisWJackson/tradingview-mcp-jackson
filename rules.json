@@ -1,65 +1,220 @@
 {
   "watchlist": ["BTCUSDT"],
-  "default_timeframe": "1",
+  "default_timeframe": "5",
 
-  "strategy": {
-    "name": "10-Second Momentum Scalper",
-    "sources": [
-      "Price momentum — buy if last close > previous close (green candle)",
-      "RSI filter — only trade when RSI is not at an extreme (30–70 range)"
+  "meta": {
+    "last_updated": "2026-04-15",
+    "research_sources": [
+      "David Anthony (Medium) — 83% WR 5M Strategy: EMA 9/55/200 + RSI>51 + MACD Pullback",
+      "ICT (Inner Circle Trader / Michael Huddleston) — Kill Zones, FVG, Order Blocks",
+      "Brian Shannon / AlphaTrends — Multi-timeframe VWAP analysis",
+      "Ross Cameron / Warrior Trading — EMA9 momentum, ORB, Bull flags",
+      "Rayner Teo / TradingWithRayner — EMA20/50 pullback + ATR exit",
+      "Binance Academy 5M article — 15m HTF bias + RSI>50 + 1:3 R:R",
+      "Margex Crypto Scalping — Top 5 scalping strategies",
+      "ICT Kill Zone Guide (innercircletrader.net) — London/NY session windows",
+      "LiteFinance ICT Guide — FVG + Order Block entry rules",
+      "WunderTrading VWAP+RSI combo — Minimize false signals with volume"
     ],
-    "primary_timeframes": [
-      "1-minute (signal source)",
-      "10-second execution loop"
+    "active_pine_script": "BTC 5M ScalpPro [v1]",
+    "pine_file": "/tmp/btc_5m_scalppro_v1.pine",
+    "target": "BTC 5m | Win Rate >70% | Net Profit >200%",
+    "note": "5M专用策略。综合David Anthony实测80%WR框架 + ICT Kill Zone时间过滤 + Brian Shannon VWAP + Ross Cameron EMA9动量 + Rayner Teo ATR退出。"
+  },
+
+  "indicators_on_chart": {
+    "EMA_9":   "动量线 (Ross Cameron核心)。趋势中EMA9上方 = 动量持续。跌破 = 减仓信号。5m BTC中反应最快",
+    "EMA_55":  "趋势确认线 (David Anthony策略核心)。EMA9 > EMA55 = 中期多头确认。5m关键趋势线",
+    "EMA_200": "方向过滤线 (全流派通用)。EMA9>EMA55>EMA200 = 强多头趋势堆叠，最高胜率进场条件",
+    "VWAP":    "均衡成本线 (Brian Shannon核心)。做多：价格在VWAP上方。做空：在VWAP下方。日内最重要参考线",
+    "RSI_14":  "动量过滤。做多阈值51（不要等超卖，在健康区域入场）。>72跳过（避开超买）",
+    "MACD_12_26_9": "回调确认 (David Anthony关键逻辑)。多头趋势中MACD柱为负且幅度大于均值 = 回调充分，最优入场点",
+    "ATR_14":  "动态TP/SL基准。TP = 入场价 + 1.5x ATR，SL = 入场价 - 1.0x ATR。R:R = 1.5:1"
+  },
+
+  "active_strategy_5m": {
+    "name": "BTC 5M ScalpPro",
+    "version": "v1",
+    "core_logic": "EMA趋势堆叠 + RSI区间过滤 + MACD回调入场 + Kill Zone时间过滤 + VWAP方向确认",
+    "entry_long": [
+      "1. EMA9 > EMA55 > EMA200 (强多头趋势堆叠)",
+      "2. RSI > 51 且 < 72 (动量在多头区，非超买)",
+      "3. MACD柱 < 0 且幅度 > 14周期均值×0.5 (回调充分，更优价格)",
+      "4. 价格在VWAP上方 (机构多头偏差)",
+      "5. 成交量 > 20均量×0.8 (确认有足够流动性)",
+      "6. 时间在Kill Zone: 02-05 UTC (伦敦开盘) 或 07-10 UTC (纽约开盘) 或 13-16 UTC (下午)"
+    ],
+    "entry_short": [
+      "1. EMA9 < EMA55 < EMA200 (强空头趋势堆叠)",
+      "2. RSI < 49 且 > 28 (动量在空头区，非超卖)",
+      "3. MACD柱 > 0 且幅度 > 均值×0.5 (反弹充分，更优做空价格)",
+      "4. 价格在VWAP下方",
+      "5. 成交量 > 20均量×0.8",
+      "6. 时间在Kill Zone"
+    ],
+    "exit_rules": {
+      "take_profit": "入场价 + 1.5x ATR(14) — 大约0.3%-0.8%，根据波动率自适应",
+      "stop_loss":   "入场价 - 1.0x ATR(14) — 大约0.2%-0.5%",
+      "rr_ratio":    "1.5:1 (高胜率优先策略)"
+    },
+    "research_basis": "David Anthony在5分钟图实测80.79% WR + 112%净利润(3个月)。本策略在其基础上增加ICT Kill Zone + VWAP + 成交量过滤，预期进一步提升胜率",
+    "optimization_notes": [
+      "如WR不足70%：减小vol_mult到0.5或关闭时间过滤增加交易次数",
+      "如盈利不足200%：增大tp_mult到2.0，或pyramiding加仓",
+      "时间过滤是关键：亚洲盘(00-02 UTC)避开低波动横盘"
     ]
   },
 
-  "indicators": {
-    "rsi_14": "Momentum filter. Only trade when RSI is between 30–70 (avoid extremes).",
-    "price_momentum": "Compare last close vs previous close. Up = long signal. Down = short signal."
+  "frameworks": {
+
+    "ICT_SMC": {
+      "author": "ICT (Inner Circle Trader) / Michael Huddleston",
+      "core_concept": "机构（聪明钱）主导市场。AMD三段式：Accumulation积累 → Manipulation操纵（假突破猎杀散户止损）→ Distribution分配（真实方向）",
+      "kill_zones": {
+        "london_open": "02:00-05:00 纽约时间（最重要，假突破后最大位移）",
+        "new_york_am": "07:00-10:00 纽约时间（高波动，趋势启动）",
+        "london_close": "10:00-12:00 纽约时间"
+      },
+      "key_concepts": {
+        "Order_Block_OB":   "机构大量建仓前的最后一根反向K线。看涨OB=下跌前最后阴线；看跌OB=上涨前最后阳线。价格回测OB时进场",
+        "Fair_Value_Gap_FVG": "三根K线形成的价格空缺。第1根高点与第3根低点不重叠=看涨FVG。回调至FVG中点（50%）为最优进场",
+        "Liquidity_Sweep":  "等高点/等低点被突破后快速反转。这是假突破，真正方向是反向。扫流动性后找CHoCH入场",
+        "CHoCH":            "Change of Character。趋势中第一个反向结构破坏，方向转变早期警告",
+        "MSS":              "Market Structure Shift。伴随大位移的结构破坏，比CHoCH更可靠的确认信号",
+        "OTE":              "Optimal Trade Entry。斐波那契61.8%~78.6%回调区间为最优进场区"
+      },
+      "timeframe_stack": {
+        "HTF_bias":  "周线/日线 → 确认方向偏差（看涨或看跌）",
+        "MTF_model": "4H/1H → 识别AMD阶段，找到今日结构位置",
+        "LTF_entry": "15M/5M/1M → 等待CHoCH + FVG/OB重叠，精确进场"
+      },
+      "entry_rules": {
+        "long":  "1) HTF偏多 2) LTF出现Liquidity Sweep（扫低点）后CHoCH向上 3) 在FVG或OB回测时进场 4) 止损放OB低点下方",
+        "short": "1) HTF偏空 2) LTF出现Liquidity Sweep（扫高点）后CHoCH向下 3) 在看跌FVG或OB反弹时进场 4) 止损放OB高点上方"
+      },
+      "exit_rules": [
+        "T1：下一个流动性目标（前期等高/等低点）",
+        "T2：对侧FVG被完全填满",
+        "T3：对面的流动性（最大目标）",
+        "最低风险回报比 1:2，目标1:3以上"
+      ]
+    },
+
+    "VWAP_Method": {
+      "author": "Brian Shannon / AlphaTrends",
+      "core_concept": "多周期VWAP共同指向同一方向时，是最高概率交易机会。VWAP代表机构参与的均衡成本",
+      "vwap_signals": {
+        "bullish_setup": "价格在VWAP上方运行 + 均线方向向上 → 回踩VWAP或+1SD时做多",
+        "breakout_entry": "价格从VWAP下方突破上方 + 成交量放大 → 回测确认后进场",
+        "bearish_setup": "价格跌破VWAP + 反弹至VWAP下方遇阻 → 做空"
+      },
+      "sd_bands": {
+        "+2SD": "极度超买，轻仓做空参考或止盈",
+        "+1SD": "普通阻力，部分止盈",
+        "VWAP": "均衡价，主要支撑/压力",
+        "-1SD": "普通支撑",
+        "-2SD": "极度超卖，轻仓做多参考或止盈"
+      },
+      "entry_rules": {
+        "long":  "价格在VWAP上方 → 回调至VWAP或+1SD → 出现支撑K线信号 → 进场，止损VWAP下方",
+        "short": "价格在VWAP下方 → 反弹至VWAP下方遇阻 → 出现阻力K线信号 → 进场，止损VWAP上方"
+      }
+    },
+
+    "Momentum_Method": {
+      "author": "Ross Cameron / Warrior Trading",
+      "core_concept": "每天找当天最强的1-3个标的，顺势追入，快进快出。成交量是最重要的指标",
+      "scan_criteria": [
+        "日内已涨超10%",
+        "有明确催化剂（新闻/事件）",
+        "成交量是平均的5倍以上",
+        "价格在VWAP上方"
+      ],
+      "patterns": {
+        "Opening_Range_Breakout": "等待开盘前5分钟形成区间 → 成交量放大突破区间高点 → 进场，止损区间低点",
+        "Bull_Flag":              "第一波急涨后横盘整理（旗面），成交量萎缩 → 突破旗杆高点+成交量放大 → 进场，目标旗杆高度延伸",
+        "VWAP_Reclaim":           "强势标的回调跌破VWAP后重新站上 + 成交量放大 → 进场"
+      },
+      "ema_rules": {
+        "EMA9_above": "价格在EMA9上方 = 动量持续，持仓",
+        "EMA9_below": "价格跌破EMA9 = 动量衰弱，减仓或出场",
+        "EMA9_cross_EMA20": "EMA9上穿EMA20 = 确认短期看涨"
+      },
+      "exit_rules": [
+        "T1（50%仓位）：开盘区间高度×1延伸",
+        "T2（剩余）：持有至跌破EMA9或动量衰减"
+      ]
+    }
   },
 
   "bias_criteria": {
     "bullish": [
-      "Last 1-min candle closed higher than the one before it",
-      "RSI is between 30 and 70"
+      "日线收盘价在EMA200上方",
+      "VWAP向上倾斜，价格在VWAP上方",
+      "RSI在50以上（动量偏多）",
+      "MACD在零轴上方且柱状图扩张",
+      "近期结构：更高的高点（Higher High）和更高的低点（Higher Low）"
     ],
     "bearish": [
-      "Last 1-min candle closed lower than the one before it",
-      "RSI is between 30 and 70"
+      "日线收盘价在EMA200下方",
+      "VWAP向下倾斜，价格在VWAP下方",
+      "RSI在50以下（动量偏空）",
+      "MACD在零轴下方且柱状图扩张",
+      "近期结构：更低的高点（Lower High）和更低的低点（Lower Low）"
     ],
-    "neutral": [
-      "RSI is above 70 (overbought — skip)",
-      "RSI is below 30 (oversold — skip)",
-      "Candle close change is less than 0.05% (chop — skip)"
+    "neutral_skip": [
+      "RSI在68-72或28-32（接近极值，不追）",
+      "价格在VWAP附近（±0.3%）横盘震荡",
+      "成交量低于20日均量60%（无动量）",
+      "MACD柱状图在收缩（动量衰减）"
     ]
   },
 
   "entry_rules": {
     "long": [
-      "Last close > previous close by at least 0.05%",
-      "RSI between 30 and 70",
-      "Enter market buy immediately"
+      "1. 确认HTF偏多（日线在EMA200上方）",
+      "2. 等待回调至VWAP / EMA20 / 关键OB区域",
+      "3. RSI在40-60区间（有上升空间，非超买）",
+      "4. 出现确认信号：EMA9站上EMA20 / 成交量放大K线 / 扫低点后CHoCH",
+      "5. 进场，止损放在进场K线低点或OB下方"
     ],
     "short": [
-      "Last close < previous close by at least 0.05%",
-      "RSI between 30 and 70",
-      "Enter market sell immediately"
+      "1. 确认HTF偏空（日线在EMA200下方）",
+      "2. 等待反弹至VWAP / EMA20 / 关键看跌OB区域",
+      "3. RSI在40-60区间（有下行空间，非超卖）",
+      "4. 出现确认信号：EMA9跌破EMA20 / 成交量放大阴线 / 扫高点后CHoCH",
+      "5. 进场，止损放在进场K线高点或OB上方"
     ]
   },
 
   "exit_rules": [
-    "Exit automatically after 10 seconds (next loop tick closes previous position)",
-    "No manual exit management — pure time-based scalp"
+    "T1（1/3仓位）：1:1风险回报（止损距离×1）",
+    "T2（1/3仓位）：VWAP ±2SD / 前期结构高低点",
+    "T3（剩余）：持至EMA9跌破或MACD死叉",
+    "强制止损：亏损超过账户1%立即出场，不犹豫"
   ],
 
   "risk_rules": [
-    "Fixed trade size: 1% of portfolio per trade",
-    "Maximum trade size: $3.00",
-    "Maximum 6 trades per 60-second run",
-    "No stop loss — exit is time-based at next tick",
-    "For demo purposes only — minimum BitGet order size may apply"
+    "单笔亏损不超过账户总资金的1%（核心纪律）",
+    "单日最大亏损3%（到达后停止交易）",
+    "风险回报比最低1:2，目标1:3",
+    "每次进场前先确定止损位，再计算仓位大小",
+    "不追单：错过就算，等下一个信号"
   ],
 
-  "notes": "Demo strategy for YouTube video. Runs 6 trades over 60 seconds, one every 10 seconds. Signal is simple price momentum on 1-min candles with RSI sanity check."
+  "timeframe_workflow": {
+    "step1_daily": "看日线：确认EMA200位置、VWAP走向、整体结构方向（HTF偏差）",
+    "step2_4h_1h": "看4H/1H：识别当前处于AMD哪个阶段，标记关键OB/FVG/流动性位",
+    "step3_15m_5m": "看15M/5M：等待CHoCH或VWAP回踩确认信号",
+    "step4_execute": "5M/1M：精确进场，确认成交量配合"
+  },
+
+  "key_levels_to_watch": {
+    "daily_vwap":    "当日VWAP线（最重要的日内支撑/压力）",
+    "ema200_daily":  "EMA200日线（多空分界线）",
+    "previous_day":  "昨日高点(PDH)和昨日低点(PDL)（常见流动性猎杀目标）",
+    "equal_highs_lows": "连续多个K线形成的等高点/等低点（流动性聚集，易被扫）"
+  },
+
+  "notes": "本规则综合ICT/SMC机构视角、VWAP均衡价格分析及动量突破三大流派的核心方法。不建议同时使用所有方法，建议先深入掌握一个框架（推荐从VWAP+EMA开始）。任何策略均需配合严格风险管理才能长期生存。"
 }
