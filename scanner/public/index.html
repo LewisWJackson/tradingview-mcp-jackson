@@ -418,36 +418,9 @@
       <label>Sembol</label>
       <input type="text" id="scanSymbol" placeholder="Herhangi bir sembol yaz..." autocomplete="off" />
     </div>
-    <div class="input-group">
-      <label>Mod</label>
-      <select id="scanMode" onchange="onScanModeChange()">
-        <option value="short">Kisa Vade — Tum TF (15m-1D)</option>
-        <option value="long">Uzun Vade — Tum TF (4H-1M)</option>
-        <option value="short-single">Kisa Vade — Tek TF</option>
-        <option value="long-single">Uzun Vade — Tek TF</option>
-      </select>
-    </div>
-    <div class="input-group" id="singleTFGroup" style="display:none;">
-      <label>Zaman Dilimi</label>
-      <select id="scanTimeframe">
-        <option value="1">1m</option>
-        <option value="3">3m</option>
-        <option value="5">5m</option>
-        <option value="15">15m</option>
-        <option value="30" selected>30m</option>
-        <option value="45">45m</option>
-        <option value="60">1H</option>
-        <option value="120">2H</option>
-        <option value="240">4H</option>
-        <option value="1D">1D</option>
-        <option value="3D">3D</option>
-        <option value="1W">1W</option>
-        <option value="1M">1M</option>
-      </select>
-    </div>
-    <button class="btn" onclick="runManualScan()">Tara</button>
+    <button class="btn" onclick="runManualScan()">Manuel Tarama Baslat</button>
     <div id="scanTFInfo" style="font-size:10px; color:var(--text2); margin-top:4px; padding:4px 0;">
-      Taranacak: 15m, 30m, 45m, 1H, 4H, 1D
+      Sinyal TF: 4H, 1D &nbsp;|&nbsp; Teyit: 4H&rarr;(1D + 1W), 1D&rarr;(1W)
     </div>
 
     <div class="section-title">Toplu Tarama</div>

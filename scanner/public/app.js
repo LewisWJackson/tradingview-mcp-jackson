@@ -82,7 +82,8 @@ function handleWSMessage(data) {
       if (data.signal) {
         var s = data.signal;
         var outcomeColor = s.win ? 'success' : 'error';
-        addLog(outcomeColor, 'SONUC: ' + s.symbol + ' ' + s.grade + '-' + (s.direction || '').toUpperCase() + ' → ' + s.outcome + ' (RR: ' + (s.actualRR || '?') + ')');
+        var rrTxt = (s.actualRR != null && isFinite(s.actualRR)) ? Number(s.actualRR).toFixed(2) : '?';
+        addLog(outcomeColor, 'SONUC: ' + s.symbol + ' ' + s.grade + '-' + (s.direction || '').toUpperCase() + ' → ' + s.outcome + ' (RR: ' + rrTxt + ')');
         refreshLearningStatus();
       }
       break;
@@ -329,6 +330,75 @@ function displaySignalCard(sig, container) {
     });
   }
 
+  // Patch 2 (2026-05-02) — Shadow / gözlem section (collapsible, read-only)
+  // Hesaplanan yeni indikatorler ve hipotetik oylar — canli karara etki etmez.
+  if (sig.shadowMetrics || (sig.shadowVotes && sig.shadowVotes.length) || sig.shadowMtfScore) {
+    var details = el('details', { style: { marginTop: '8px', padding: '6px 8px', background: 'rgba(88,166,255,0.04)', border: '1px dashed var(--blue)', borderRadius: '4px' } });
+    var summary = document.createElement('summary');
+    summary.style.cssText = 'cursor:pointer;font-size:11px;color:var(--blue);font-weight:bold;';
+    summary.textContent = 'Shadow / gözlem (canli karara etki etmez)';
+    details.appendChild(summary);
+
+    var sm = sig.shadowMetrics || {};
+    var rows = [];
+    if (sm.cmf && sm.cmf.bias)         rows.push(['CMF',          sm.cmf.bias + ' (' + (sm.cmf.cmf != null ? sm.cmf.cmf.toFixed(3) : '?') + ')']);
+    if (sm.mfi && (sm.mfi.cur != null)) rows.push(['MFI',          (sm.mfi.prev != null ? sm.mfi.prev.toFixed(1) : '?') + ' → ' + sm.mfi.cur.toFixed(1)]);
+    if (sm.maStack && sm.maStack.bias)  rows.push(['MA stack',     sm.maStack.bias.toUpperCase() + ' (20/50/200)']);
+    if (sm.maCross)                     rows.push(['MA cross',     sm.maCross.replace('_', ' ')]);
+    if (sm.macdExt && sm.macdExt.cyclePhase) rows.push(['MACD',    sm.macdExt.cyclePhase + (sm.macdExt.divergence ? ' + ' + sm.macdExt.divergence + ' div' : '')]);
+    if (sm.rsiThresholdCross && (sm.rsiThresholdCross.longCross || sm.rsiThresholdCross.shortCross)) {
+      rows.push(['RSI cross', (sm.rsiThresholdCross.longCross ? 'long@' + sm.rsiThresholdCross.longTh : 'short@' + sm.rsiThresholdCross.shortTh)]);
+    }
+    if (sm.rsiFailureSwing && sm.rsiFailureSwing.confirmed) rows.push(['Failure swing', sm.rsiFailureSwing.type]);
+    if (sm.cleanBOSstatus)              rows.push(['BOS klasifikasyon', sm.cleanBOSstatus]);
+    if (sm.liquidityBias)               rows.push(['Likidite egilimi (EQH/EQL)', sm.liquidityBias]);
+    if (sm.strongPivotBias) {
+      var sp = [];
+      if (sm.strongPivotBias.long) sp.push('strong high');
+      if (sm.strongPivotBias.short) sp.push('strong low');
+      if (sp.length) rows.push(['Strong pivot', sp.join(' / ')]);
+    }
+    if (sm.fibCluster && sm.fibCluster.isCluster) rows.push(['Fib cluster', sm.fibCluster.count + ' hit (' + (sm.fibCluster.direction || '?') + ')']);
+    if (sm.goldenZone && sm.goldenZone.inside)   rows.push(['Golden zone', sm.goldenZone.tf + ' icinde (swing ' + (sm.goldenZone.swingDir || '?') + ')']);
+
+    rows.forEach(function(r) {
+      var rd = el('div', { className: 'signal-row', style: { padding: '2px 0', borderBottom: '1px dotted rgba(88,166,255,0.15)' } });
+      rd.appendChild(el('span', { className: 'label', textContent: r[0], style: { fontSize: '10px', color: '#8b949e' } }));
+      rd.appendChild(el('span', { className: 'value', textContent: r[1], style: { fontSize: '10px', color: 'var(--text)' } }));
+      details.appendChild(rd);
+    });
+
+    if (sig.shadowMtfScore || (sm.mtfScore && Object.keys(sm.mtfScore).length)) {
+      var mtf = sig.shadowMtfScore || sm.mtfScore;
+      var mtfHdr = el('div', { textContent: 'MTF score', style: { fontSize: '10px', color: 'var(--blue)', marginTop: '6px', fontWeight: 'bold' } });
+      details.appendChild(mtfHdr);
+      Object.keys(mtf).forEach(function(tf) {
+        var s = mtf[tf];
+        var rd = el('div', { className: 'signal-row', style: { padding: '2px 0' } });
+        rd.appendChild(el('span', { className: 'label', textContent: '  ' + tf, style: { fontSize: '10px', color: '#8b949e' } }));
+        rd.appendChild(el('span', { className: 'value', textContent: (s && s.direction ? s.direction + ' %' + (s.confidence || 0) : 'mixed'), style: { fontSize: '10px' } }));
+        details.appendChild(rd);
+      });
+    }
+
+    if (sig.shadowVotes && sig.shadowVotes.length > 0) {
+      var votesHdr = el('div', { textContent: 'Hipotetik oylar (' + sig.shadowVotes.length + ')', style: { fontSize: '10px', color: 'var(--blue)', marginTop: '6px', fontWeight: 'bold' } });
+      details.appendChild(votesHdr);
+      sig.shadowVotes.forEach(function(v) {
+        var color = v.kind === 'multiplier' ? 'var(--purple)' : (v.direction === 'long' ? 'var(--green)' : v.direction === 'short' ? 'var(--red)' : 'var(--text2)');
+        var lineText;
+        if (v.kind === 'multiplier') {
+          lineText = '× ' + (v.factor || 1) + ' — ' + v.reasoning;
+        } else {
+          lineText = '+ ' + v.source + ' (' + (v.direction || '—') + ', w=' + (v.weight != null ? v.weight.toFixed(2) : '?') + ') — ' + (v.reasoning || '');
+        }
+        details.appendChild(el('div', { textContent: lineText, style: { fontSize: '10px', color: color, padding: '1px 0', whiteSpace: 'pre-wrap' } }));
+      });
+    }
+
+    card.appendChild(details);
+  }
+
   // Timestamp
   card.appendChild(el('div', { textContent: sig.timestamp || new Date().toISOString(), style: { fontSize: '10px', color: '#8b949e', marginTop: '8px' } }));
 
@@ -462,44 +532,18 @@ function stopScheduler() {
   apiCall('/api/scheduler/stop', 'POST');
 }
 
-// --- Scan Mode UI ---
-
-function onScanModeChange() {
-  var mode = document.getElementById('scanMode').value;
-  var singleGroup = document.getElementById('singleTFGroup');
-  var tfInfo = document.getElementById('scanTFInfo');
-
-  if (mode === 'short-single' || mode === 'long-single') {
-    singleGroup.style.display = '';
-    tfInfo.textContent = 'Secilen tek zaman diliminde taranacak';
-  } else if (mode === 'short') {
-    singleGroup.style.display = 'none';
-    tfInfo.textContent = 'Taranacak: 15m, 30m, 45m, 1H, 4H, 1D';
-  } else if (mode === 'long') {
-    singleGroup.style.display = 'none';
-    tfInfo.textContent = 'Taranacak: 4H, 1D, 3D, 1W, 1M';
-  }
-}
+// --- Manual scan (2026-05-02): tek buton, 4H + 1D sinyal, 1W teyit ---
+// 1H sinyali kapatildi (gurultu); mode/single-TF UI kaldirildi.
 
 function runManualScan() {
   var symbol = document.getElementById('scanSymbol').value.trim().toUpperCase();
-  var modeRaw = document.getElementById('scanMode').value;
-
   if (!symbol) { addLog('error', 'Sembol giriniz'); return; }
 
-  // Parse mode: "short", "long", "short-single", "long-single"
-  var isSingle = modeRaw.endsWith('-single');
-  var mode = isSingle ? modeRaw.replace('-single', '') : modeRaw;
-  var singleTF = isSingle ? document.getElementById('scanTimeframe').value : null;
-
-  var tfLabel = singleTF || (mode === 'short' ? '15m-1D' : '4H-1M');
+  var tfLabel = '4H + 1D (teyit: 1W)';
   showScanning(symbol + ' taraniyor (' + tfLabel + ')...');
-  addLog('info', 'Manuel tarama: ' + symbol + ' [' + tfLabel + '] (' + mode + (isSingle ? ' tek-TF' : ' multi-TF') + ')');
+  addLog('info', 'Manuel tarama: ' + symbol + ' [' + tfLabel + ']');
 
-  var body = { symbol: symbol };
-  if (singleTF) body.singleTF = singleTF;
-
-  apiCall('/api/scan/' + mode, 'POST', body)
+  apiCall('/api/scan/short', 'POST', { symbol: symbol })
     .then(function(result) {
       displayResult(result);
       var gradeInfo = result.grade || '?';
@@ -664,13 +708,28 @@ function displaySignalHistory(data) {
     // Price levels line: SL / TP1 / TP2 / TP3
     var levelsLine = el('div', { style: { color: 'var(--text2)', fontSize: '10px' } });
     var levelParts = [];
-    if (sig.sl) levelParts.push('SL: ' + Number(sig.sl).toFixed(2) + (sig.slHit ? ' ✗' : ''));
+    if (sig.sl) {
+      var slTxt = 'SL: ' + Number(sig.sl).toFixed(2) + (sig.slHit ? ' ✗' : '');
+      if (sig.breakevenAt) slTxt += ' [BE]';
+      levelParts.push(slTxt);
+    }
     if (sig.tp1) levelParts.push('TP1: ' + Number(sig.tp1).toFixed(2) + (sig.tp1Hit ? ' ✓' : ''));
     if (sig.tp2) levelParts.push('TP2: ' + Number(sig.tp2).toFixed(2) + (sig.tp2Hit ? ' ✓' : ''));
     if (sig.tp3) levelParts.push('TP3: ' + Number(sig.tp3).toFixed(2) + (sig.tp3Hit ? ' ✓' : ''));
     if (levelParts.length > 0) {
       levelsLine.appendChild(el('span', { textContent: levelParts.join(' | ') }));
       row.appendChild(levelsLine);
+    }
+    // Dayanak satırları (TP/SL kaynak/gerekçe)
+    var basisParts = [];
+    if (sig.slReason) basisParts.push('SL ← ' + sig.slReason);
+    if (sig.tp1Source) basisParts.push('TP1 ← ' + sig.tp1Source);
+    if (sig.tp2Source) basisParts.push('TP2 ← ' + sig.tp2Source);
+    if (sig.tp3Source) basisParts.push('TP3 ← ' + sig.tp3Source);
+    if (basisParts.length > 0) {
+      var basisLine = el('div', { style: { color: 'var(--text3, #999)', fontSize: '9px', lineHeight: '1.4', marginTop: '2px' } });
+      basisLine.appendChild(el('span', { textContent: basisParts.join('  •  ') }));
+      row.appendChild(basisLine);
     }
 
     var bottomLine = el('div', { style: { color: 'var(--text2)' } });
