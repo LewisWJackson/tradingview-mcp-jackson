@@ -1,7 +1,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { sanitizeReverseAttemptsForDashboard, shouldRefreshBarrierLevels } from '../lib/learning/signal-tracker.js';
+import {
+  findRecentMissedSetup,
+  reconcileSmartEntryHitState,
+  sanitizeReverseAttemptsForDashboard,
+  shouldRefreshBarrierLevels,
+  timeframeToMinutes,
+  validateSignalPriceLevels,
+} from '../lib/learning/signal-tracker.js';
 
 test('same grade and TF refreshes TP levels when old HTF barrier cap changes', () => {
   const existing = {
@@ -85,4 +92,101 @@ test('dashboard reverse attempts omit null-direction SMC artifacts', () => {
 
   assert.deepEqual(attempts[0].reasoning, ['MACD Trend: BEAR']);
   assert.equal(attempts[0].indicatorSnapshot.smc, null);
+});
+
+test('price-level validation rejects TP on the wrong side of entry', () => {
+  const error = validateSignalPriceLevels({
+    symbol: 'CRCL',
+    direction: 'short',
+    entry: 99.4,
+    sl: 106.0164,
+    tp1: 102.72872857142858,
+  });
+
+  assert.match(error, /short ama TP1/);
+});
+
+test('smart entry refresh resets legacy hit when quote never touched entry', () => {
+  const existing = {
+    direction: 'short',
+    entry: 4586.7,
+    entryHit: true,
+    entryHitAt: '2026-05-04T12:28:56.429Z',
+    highestFavorable: 35.18,
+    lowestAdverse: 1.8,
+  };
+  reconcileSmartEntryHitState(existing, {
+    direction: 'short',
+    entrySource: 'smc_ob',
+    entry: 4586.7,
+    quotePrice: 4585.4,
+  }, new Date('2026-05-04T15:00:00Z'));
+
+  assert.equal(existing.entryHit, false);
+  assert.equal(existing.entryHitAt, null);
+  assert.equal(existing.highestFavorable, 0);
+  assert.equal(existing.lowestAdverse, 0);
+});
+
+test('smart entry refresh stamps legacy hit when quote has touched entry', () => {
+  const existing = {
+    direction: 'short',
+    entry: 4586.7,
+    entryHit: true,
+    entryHitAt: '2026-05-04T12:28:56.429Z',
+  };
+  reconcileSmartEntryHitState(existing, {
+    direction: 'short',
+    entrySource: 'smc_ob',
+    entry: 4586.7,
+    quotePrice: 4588.5,
+  }, new Date('2026-05-04T15:00:00Z'));
+
+  assert.equal(existing.entryHit, true);
+  assert.equal(existing.entryHitAt, '2026-05-04T15:00:00.000Z');
+  assert.equal(existing.entryHitPrice, 4586.7);
+});
+
+test('1D timeframe parses to daily minutes for smart-entry deadlines', () => {
+  assert.equal(timeframeToMinutes('1D'), 1440);
+  assert.equal(timeframeToMinutes('240'), 240);
+});
+
+test('recent missed same setup blocks immediate re-open without touching unrelated setups', () => {
+  const scanResult = {
+    symbol: 'XRPUSDT.P',
+    direction: 'short',
+    timeframe: '1D',
+    entry: 1.43,
+    sl: 1.4667657142857142,
+    tp1: 1.3932342857142856,
+  };
+  const now = new Date('2026-05-03T17:00:00Z');
+  const recentArchive = [{
+    symbol: 'XRPUSDT.P',
+    direction: 'short',
+    timeframe: '1D',
+    status: 'entry_missed_tp',
+    resolvedAt: '2026-05-03T13:43:12.142Z',
+    entry: 1.43,
+    sl: 1.4667657142857142,
+    tp1: 1.3932342857142856,
+    entrySource: 'smc_ob',
+    entryHit: false,
+  }];
+  const unrelatedArchive = [{
+    symbol: 'XRPUSDT.P',
+    direction: 'long',
+    timeframe: '1D',
+    status: 'entry_missed_tp',
+    resolvedAt: '2026-05-03T13:43:12.142Z',
+    entry: 1.43,
+    sl: 1.39,
+    tp1: 1.47,
+    entrySource: 'smc_ob',
+    entryHit: false,
+  }];
+
+  assert.equal(findRecentMissedSetup(scanResult, recentArchive, now)?.symbol, 'XRPUSDT.P');
+  assert.equal(findRecentMissedSetup(scanResult, unrelatedArchive, now), null);
 });

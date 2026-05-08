@@ -51,3 +51,27 @@ test('6. minDistRatio özelleştirme — daha gevşek 1.0 ile aynı LINK → APP
   const r = shouldRefuseBarrierCap({ entry: 9.40, sl: 9.22, capped: 9.6155, minDistRatio: 1.0 });
   assert.equal(r.refused, false, '1.0 ile cappedDist 0.2155 >= 0.18 → APPLY');
 });
+
+test('7. SHORT cap entry üstünde kalırsa mesafe yeterli olsa bile REDDET', () => {
+  const r = shouldRefuseBarrierCap({
+    direction: 'short',
+    entry: 14.4,
+    sl: 15.398857142857144,
+    capped: 16.2,
+    minDistRatio: 1.0,
+  });
+  assert.equal(r.refused, true);
+  assert.equal(r.reason, 'wrong_side');
+});
+
+test('8. LONG cap entry altında kalırsa mesafe yeterli olsa bile REDDET', () => {
+  const r = shouldRefuseBarrierCap({
+    direction: 'long',
+    entry: 100,
+    sl: 95,
+    capped: 90,
+    minDistRatio: 1.0,
+  });
+  assert.equal(r.refused, true);
+  assert.equal(r.reason, 'wrong_side');
+});
