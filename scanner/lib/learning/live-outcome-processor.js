@@ -15,8 +15,10 @@ import {
   removeOpenSignal,
 } from './signal-tracker.js';
 import { appendToArchive } from './persistence.js';
-import { recordOutcome as recordLadderOutcome } from './ladder-engine.js';
+import { recordOutcome as recordLadderOutcome, isLadderEligibleTF } from './ladder-engine.js';
 import { evaluateSignalOutcome, isTerminal, buildArchiveRecord } from './outcome-checker.js';
+import { isMarketTradeable } from '../market-hours.js';
+import { inferCategory } from '../symbol-resolver.js';
 
 let _broadcast = null;
 const _inflight = new Set(); // signalId -> tick processing flag
@@ -43,6 +45,10 @@ export function processLivePriceUpdate(update) {
   for (const sig of matches) {
     if (_inflight.has(sig.id)) continue;
     if (isTerminal(sig.status, sig)) continue;
+    // Market-hours gate: kapali piyasalarda (hafta sonu hisse vb.) Yahoo/Binance
+    // tick'leri stale veri uretebilir; outcome update tetiklenmesin.
+    const cat = sig.category || inferCategory(sig.symbol);
+    if (cat && cat !== 'kripto' && !isMarketTradeable(cat)) continue;
     _inflight.add(sig.id);
     try {
       const updates = evaluateSignalOutcome(sig, bar);
@@ -63,13 +69,17 @@ export function processLivePriceUpdate(update) {
         const yearMonth = new Date().toISOString().slice(0, 7);
         try { appendToArchive(yearMonth, archiveRecord); }
         catch (e) { console.log(`[LiveOutcome] archive hatasi (${sig.id}): ${e.message}`); }
-        try {
-          recordLadderOutcome(sig.symbol, sig.grade, {
-            status: updated.status,
-            resolvedAt: archiveRecord.resolvedAt || updated.lastCheckedAt,
-            signalId: sig.id,
-          });
-        } catch (e) { console.log(`[LiveOutcome] ladder hatasi (${sig.id}): ${e.message}`); }
+        if (isLadderEligibleTF(sig.timeframe)) {
+          try {
+            recordLadderOutcome(sig.symbol, sig.grade, {
+              status: updated.status,
+              resolvedAt: archiveRecord.resolvedAt || updated.lastCheckedAt,
+              signalId: sig.id,
+            });
+          } catch (e) { console.log(`[LiveOutcome] ladder hatasi (${sig.id}): ${e.message}`); }
+        } else {
+          console.log(`[LiveOutcome] ${sig.symbol} TF${sig.timeframe} ladder'a yazilmadi (1H league'dan haric)`);
+        }
         removeOpenSignal(sig.id);
         console.log(`[LiveOutcome] ${sig.symbol} ${sig.direction.toUpperCase()} → ${updated.status} @ ${price} (live tick)`);
         if (_broadcast) {
@@ -83,6 +93,9 @@ export function processLivePriceUpdate(update) {
         console.log(`[LiveOutcome] ${sig.symbol} ${sig.direction.toUpperCase()} ${hit}_hit @ ${price} (live tick)`);
         if (_broadcast) {
           try { _broadcast({ type: 'signal_update', signalId: sig.id, symbol: sig.symbol, hit, price }); } catch {}
+          if (updates.breakevenAt) {
+            try { _broadcast({ type: 'signal_sl_breakeven', signalId: sig.id, symbol: sig.symbol, sl: updated.sl, price }); } catch {}
+          }
         }
       }
     } catch (e) {
