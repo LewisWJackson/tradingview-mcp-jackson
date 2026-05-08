@@ -18,8 +18,14 @@ import { fileURLToPath } from 'url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const RULES_PATH = path.resolve(__dirname, '../../rules.json');
 
-const RETRACEMENT_LEVELS = [0.236, 0.382, 0.5, 0.618, 0.705, 0.786, 0.886];
-const EXTENSION_LEVELS = [1.272, 1.414, 1.618, 2.0, 2.618];
+// 2026-05-02 — Boroden, "Fibonacci Trading" (ch.3) seviye whitelist'i.
+// Retracement: 0.236, 0.382, 0.5, 0.618, 0.786  (Boroden p.9-15).
+// Extension:   1.272, 1.618, 2.618, 4.236       (Boroden p.29-35; 4.236
+//   "cok uzamis hareketin sonlanma noktasi" icin referans amacli tutulur).
+// Kaldirilanlar: 0.705 ve 0.886 (retracement), 1.414 ve 2.0 (extension)
+// — Boroden setinde yer almiyor.
+const RETRACEMENT_LEVELS = [0.236, 0.382, 0.5, 0.618, 0.786];
+const EXTENSION_LEVELS   = [1.272, 1.618, 2.618, 4.236];
 
 // HTF TF listesi — TradingView resolution notasyonu
 // 24h refresh periyoduyla uyumlu olmak icin sadece 1D ve 1W. 4H swing'ler 24h'te
