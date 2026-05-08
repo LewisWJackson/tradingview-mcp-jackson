@@ -3,10 +3,11 @@
  * for later outcome tracking and learning.
  */
 
-import { readJSON, writeJSON, dataPath, readAllArchives } from './persistence.js';
+import { readJSON, writeJSON, dataPath, readAllArchives, readAllArchivesIncludingLegacy } from './persistence.js';
 import { inferCategory as resolveInferCategory, extractBaseAsset, getResolvedExchangeRank } from '../symbol-resolver.js';
 import { dispatchToOkxExecutor as dispatchToOkxExecutorShared } from '../okx-dispatcher.js';
 import { applyAlignmentFilters } from '../alignment-filters.js';
+import { resolveLeague } from './ladder-engine.js';
 
 /**
  * Dedup grup anahtari uretir.
@@ -37,6 +38,130 @@ const OPEN_PATH = dataPath('signals', 'open.json');
 
 // Max open BEKLE (virtual) signals per symbol. Eskiyi otomatik superseded_by_cap yap.
 const BEKLE_CAP_PER_SYMBOL = 5;
+const MISSED_SETUP_STATUSES = new Set(['entry_missed_tp', 'entry_expired']);
+
+export function timeframeToMinutes(timeframe) {
+  const raw = String(timeframe ?? '').trim().toUpperCase();
+  if (/^\d+$/.test(raw)) return Number(raw);
+  const m = raw.match(/^(\d+)?([HDWM])$/);
+  if (!m) return 15;
+  const n = Number(m[1] || 1);
+  const unit = m[2];
+  const mult = unit === 'H' ? 60
+    : unit === 'D' ? 1440
+      : unit === 'W' ? 10080
+        : 43200;
+  return n * mult;
+}
+
+export function validateSignalPriceLevels(scanResult) {
+  const entry = Number(scanResult?.entry);
+  const sl = Number(scanResult?.sl);
+  const tp1 = Number(scanResult?.tp1);
+  if (!Number.isFinite(entry) || entry <= 0 ||
+      !Number.isFinite(sl) || sl <= 0 ||
+      !Number.isFinite(tp1) || tp1 <= 0) {
+    return `gecersiz fiyat (entry: ${scanResult?.entry}, sl: ${scanResult?.sl}, tp1: ${scanResult?.tp1})`;
+  }
+  if (scanResult.direction !== 'long' && scanResult.direction !== 'short') {
+    return `gecersiz yon (${scanResult.direction || 'null'})`;
+  }
+  if (scanResult.direction === 'long' && sl >= entry) {
+    return `long ama SL (${sl}) >= entry (${entry})`;
+  }
+  if (scanResult.direction === 'short' && sl <= entry) {
+    return `short ama SL (${sl}) <= entry (${entry})`;
+  }
+
+  const tps = [
+    ['TP1', tp1],
+    ['TP2', Number(scanResult?.tp2)],
+    ['TP3', Number(scanResult?.tp3)],
+  ];
+  for (const [label, tp] of tps) {
+    if (!Number.isFinite(tp) || tp <= 0) continue;
+    if (scanResult.direction === 'long' && tp <= entry) {
+      return `long ama ${label} (${tp}) <= entry (${entry})`;
+    }
+    if (scanResult.direction === 'short' && tp >= entry) {
+      return `short ama ${label} (${tp}) >= entry (${entry})`;
+    }
+  }
+  return null;
+}
+
+export function reconcileSmartEntryHitState(existing, scanResult, now = new Date()) {
+  if (!existing || !scanResult) return existing;
+  const isSmart = scanResult.entrySource && scanResult.entrySource !== 'quote_price' && scanResult.entrySource !== 'lastbar_close';
+  if (!isSmart || !existing.entryHit || existing.entryHitPrice != null) return existing;
+
+  // 2026-05-04: tp1Hit/tp2Hit/tp3Hit/slHit zaten kayitliysa entryHit'i geri
+  // alma. Aksi halde "tp1Hit=true + entryHit=false" gibi tutarsiz durumlar
+  // olusur (FSLR olayi). Bu durumda entryHitAt'i mumkun olan en eskiye sabitle.
+  const downstreamHit = !!(existing.tp1Hit || existing.tp2Hit || existing.tp3Hit || existing.slHit);
+  if (downstreamHit) {
+    existing.entryHitAt = existing.entryHitAt || existing.tp1HitAt || existing.slHitAt || existing.createdAt || now.toISOString();
+    if (existing.entryHitPrice == null) existing.entryHitPrice = Number(existing.entry) || null;
+    return existing;
+  }
+
+  const entry = Number(scanResult.entry ?? existing.entry);
+  const px = Number(scanResult.currentPrice ?? scanResult.quotePrice ?? scanResult.lastCheckedPrice);
+  if (!Number.isFinite(entry) || !Number.isFinite(px)) return existing;
+
+  const direction = scanResult.direction || existing.direction;
+  const touched = direction === 'long' ? px <= entry : px >= entry;
+  if (touched) {
+    existing.entryHitAt = now.toISOString();
+    existing.entryHitPrice = entry;
+  } else {
+    existing.entryHit = false;
+    existing.entryHitAt = null;
+    existing.highestFavorable = 0;
+    existing.lowestAdverse = 0;
+  }
+  return existing;
+}
+
+function missedSetupCooldownMs(timeframe) {
+  const tfMin = timeframeToMinutes(timeframe);
+  return Math.max(2 * 60 * 60 * 1000, Math.min(24 * 60 * 60 * 1000, tfMin * 8 * 60 * 1000));
+}
+
+function closeEnough(a, b, tolerance) {
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return false;
+  return Math.abs(a - b) <= tolerance;
+}
+
+export function findRecentMissedSetup(scanResult, historySignals, now = new Date()) {
+  const entry = Number(scanResult?.entry);
+  const sl = Number(scanResult?.sl);
+  const tp1 = Number(scanResult?.tp1);
+  if (!Number.isFinite(entry) || !Number.isFinite(sl) || !Number.isFinite(tp1)) return null;
+
+  const cooldown = missedSetupCooldownMs(scanResult.timeframe || scanResult.tf);
+  const risk = Math.abs(entry - sl);
+  const priceTol = Math.max(entry * 0.001, risk * 0.25);
+  const tpTol = Math.max(Math.abs(tp1) * 0.001, risk * 0.25);
+  const scanKey = dedupGroupKey(scanResult);
+  const nowMs = now instanceof Date ? now.getTime() : new Date(now).getTime();
+
+  for (const s of historySignals || []) {
+    if (!s || !MISSED_SETUP_STATUSES.has(s.status || s.outcome)) continue;
+    if (dedupGroupKey(s) !== scanKey) continue;
+    if (s.direction !== scanResult.direction) continue;
+    if (String(s.timeframe || s.tf || '') !== String(scanResult.timeframe || scanResult.tf || '')) continue;
+
+    const resolvedMs = new Date(s.resolvedAt || s.entryExpiredAt || s.updatedAt || s.createdAt || 0).getTime();
+    if (!Number.isFinite(resolvedMs) || nowMs - resolvedMs < 0 || nowMs - resolvedMs > cooldown) continue;
+    if (s.entryHit || s.tp1Hit || s.tp2Hit || s.tp3Hit || s.slHit) continue;
+
+    if (closeEnough(Number(s.entry), entry, priceTol) && closeEnough(Number(s.tp1), tp1, tpTol)) {
+      return s;
+    }
+  }
+  return null;
+}
 
 function hasHTFBarrierContext(signal) {
   const warnings = Array.isArray(signal?.warnings) ? signal.warnings : [];
@@ -102,9 +227,25 @@ export function shouldRefreshBarrierLevels(existing, scanResult, { levelsFrozen 
 }
 
 function applyBarrierLevelRefresh(existing, scanResult) {
-  existing.tp1 = scanResult.tp1 ?? existing.tp1;
-  existing.tp2 = scanResult.tp2 ?? existing.tp2;
-  existing.tp3 = scanResult.tp3 ?? existing.tp3;
+  // 2026-05-04: barrier refresh de validate edilsin — yon tutarsizligini erken
+  // yakala (long sinyalde tp1 entry altina kayarsa, vb.).
+  const candidate = {
+    direction: existing.direction,
+    entry: existing.entry,
+    sl: existing.sl,
+    tp1: scanResult.tp1 ?? existing.tp1,
+    tp2: scanResult.tp2 ?? existing.tp2,
+    tp3: scanResult.tp3 ?? existing.tp3,
+  };
+  const err = validateSignalPriceLevels(candidate);
+  if (err) {
+    if (!Array.isArray(existing.warnings)) existing.warnings = [];
+    existing.warnings.push(`BARRIER REFRESH REJECTED: ${err}`);
+    return;
+  }
+  existing.tp1 = candidate.tp1;
+  existing.tp2 = candidate.tp2;
+  existing.tp3 = candidate.tp3;
   existing.rr = scanResult.rr || existing.rr;
   existing.barrierSummary = scanResult.barrierSummary || existing.barrierSummary || null;
 }
@@ -177,11 +318,21 @@ export function refreshHTFBarrierLevelsForOpenSignals({ symbol = null } = {}) {
  */
 function dispatchToOkxExecutor(signal) {
   const cat = signal.category || resolveInferCategory(signal.symbol);
-  if (cat !== 'kripto' && cat !== 'crypto') return;
-  if (!['A', 'B', 'C'].includes(signal.grade)) return;
-  // Ladder filtresi: yalnizca league='real' sinyaller executor'a gider.
-  // A/B daima 'real'; C ve BEKLE sembol+grade bazli tier'a tabidir.
-  if (signal.league && signal.league !== 'real') return;
+  if (cat !== 'kripto' && cat !== 'crypto') {
+    // Diger kategoriler (hisse/emtia/forex) executor'a gitmez — sessiz cik.
+    return;
+  }
+  if (!['A', 'B', 'C'].includes(signal.grade)) {
+    console.log(`[OKX-Dispatch] ${signal.symbol} ${signal.grade}: dispatch skip (grade A/B/C disinda)`);
+    return;
+  }
+  // 2026-05-03: Routing/sizing executor tarafinda league'e gore yapiliyor.
+  // 'real' → auto, 'ara' → awaiting_approval, 'virtual' → reject. Sadece
+  // virtual sinyali burada filtrele (kalanini executor degerlendirsin).
+  if (signal.league === 'virtual') {
+    console.log(`[OKX-Dispatch] ${signal.symbol} ${signal.grade}: dispatch skip (league=virtual)`);
+    return;
+  }
   // Pump-top guard: pendingPullback olan sinyalde entry zaten pullback hedefi
   // (gövde ortası); executor bunu limit emir olarak gönderiyor. Dispatch'i
   // engellemiyoruz — sadece logla.
@@ -194,6 +345,7 @@ function dispatchToOkxExecutor(signal) {
     tf: String(signal.timeframe ?? ''),
     side: signal.direction === 'short' ? 'short' : 'long',
     quality: signal.grade,
+    league: signal.league || undefined,
     entry: Number(signal.entry),
     sl: Number(signal.sl),
     tp1: signal.tp1 != null ? Number(signal.tp1) : undefined,
@@ -201,6 +353,7 @@ function dispatchToOkxExecutor(signal) {
     tp3: signal.tp3 != null ? Number(signal.tp3) : undefined,
     reason: {
       id: signal.id,
+      league: signal.league || null,
       rr: signal.rr,
       indicators: signal.indicators,
       reasoning: signal.reasoning,
@@ -238,10 +391,11 @@ export function getSignalHistory(symbol, daysBack = 3) {
   const openData = readJSON(OPEN_PATH, { signals: [] });
   const openMatches = openData.signals.filter(s => s.symbol === symbol && s.createdAt >= cutoff);
 
-  // Check archived signals
+  // Check archived signals — INCLUDING legacy (sub-1H/15-30-45-1h) so per-symbol
+  // history queries do not lose pre-2026-05-02 trades.
   let archivedMatches = [];
   try {
-    const allArchived = readAllArchives();
+    const allArchived = readAllArchivesIncludingLegacy();
     archivedMatches = allArchived.filter(s => s.symbol === symbol && s.createdAt >= cutoff);
   } catch {}
 
@@ -316,22 +470,9 @@ export function recordSignal(scanResult) {
   if (!scanResult || scanResult.grade === 'IPTAL' || scanResult.grade === 'HATA') return null;
 
   // Validate critical price levels — reject signals with missing/invalid SL/TP
-  const _entry = parseFloat(scanResult.entry);
-  const _sl = parseFloat(scanResult.sl);
-  const _tp1 = parseFloat(scanResult.tp1);
-  if (!Number.isFinite(_entry) || _entry <= 0 ||
-      !Number.isFinite(_sl) || _sl <= 0 ||
-      !Number.isFinite(_tp1) || _tp1 <= 0) {
-    console.log(`[Signal] REDDEDILDI: ${scanResult.symbol} — gecersiz fiyat (entry: ${scanResult.entry}, sl: ${scanResult.sl}, tp1: ${scanResult.tp1})`);
-    return null;
-  }
-  // Validate SL is on correct side of entry
-  if (scanResult.direction === 'long' && _sl >= _entry) {
-    console.log(`[Signal] REDDEDILDI: ${scanResult.symbol} — long ama SL (${_sl}) >= entry (${_entry})`);
-    return null;
-  }
-  if (scanResult.direction === 'short' && _sl <= _entry) {
-    console.log(`[Signal] REDDEDILDI: ${scanResult.symbol} — short ama SL (${_sl}) <= entry (${_entry})`);
+  const priceError = validateSignalPriceLevels(scanResult);
+  if (priceError) {
+    console.log(`[Signal] REDDEDILDI: ${scanResult.symbol} — ${priceError}`);
     return null;
   }
 
@@ -443,6 +584,9 @@ export function recordSignal(scanResult) {
     // boylece yanlislikla downgrade ile daha kotu SL/entry'ye gecis olmaz.
     sameDir.lastRefreshedAt = now.toISOString();
     sameDir.refreshCount = (sameDir.refreshCount || 0) + 1;
+    // league'i her upsert'te taze (mevcut grade'in tier'ina) gore guncelle.
+    // Eski 'ara'/'virtual' degerleri grade yukselse bile takili kaliyordu.
+    try { sameDir.league = resolveLeague(sameDir.symbol, sameDir.grade) || sameDir.league; } catch {}
     sameDir.indicators = extractIndicatorSnapshot(scanResult);
     sameDir.reasoning = scanResult.reasoning || sameDir.reasoning;
     sameDir.barrierSummary = scanResult.barrierSummary || sameDir.barrierSummary || null;
@@ -467,13 +611,37 @@ export function recordSignal(scanResult) {
     }
 
     if (shouldUpgradeLevels) {
+      // 2026-05-04: Upsert sonrasi yon-tutarliligi kontrolu. scanResult bütun
+      // entry/sl/tp seviyelerini tutarli getirmeli; karisik (sadece entry) bir
+      // refresh eski SL/TP ile birlestiginde long sinyalinde SL>entry, short'ta
+      // SL<entry gibi kotu durumlar yaratiyordu (PG, ATATR olaylari). Adayi
+      // valide et; gecersiz olursa seviyeleri DOKUNMA.
+      const candidate = {
+        direction: sameDir.direction,
+        entry: scanResult.entry || sameDir.entry,
+        sl: scanResult.sl || sameDir.sl,
+        tp1: scanResult.tp1 || sameDir.tp1,
+        tp2: scanResult.tp2 || sameDir.tp2,
+        tp3: scanResult.tp3 || sameDir.tp3,
+      };
+      const levelError = validateSignalPriceLevels(candidate);
+      if (levelError) {
+        if (!Array.isArray(sameDir.warnings)) sameDir.warnings = [];
+        sameDir.warnings.push(`UPSERT REJECTED LEVELS: ${levelError} — eski seviyeler korundu`);
+        console.log(`[Signal] ${sameDir.symbol} ${sameDir.direction}: upsert level update REDDEDILDI — ${levelError}`);
+      }
       sameDir.grade = scanResult.grade;
+      // 2026-05-03: league grade ile birlikte refresh edilmeli — yoksa C→B upgrade
+      // sonrasi 'ara' takili kaliyor ve OKX dispatch atlaniyordu.
+      try { sameDir.league = resolveLeague(scanResult.symbol, scanResult.grade) || sameDir.league; } catch {}
       sameDir.timeframe = tf;
-      sameDir.entry = scanResult.entry || sameDir.entry;
-      sameDir.sl = scanResult.sl || sameDir.sl;
-      sameDir.tp1 = scanResult.tp1 || sameDir.tp1;
-      sameDir.tp2 = scanResult.tp2 || sameDir.tp2;
-      sameDir.tp3 = scanResult.tp3 || sameDir.tp3;
+      if (!levelError) {
+        sameDir.entry = candidate.entry;
+        sameDir.sl = candidate.sl;
+        sameDir.tp1 = candidate.tp1;
+        sameDir.tp2 = candidate.tp2;
+        sameDir.tp3 = candidate.tp3;
+      }
       sameDir.rr = scanResult.rr || sameDir.rr;
       sameDir.entrySource = scanResult.entrySource || sameDir.entrySource;
       sameDir.entryZone = scanResult.entryZone || sameDir.entryZone;
@@ -484,7 +652,7 @@ export function recordSignal(scanResult) {
       // Yeni entry source varsa deadline'i yenile (market-entry'de null).
       const _isSmart = scanResult.entrySource && scanResult.entrySource !== 'quote_price' && scanResult.entrySource !== 'lastbar_close';
       if (_isSmart) {
-        const tfMin = Number(tf) || 15;
+        const tfMin = timeframeToMinutes(tf);
         sameDir.entryDeadline = new Date(now.getTime() + tfMin * 60 * 1000 * 8).toISOString();
       } else {
         sameDir.entryDeadline = null;
@@ -493,10 +661,21 @@ export function recordSignal(scanResult) {
       // (OB/FVG zonu doldu, refresh market entry'ye dustu) entryHit=true olmali;
       // aksi halde pozisyon aslinda dolmus ama UI "entry bekliyor" der ve
       // TP/SL hit olsa bile sinyal acik listede takili kalir.
+      // 2026-05-05: Eski mevcut sinyalde entryZone varsa (smart→market downgrade),
+      // fiyat zone'a gercekten dokunmadan entryHit set etme — outcome-checker
+      // bar verisiyle dogrulasin (AVGO olayi).
       if (!_isSmart && !sameDir.entryHit) {
-        sameDir.entryHit = true;
-        sameDir.entryHitAt = sameDir.entryHitAt || now.toISOString();
+        const hadSmartZone = !!(sameDir.entryZone && sameDir.entryZone.high != null && sameDir.entryZone.low != null);
+        if (hadSmartZone) {
+          // Zone-touch dogrulamasini outcome-checker yapacak; burada bayrak atma.
+          if (!Array.isArray(sameDir.warnings)) sameDir.warnings = [];
+          sameDir.warnings.push(`[Entry-Recheck] smart→market downgrade — entryHit dogrulamasi outcome-checker'a birakildi (zone ${sameDir.entryZone.low}-${sameDir.entryZone.high})`);
+        } else {
+          sameDir.entryHit = true;
+          sameDir.entryHitAt = sameDir.entryHitAt || now.toISOString();
+        }
       }
+      reconcileSmartEntryHitState(sameDir, scanResult, now);
     } else if (shouldRefreshHTFBarrierLevels) {
       applyBarrierLevelRefresh(sameDir, scanResult);
     } else {
@@ -514,6 +693,16 @@ export function recordSignal(scanResult) {
     // Duplicate id gelirse executor reddeder (idempotent).
     if (shouldUpgradeLevels || shouldRefreshHTFBarrierLevels) dispatchToOkxExecutor(sameDir);
     return sameDir;
+  }
+
+  try {
+    const recentMissed = findRecentMissedSetup(scanResult, readAllArchivesIncludingLegacy(), now);
+    if (recentMissed) {
+      console.log(`[Signal] ${scanResult.symbol}: REDDEDILDI — yakin zamanda ayni kurulum entry dolmadan kapandi (${recentMissed.status || recentMissed.outcome}, ${recentMissed.resolvedAt || recentMissed.createdAt})`);
+      return null;
+    }
+  } catch (e) {
+    console.log(`[Signal] ${scanResult.symbol}: missed-setup kontrolu atlandi (${e.message})`);
   }
 
   // --- BEKLE cap: sembol basina max N acik BEKLE, fazlasi en eskiden superseded_by_cap ---
@@ -567,19 +756,35 @@ export function recordSignal(scanResult) {
     entryReasoning: scanResult.entryReasoning || [],
     quotePrice: scanResult.quotePrice || null,
     slSource: scanResult.slSource || 'atr_based',
+    slReason: scanResult.slReason || null,
     atr: scanResult.atr || null,
+
+    // Stratejik TP motoru çıktıları (2026-05-03)
+    tp1Source: scanResult.tp1Source || null,
+    tp2Source: scanResult.tp2Source || null,
+    tp3Source: scanResult.tp3Source || null,
+    tp2Meta: scanResult.tp2Meta || null,
+    tp3Meta: scanResult.tp3Meta || null,
+    strategicCandidates: Array.isArray(scanResult.strategicCandidates) ? scanResult.strategicCandidates : null,
 
     // Entry bekleme suresi (smart entry icin). 8 bar * TF dakika → ms
     entryDeadline: (() => {
       const isSmart = scanResult.entrySource && scanResult.entrySource !== 'quote_price' && scanResult.entrySource !== 'lastbar_close';
       if (!isSmart) return null;
-      const tfMin = Number(tf) || 15;
+      const tfMin = timeframeToMinutes(tf);
       const deadlineMs = now.getTime() + tfMin * 60 * 1000 * 8;
       return new Date(deadlineMs).toISOString();
     })(),
 
     // Full indicator snapshot for learning
     indicators: extractIndicatorSnapshot(scanResult),
+
+    // Patch 2 (2026-05-02) — shadow data: hesaplanir, kaydedilir, ama
+    // tallyVotes/grade/direction'a etki etmez. Promosyon karari icin
+    // 24-72h gozlemde kullanilir. Hicbir karar mantigi bunlari okumaz.
+    shadowMetrics: scanResult.shadowMetrics || null,
+    shadowVotes: Array.isArray(scanResult.shadowVotes) ? scanResult.shadowVotes : null,
+    shadowMtfScore: scanResult.shadowMtfScore || scanResult.shadowMetrics?.mtfScore || null,
 
     // Grading detail
     reasoning: scanResult.reasoning || [],
@@ -908,6 +1113,8 @@ export function extractIndicatorSnapshot(scanResult) {
       signalStatus: scanResult.khanSaab?.signalStatus,
       rsi: scanResult.khanSaab?.rsi,
       adx: scanResult.khanSaab?.adx,
+      adxSlope: scanResult.khanSaab?.adxSlope ?? null,
+      adxDirection: scanResult.khanSaab?.adxDirection ?? null,
       volStatus: scanResult.khanSaab?.volStatus,
     } : null,
     smc: scanResult.smc ? {
