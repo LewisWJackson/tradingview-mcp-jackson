@@ -43,7 +43,7 @@
  * learning-loop.js bu event'i WS'e broadcast eder ve kalite istatistiklerine isler.
  */
 
-import { readJSON, writeJSON, dataPath } from './persistence.js';
+import { readJSON, writeJSON, dataPath, isLearningEligibleTF } from './persistence.js';
 
 const LADDER_PATH = dataPath('ladder.json');
 
@@ -339,11 +339,21 @@ export function classifyOutcome(status) {
  *
  * signals: arsivden gelen sinyaller (readAllArchives() ciktisi).
  */
+/**
+ * 2026-05-02 — Ladder/league sadece 4H/1D/1W cozumlerinden besleniyor.
+ * Genis TF politikasi `isLearningEligibleTF` (persistence.js) tek kaynaktan
+ * gelir; ladder, weight-adjuster ve archive routing ayni filtreyi paylasir.
+ * 1H/30m/45m/15m acik sinyaller dashboard'da kalmaya ve cozumlenmeye devam eder;
+ * yalnizca ladder/league sayaclari onlardan etkilenmez.
+ */
+export { isLearningEligibleTF as isLadderEligibleTF } from './persistence.js';
+
 export function rebuildFromArchive(signals) {
   const state = defaultState();
   const relevant = (signals || [])
     .filter(s => s && s.symbol && RULES[s.grade])
     .filter(s => s.status && s.resolvedAt)
+    .filter(s => isLearningEligibleTF(s.timeframe)) // sadece 4H/1D/1W ladder'a girer
     .filter(s => {
       const cls = classifyOutcome(s.status);
       return cls === 'win' || cls === 'loss';  // netr'ler ladder'i etkilemez
