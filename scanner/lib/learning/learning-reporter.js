@@ -6,11 +6,99 @@
 import { getAllCachedStats, recomputeAllStats, computeEWMAWinRate } from './stats-engine.js';
 import { scoreAllIndicators, generateIndicatorReport } from './indicator-scorer.js';
 import { loadWeights, getAdjustmentHistory } from './weight-adjuster.js';
-import { getOpenSignals } from './signal-tracker.js';
+import { getOpenSignals, validateSignalPriceLevels } from './signal-tracker.js';
 import { readAllArchives } from './persistence.js';
 import { DEFAULT_VOTE_WEIGHTS } from '../signal-grader.js';
 import { getAnomalyState } from './anomaly-detector.js';
 import { getCheckpointHistory } from './shadow-guard.js';
+import { classifyOutcome } from './ladder-engine.js';
+
+function finiteRR(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function reportActualRR(signal) {
+  const cls = classifyOutcome(signal?.status || signal?.outcome);
+  if (cls !== 'win' && cls !== 'loss') return null;
+
+  if (signal?.entry != null) {
+    const riskSl = signal.slOriginal ?? signal.initialSl ?? signal.originalSl ?? signal.sl;
+    const risk = Math.abs(Number(signal.entry) - Number(riskSl));
+    if (Number.isFinite(risk) && risk > 0) {
+      if (signal.status === 'trailing_stop_exit' && signal.slHitPrice != null) {
+        const reward = signal.direction === 'short'
+          ? Number(signal.entry) - Number(signal.slHitPrice)
+          : Number(signal.slHitPrice) - Number(signal.entry);
+        return Math.round((reward / risk) * 100) / 100;
+      }
+      if (signal.status === 'tp3_hit' && signal.tp3 != null) return Math.round((Math.abs(Number(signal.tp3) - Number(signal.entry)) / risk) * 100) / 100;
+      if (signal.status === 'tp2_hit' && signal.tp2 != null) return Math.round((Math.abs(Number(signal.tp2) - Number(signal.entry)) / risk) * 100) / 100;
+      if (signal.status === 'tp1_hit' && signal.tp1 != null) return Math.round((Math.abs(Number(signal.tp1) - Number(signal.entry)) / risk) * 100) / 100;
+      if (signal.status === 'sl_hit') return -1;
+    }
+  }
+
+  return finiteRR(signal?.actualRR);
+}
+
+function validationSignalForReport(signal) {
+  if (!signal || typeof signal !== 'object') return signal;
+  const sl = signal.slOriginal ?? signal.initialSl ?? signal.originalSl ?? signal.sl;
+  return { ...signal, sl };
+}
+
+function reportOutcomeClass(signal) {
+  const raw = classifyOutcome(signal?.status || signal?.outcome);
+  if (raw !== 'win' && raw !== 'loss') return 'neutral';
+  if (validateSignalPriceLevels(validationSignalForReport(signal))) return 'neutral';
+
+  const rr = reportActualRR(signal);
+  if (rr == null || rr === 0) return 'neutral';
+  return rr > 0 ? 'win' : 'loss';
+}
+
+export function summarizeResolvedSignalsForReport(signals) {
+  const summary = {
+    total: Array.isArray(signals) ? signals.length : 0,
+    wins: 0,
+    losses: 0,
+    neutrals: 0,
+    totalPnlR: 0,
+    winRate: null,
+    bySymbol: {},
+  };
+
+  for (const s of signals || []) {
+    const symbol = s.symbol || 'UNKNOWN';
+    if (!summary.bySymbol[symbol]) {
+      summary.bySymbol[symbol] = { wins: 0, losses: 0, neutrals: 0, pnlR: 0 };
+    }
+    const bucket = summary.bySymbol[symbol];
+    const cls = reportOutcomeClass(s);
+    const rr = reportActualRR(s);
+
+    if (cls === 'win') {
+      summary.wins++;
+      bucket.wins++;
+    } else if (cls === 'loss') {
+      summary.losses++;
+      bucket.losses++;
+    } else {
+      summary.neutrals++;
+      bucket.neutrals++;
+    }
+
+    if ((cls === 'win' || cls === 'loss') && rr != null) {
+      summary.totalPnlR += rr;
+      bucket.pnlR += rr;
+    }
+  }
+
+  const realized = summary.wins + summary.losses;
+  summary.winRate = realized > 0 ? Math.round(summary.wins / realized * 100) : null;
+  return summary;
+}
 
 /**
  * Full comprehensive report.
@@ -130,20 +218,27 @@ export function generateFullReport() {
     lines.push(`  ${key}: ${val}${changed}`);
   }
   lines.push('');
-  lines.push('Indikator Agirliklari (Baz x Learned = Efektif):');
-  lines.push(`  ${'Kaynak'.padEnd(20)} | ${'Baz'.padStart(5)} | ${'Learned'.padStart(7)} | ${'Efektif'.padStart(7)} | Not`);
-  lines.push(`  ${'─'.repeat(20)} | ${'─'.repeat(5)} | ${'─'.repeat(7)} | ${'─'.repeat(7)} | ${'─'.repeat(15)}`);
-  // Tum indikatörleri listele: hem DEFAULT_VOTE_WEIGHTS hem learned'daki anahtarlar
+  // 2026-05-02 — additive_v1: Effective = max(0, Base + Δ); indicatorDisabled[key]=true → Effective=0.
+  lines.push('Indikator Agirliklari (Base + Δ = Effective):');
+  lines.push(`  ${'Kaynak'.padEnd(20)} | ${'Base'.padStart(5)} | ${'Δ'.padStart(6)} | ${'Eff'.padStart(5)} | Not`);
+  lines.push(`  ${'─'.repeat(20)} | ${'─'.repeat(5)} | ${'─'.repeat(6)} | ${'─'.repeat(5)} | ${'─'.repeat(20)}`);
   const allKeys = new Set([
     ...Object.keys(DEFAULT_VOTE_WEIGHTS || {}),
     ...Object.keys(weights.indicatorWeights || {}),
+    ...Object.keys(weights.indicatorDisabled || {}),
   ]);
+  const disabledMap = weights.indicatorDisabled || {};
   for (const key of allKeys) {
     const base = DEFAULT_VOTE_WEIGHTS?.[key] ?? 1.0;
-    const learned = weights.indicatorWeights?.[key] ?? 1.0;
-    const effective = (base * learned).toFixed(2);
-    const note = learned !== 1.0 ? '← degistirildi' : '';
-    lines.push(`  ${key.padEnd(20)} | ${base.toFixed(2).padStart(5)} | ${learned.toFixed(2).padStart(7)} | ${effective.padStart(7)} | ${note}`);
+    const isDisabled = disabledMap[key] === true;
+    const delta = weights.indicatorWeights?.[key];
+    const deltaNum = (typeof delta === 'number') ? delta : 0;
+    const effective = isDisabled ? 0 : Math.max(0, base + deltaNum);
+    const dStr = (deltaNum >= 0 ? '+' : '') + deltaNum.toFixed(2);
+    let note = '';
+    if (isDisabled) note = '← DISABLED';
+    else if (deltaNum !== 0) note = (deltaNum > 0 ? '↑ ogrendi (basarili)' : '↓ ogrendi (basarisiz)');
+    lines.push(`  ${key.padEnd(20)} | ${base.toFixed(2).padStart(5)} | ${dStr.padStart(6)} | ${effective.toFixed(2).padStart(5)} | ${note}`);
   }
   lines.push('');
 
@@ -314,27 +409,19 @@ export function generate24hChangesReport(hours = 24) {
   if (recentResolved.length === 0) {
     lines.push('Bu donemde cozulen sinyal yok.');
   } else {
-    const wins = recentResolved.filter(s => s.win);
-    const losses = recentResolved.filter(s => !s.win);
-    const wr = recentResolved.length > 0 ? Math.round(wins.length / recentResolved.length * 100) : 0;
-    const totalPnlR = recentResolved.reduce((s, r) => s + (r.actualRR || 0), 0);
+    const resolvedSummary = summarizeResolvedSignalsForReport(recentResolved);
+    const realized = resolvedSummary.wins + resolvedSummary.losses;
+    const wrText = resolvedSummary.winRate == null ? 'n/a' : `%${resolvedSummary.winRate}`;
 
-    lines.push(`Toplam: ${recentResolved.length} | Kazanc: ${wins.length} | Kayip: ${losses.length} | WR: %${wr}`);
-    lines.push(`Toplam PnL (R cinsinden): ${totalPnlR >= 0 ? '+' : ''}${totalPnlR.toFixed(1)}R`);
+    lines.push(`Toplam: ${resolvedSummary.total} | Realized: ${realized} | Kazanc: ${resolvedSummary.wins} | Kayip: ${resolvedSummary.losses} | Neutral/Missed: ${resolvedSummary.neutrals} | WR: ${wrText}`);
+    lines.push(`Gerceklesen PnL (R cinsinden): ${resolvedSummary.totalPnlR >= 0 ? '+' : ''}${resolvedSummary.totalPnlR.toFixed(1)}R`);
     lines.push('');
 
     // Breakdown by symbol
-    const bySymbol = {};
-    for (const s of recentResolved) {
-      if (!bySymbol[s.symbol]) bySymbol[s.symbol] = { wins: 0, losses: 0, pnlR: 0 };
-      if (s.win) bySymbol[s.symbol].wins++;
-      else bySymbol[s.symbol].losses++;
-      bySymbol[s.symbol].pnlR += s.actualRR || 0;
-    }
-    for (const [sym, data] of Object.entries(bySymbol)) {
+    for (const [sym, data] of Object.entries(resolvedSummary.bySymbol)) {
       const total = data.wins + data.losses;
-      const symWR = Math.round(data.wins / total * 100);
-      lines.push(`  ${sym}: ${data.wins}W/${data.losses}L (WR: %${symWR}) | PnL: ${data.pnlR >= 0 ? '+' : ''}${data.pnlR.toFixed(1)}R`);
+      const symWR = total > 0 ? `%${Math.round(data.wins / total * 100)}` : 'n/a';
+      lines.push(`  ${sym}: ${data.wins}W/${data.losses}L/${data.neutrals}N (WR: ${symWR}) | Realized PnL: ${data.pnlR >= 0 ? '+' : ''}${data.pnlR.toFixed(1)}R`);
     }
   }
   lines.push('');
