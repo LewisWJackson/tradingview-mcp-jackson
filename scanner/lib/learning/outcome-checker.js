@@ -6,12 +6,14 @@
  * uses getQuote for reliable current price.
  */
 
-import { getOpenSignals, updateSignal, removeOpenSignal, diffIndicators } from './signal-tracker.js';
+import { getOpenSignals, updateSignal, removeOpenSignal, diffIndicators, validateSignalPriceLevels } from './signal-tracker.js';
 import { appendToArchive } from './persistence.js';
-import { recordOutcome as recordLadderOutcome } from './ladder-engine.js';
+import { classifyOutcome, recordOutcome as recordLadderOutcome, isLadderEligibleTF } from './ladder-engine.js';
 import * as bridge from '../tv-bridge.js';
 import { acquireScanLock, releaseScanLock } from '../scanner-engine.js';
 import { resolveSymbol, inferCategory } from '../symbol-resolver.js';
+import { isMarketTradeable } from '../market-hours.js';
+import { getLivePrice } from '../live-price-feed.js';
 
 /**
  * Ayni 5m bar icinde hem SL hem TP1 dokundu mu? — tie-break 1m gerekir.
@@ -31,6 +33,17 @@ export function detectBothHitOnBar(signal, bar) {
   return slHit && tpHit;
 }
 
+function appendWarning(signal, warning) {
+  const warnings = Array.isArray(signal?.warnings) ? signal.warnings : [];
+  return warnings.includes(warning) ? warnings : [...warnings, warning];
+}
+
+function signalForLevelValidation(signal) {
+  if (!signal || typeof signal !== 'object') return signal;
+  const sl = signal.slOriginal ?? signal.initialSl ?? signal.originalSl ?? signal.sl;
+  return { ...signal, sl };
+}
+
 /**
  * Check a single signal against a current price bar.
  * Returns outcome updates (pure function, no side effects).
@@ -41,6 +54,61 @@ export function evaluateSignalOutcome(signal, currentBar) {
   const { high, low, close } = currentBar;
   const dir = signal.direction;
   const now = new Date().toISOString();
+
+  const levelError = validateSignalPriceLevels(signalForLevelValidation(signal));
+  if (levelError) {
+    const warning = `[InvalidLevels] ${levelError}`;
+    return {
+      status: 'invalid_data',
+      lastCheckedPrice: close,
+      lastCheckedAt: now,
+      checkCount: (signal.checkCount || 0) + 1,
+      warnings: appendWarning(signal, warning),
+    };
+  }
+
+  // 2026-05-04: Mevcut signal.sl entry'ye gore yon-ters ise (trailing/upsert
+  // sirasinda entry kaydirildi, sl eski seviyede kaldi) slOriginal'a geri al;
+  // aksi halde SL hit yanlislikla tetiklenir (PG olayi).
+  // 2026-05-04 (REV): TP1 sonrasi BE/trailing SL entry'nin diger tarafina gecer
+  // ve bu DOGRU davranistir — kar kilitleme. Boyle durumlarda repair yapma.
+  const trailingActiveOrPostTp1 = !!(signal.tp1Hit || signal.tp2Hit || signal.tp3Hit
+    || signal.trailingStopActive || signal.breakevenAt);
+  if (!trailingActiveOrPostTp1
+      && signal.entry != null && signal.sl != null
+      && Number.isFinite(signal.sl) && Number.isFinite(signal.entry)) {
+    const slWrongSide = (dir === 'long' && signal.sl >= signal.entry)
+      || (dir === 'short' && signal.sl <= signal.entry);
+    if (slWrongSide) {
+      const fallback = Number.isFinite(signal.slOriginal) ? signal.slOriginal : null;
+      const fallbackOk = fallback != null && (
+        (dir === 'long' && fallback < signal.entry) ||
+        (dir === 'short' && fallback > signal.entry)
+      );
+      if (fallbackOk) {
+        const oldSl = signal.sl;
+        const repairWarning = `[SL-Repair] ${dir} sinyalde sl yon-ters (${oldSl}→${fallback}); slOriginal'a geri alindi`;
+        return {
+          sl: fallback,
+          trailingStopLevel: null,
+          trailingStopActive: false,
+          slReason: 'SL-Repair: yon-ters seviyeden slOriginal\'a geri alindi',
+          lastCheckedPrice: close,
+          lastCheckedAt: now,
+          checkCount: (signal.checkCount || 0) + 1,
+          warnings: appendWarning(signal, repairWarning),
+        };
+      } else {
+        return {
+          status: 'invalid_data',
+          lastCheckedPrice: close,
+          lastCheckedAt: now,
+          checkCount: (signal.checkCount || 0) + 1,
+          warnings: appendWarning(signal, `[SL-Wrong-Side] ${dir} ama sl=${signal.sl} entry=${signal.entry} (slOriginal yok/gecersiz)`),
+        };
+      }
+    }
+  }
 
   // Migration: eski kodla slHit=true + trailingStopExit=true isaretlenmis ama
   // status 'tp1_hit'/'tp2_hit' kaldigi icin open listesinde takili kalan
@@ -58,7 +126,7 @@ export function evaluateSignalOutcome(signal, currentBar) {
   // Sanity check: current price should be in the same ballpark as entry
   if (signal.entry && close) {
     const deviation = Math.abs(close - signal.entry) / signal.entry;
-    if (deviation > 0.5) {
+    if (deviation > 0.10) {
       // Price is 50%+ away from entry — likely wrong symbol/data
       return {
         lastCheckedAt: now,
@@ -76,7 +144,11 @@ export function evaluateSignalOutcome(signal, currentBar) {
 
   // Determine if entry needs to be "reached" before tracking SL/TP
   // Legacy signals (no entrySource) or quote_price entries are always considered reached
-  const isSmartEntry = signal.entrySource && signal.entrySource !== 'quote_price' && signal.entrySource !== 'lastbar_close';
+  // 2026-05-05: entryZone tanimli + entrySource=quote_price (smart→market downgrade)
+  // durumunda da smart muamele yap — fiyat zone'a gercekten dokunmadan entryHit
+  // atanmasin (AVGO/FLNC olayi).
+  const isSmartEntry = (signal.entrySource && signal.entrySource !== 'quote_price' && signal.entrySource !== 'lastbar_close')
+    || (signal.entryZone && signal.entrySource === 'quote_price' && signal.entryZone.high != null && signal.entryZone.low != null);
   const alreadyReached = signal.entryHit || !isSmartEntry;
 
   // Normalize: market (quote_price/lastbar_close) veya legacy entry ise
@@ -87,15 +159,28 @@ export function evaluateSignalOutcome(signal, currentBar) {
     updates.entryHitAt = signal.entryHitAt || signal.createdAt || now;
   }
 
-  // Track whether smart entry price was actually reached
-  // Tolerance band: 0.25 * ATR yaklasma yeterli (kil payi kacirmayi onler)
-  if (isSmartEntry && !signal.entryHit) {
-    const tol = (signal.atr || 0) * 0.25;
-    const entryReached = (dir === 'long' && low <= signal.entry + tol)
-      || (dir === 'short' && high >= signal.entry - tol);
-    if (entryReached) {
+  // Track whether smart entry price was actually reached.
+  // Smart/limit entry icin fill ancak fiyat entry seviyesine dokunursa gercektir;
+  // ATR toleransi entry'ye dokunmayan islemleri sahte fill'e cevirebilir.
+  const entryTouched = (dir === 'long' && low <= signal.entry)
+    || (dir === 'short' && high >= signal.entry);
+  if (isSmartEntry && signal.entryHit && signal.entryHitPrice == null) {
+    if (entryTouched) {
       updates.entryHit = true;
       updates.entryHitAt = now;
+      updates.entryHitPrice = signal.entry;
+    } else {
+      updates.entryHit = false;
+      updates.entryHitAt = null;
+      updates.highestFavorable = 0;
+      updates.lowestAdverse = 0;
+    }
+  }
+  if (isSmartEntry && !signal.entryHit) {
+    if (entryTouched) {
+      updates.entryHit = true;
+      updates.entryHitAt = now;
+      updates.entryHitPrice = signal.entry;
     } else {
       // Pre-entry MFE: sinyal yonunde ama entry dolmadan ne kadar kacirdik?
       // entry_expired sonrasi "bu sinyal hakliymis ama giremedik" istatistigi.
@@ -107,15 +192,34 @@ export function evaluateSignalOutcome(signal, currentBar) {
         if (missed > (signal.preEntryMFE || 0)) updates.preEntryMFE = missed;
       }
 
-      // Entry gelmeden TP1 asildi → pozisyonu kapat (fiyat pullback yapmadan
-      // hedefe ulasti, giris firsati kacti). Netr olarak isle.
-      if (signal.tp1 != null && isFinite(signal.tp1)) {
-        const tpCrossed = (dir === 'long' && high >= signal.tp1)
-          || (dir === 'short' && low <= signal.tp1);
-        if (tpCrossed) {
+      // Entry gelmeden TP hit kontrolu (2026-05-04 revize):
+      //   TP1 hit tek basina entry_missed sayilmaz — TP1 yakin hedef, fiyat
+      //   sıkça entry'ye geri donebilir. TP2 hit ise fırsat tamamen kacmistir.
+      //   Istisna: TP1 hit ettikten sonra 48 saat icinde fiyat entry'ye donmezse
+      //   yine entry_missed_tp olarak kapatilir (sinyal yasını uzatma onlemı).
+      if (signal.tp2 != null && isFinite(signal.tp2)) {
+        const tp2Crossed = (dir === 'long' && high >= signal.tp2)
+          || (dir === 'short' && low <= signal.tp2);
+        if (tp2Crossed) {
           updates.status = 'entry_missed_tp';
           updates.entryExpiredAt = now;
           return updates;
+        }
+      }
+      if (signal.tp1 != null && isFinite(signal.tp1)) {
+        const tp1Crossed = (dir === 'long' && high >= signal.tp1)
+          || (dir === 'short' && low <= signal.tp1);
+        if (tp1Crossed && !signal.tp1CrossedWhilePendingAt) {
+          // İlk TP1 dokunusunu işaretle — 48 saatlik geri dönüş penceresi başlar.
+          updates.tp1CrossedWhilePendingAt = now;
+        } else if (signal.tp1CrossedWhilePendingAt) {
+          const PULLBACK_WINDOW_MS = 48 * 60 * 60 * 1000;
+          const elapsed = new Date(now) - new Date(signal.tp1CrossedWhilePendingAt);
+          if (elapsed >= PULLBACK_WINDOW_MS) {
+            updates.status = 'entry_missed_tp';
+            updates.entryExpiredAt = now;
+            return updates;
+          }
         }
       }
 
@@ -130,17 +234,20 @@ export function evaluateSignalOutcome(signal, currentBar) {
 
   const entryActive = alreadyReached || updates.entryHit;
 
-  // Compute favorable/adverse excursion (only after entry is reached)
+  // Compute favorable/adverse excursion (only after entry is reached).
+  // 0'a clamp: MFE/MAE tanim geregi negatif olamaz (hareket olmamissa 0).
+  // null-handling olmadan ilk kayit negatif yazilabiliyordu — ISCTR/MIATK
+  // bug'i (entry sonrasi ilk bar high<entry geldiginde -3.22 vb).
   if (entryActive && dir === 'long' && signal.entry) {
-    const favorable = high - signal.entry;
-    const adverse = signal.entry - low;
-    if (signal.highestFavorable == null || favorable > (signal.highestFavorable || 0)) updates.highestFavorable = favorable;
-    if (signal.lowestAdverse == null || adverse > (signal.lowestAdverse || 0)) updates.lowestAdverse = adverse;
+    const fav = Math.max(0, high - signal.entry);
+    const adv = Math.max(0, signal.entry - low);
+    if (signal.highestFavorable == null || fav > signal.highestFavorable) updates.highestFavorable = fav;
+    if (signal.lowestAdverse == null || adv > signal.lowestAdverse) updates.lowestAdverse = adv;
   } else if (entryActive && dir === 'short' && signal.entry) {
-    const favorable = signal.entry - low;
-    const adverse = high - signal.entry;
-    if (signal.highestFavorable == null || favorable > (signal.highestFavorable || 0)) updates.highestFavorable = favorable;
-    if (signal.lowestAdverse == null || adverse > (signal.lowestAdverse || 0)) updates.lowestAdverse = adverse;
+    const fav = Math.max(0, signal.entry - low);
+    const adv = Math.max(0, high - signal.entry);
+    if (signal.highestFavorable == null || fav > signal.highestFavorable) updates.highestFavorable = fav;
+    if (signal.lowestAdverse == null || adv > signal.lowestAdverse) updates.lowestAdverse = adv;
   }
 
   // Check SL/TP only if entry has been reached (or not a smart entry)
@@ -171,6 +278,31 @@ export function evaluateSignalOutcome(signal, currentBar) {
           updates.status = 'trailing_stop_exit';
           updates.trailingStopExit = true;
           updates.trailingExitTier = signal.tp2Hit ? 'tp2' : 'tp1';
+        } else if (tp1Dist != null && tp1Dist > 0 && mfeSoFar >= tp1Dist) {
+          // MFE TP1 mesafesini TAM gectigi halde TP1 hit isaretlenmemis →
+          // ayni barda hem TP1 hem SL dokunup 1m tie-break basarisiz olmus
+          // demektir (default SL-onceligi pesimist sonuc). Fiyat TP1 kadar
+          // veya daha fazla lehte gittigi icin TP1-once varsayimi daha az
+          // hatali. Geriye donuk TP1-hit + BE migration uygula, sonra
+          // trailing-stop-exit ile kapat. Reward = newSL - entry (BE+ATR
+          // halfway) — hafif negatif veya sifira yakindir, full SL kayip
+          // degildir.
+          updates.tp1Hit = true;
+          updates.tp1HitAt = signal.tp1HitAt || now;
+          updates.tp1HitPrice = signal.tp1;
+          if (signal.slOriginal == null) updates.slOriginal = signal.sl;
+          // Retro durumda kesin BE kullan: TP1 doldu varsayimi + BE migration
+          // varsayimi → exit entry'de gerceklesti say. Reward = 0, RR = 0.
+          // Boylece PF hesabinda yalanci negatif-RR win uretmiyoruz.
+          updates.trailingStopActive = true;
+          updates.trailingStopLevel = signal.entry;
+          updates.slHitPrice = signal.entry;
+          updates.breakevenAt = signal.breakevenAt || now;
+          updates.status = 'trailing_stop_exit';
+          updates.trailingStopExit = true;
+          updates.trailingExitTier = 'tp1';
+          updates.retroTp1FromMfe = true;
+          updates.slReason = `MFE>=TP1 retroaktif: TP1 hit + BE exit (RR=0)`;
         } else if (tp1Dist != null && tp1Dist > 0 && mfeSoFar >= tp1Dist * 0.7) {
           updates.status = 'sl_hit_high_mfe';
           updates.highMfeFlag = true;
@@ -251,10 +383,41 @@ export function evaluateSignalOutcome(signal, currentBar) {
         if (!updates.tp2Hit && !updates.tp3Hit && !signal.tp2Hit && !signal.tp3Hit) {
           updates.status = 'tp1_hit';
         }
-        // Trailing stop aktiflestir: SL'yi break-even'e cek
+        // Trailing stop aktiflestir.
+        // A+B karma: SL'yi break-even'e cekmek yerine entry ile orijinal SL
+        // arasinda makul bir ara seviyeye tasi. Bu sayede TP1 sonrasi normal
+        // pullback'lerde 0R'da knockout olunmaz; gercek reversal'da hala
+        // koruma vardir.
+        //   halfway   = (slOriginal + entry) / 2
+        //   atrBuffer = entry ± 0.5 × ATR
+        //   newSL     = ikisinden hangisi daha fazla nefes aliyorsa o
+        //               (long: dusuk olan, short: yuksek olan)
+        // Clamp: orijinal SL'den daha kotu olamaz (long'da > slOrig, short'ta < slOrig).
+        const slOrig = signal.slOriginal != null ? signal.slOriginal : signal.sl;
+        const atrVal = Number(signal.atr);
+        const halfway = (slOrig + signal.entry) / 2;
+        let newSL;
+        if (Number.isFinite(atrVal) && atrVal > 0) {
+          const atrBuffer = dir === 'long'
+            ? signal.entry - 0.5 * atrVal
+            : signal.entry + 0.5 * atrVal;
+          newSL = dir === 'long' ? Math.min(halfway, atrBuffer) : Math.max(halfway, atrBuffer);
+        } else {
+          newSL = halfway;
+        }
+        // Improvement clamp: orijinal SL'den daha kotu olmasin.
+        if (dir === 'long' && newSL < slOrig) newSL = slOrig;
+        if (dir === 'short' && newSL > slOrig) newSL = slOrig;
         updates.trailingStopActive = true;
-        updates.trailingStopLevel = signal.entry;
-        updates.sl = signal.entry;
+        updates.trailingStopLevel = newSL;
+        if (signal.slOriginal == null) updates.slOriginal = signal.sl;
+        updates.sl = newSL;
+        updates.breakevenAt = now;
+        const halfwayLabel = halfway.toFixed(4);
+        const buffNote = Number.isFinite(atrVal) && atrVal > 0
+          ? `, ATR buf=${(signal.entry + (dir === 'long' ? -0.5 : 0.5) * atrVal).toFixed(4)}`
+          : '';
+        updates.slReason = `TP1 hit → SL halfway+ATR'ye cekildi (${newSL.toFixed(4)}; halfway=${halfwayLabel}${buffNote})`;
         // Continue tracking for TP2/TP3
       }
     }
@@ -277,6 +440,18 @@ export function evaluateSignalOutcome(signal, currentBar) {
       updates.beMigratedAt = now;
     }
 
+    // --- Aggressive-trail tetigi: TP1 sonrasi 2+ A/B/C zit yon sinyal geldiyse ---
+    // Trend yorulmasi/donus emaresi: kâri maksimize etmek için SL'yi daha sıkı trail et.
+    // 0.5×TP1 yerine 0.25×TP1 mesafede kilitle.
+    {
+      const ra = Array.isArray(signal.reverseAttempts) ? signal.reverseAttempts : [];
+      const realReverses = ra.filter(r => r && (r.grade === 'A' || r.grade === 'B' || r.grade === 'C'));
+      if ((signal.tp1Hit || updates.tp1Hit) && realReverses.length >= 2 && !signal.aggressiveTrailActive) {
+        updates.aggressiveTrailActive = true;
+        updates.aggressiveTrailReason = `${realReverses.length} adet A/B/C zit yon sinyali → SL daha sıkı trail moduna alındı (kâr koruma)`;
+      }
+    }
+
     // --- Trailing stop ilerletme (zaten aktifse) ---
     // TP1 hit olmus ve trailing aktif. Karda ilerledikce SL'yi yukari (long) /
     // asagi (short) tasi. Zararda ASLA trailing yapilmaz — tp1Hit olmadan blok
@@ -284,7 +459,8 @@ export function evaluateSignalOutcome(signal, currentBar) {
     if ((signal.trailingStopActive || updates.trailingStopActive) && (signal.tp1Hit || updates.tp1Hit)) {
       const currentTrail = updates.trailingStopLevel ?? signal.trailingStopLevel ?? signal.entry;
       const tp1Distance = Math.abs(signal.tp1 - signal.entry);
-      const lockDistance = tp1Distance * 0.5; // TP1 mesafesinin yarisi kadar kilitle
+      const aggressive = signal.aggressiveTrailActive || updates.aggressiveTrailActive;
+      const lockDistance = tp1Distance * (aggressive ? 0.25 : 0.5); // aggressive: 0.25, normal: 0.5
       if (dir === 'long') {
         const newTrail = high - lockDistance;
         if (newTrail > currentTrail) {
@@ -314,6 +490,7 @@ export function isTerminal(status, signal = null) {
   const alwaysTerminal = [
     'sl_hit', 'sl_hit_high_mfe', 'tp3_hit', 'invalid_data',
     'superseded', 'superseded_by_tf', 'superseded_by_cleanup', 'superseded_by_cap',
+    'superseded_by_reverse',
     'manual_close', 'trailing_stop_exit', 'entry_expired', 'entry_missed_tp',
   ];
   if (alwaysTerminal.includes(status)) return true;
@@ -322,12 +499,25 @@ export function isTerminal(status, signal = null) {
   return false;
 }
 
+function isSmartEntrySignal(signal) {
+  return !!(signal?.entrySource && signal.entrySource !== 'quote_price' && signal.entrySource !== 'lastbar_close');
+}
+
+function hasNoExecutedEntry(signal) {
+  return isSmartEntrySignal(signal) && !signal.entryHit
+    && !signal.tp1Hit && !signal.tp2Hit && !signal.tp3Hit && !signal.slHit;
+}
+
 /**
  * Compute the actual R:R for a resolved signal.
  */
 function computeActualRR(signal) {
-  if (!signal.entry || !signal.sl) return null;
-  const risk = Math.abs(signal.entry - signal.sl);
+  if (!signal.entry) return null;
+  if (hasNoExecutedEntry(signal)) return null;
+
+  const riskSl = signal.slOriginal ?? signal.initialSl ?? signal.originalSl ?? signal.sl;
+  if (!riskSl) return null;
+  const risk = Math.abs(signal.entry - riskSl);
   if (risk === 0) return null;
 
   let reward = 0;
@@ -357,10 +547,28 @@ export function buildArchiveRecord(signal) {
   const holdingMs = new Date(resolvedAt) - new Date(signal.createdAt);
   const holdingMinutes = Math.round(holdingMs / 60000);
   const actualRR = computeActualRR(signal);
-  const win = !!signal.tp1Hit;
+  // win uc-durumlu: true (TP/trailing), false (sl_hit), null (neutral —
+  // entry_expired, superseded_*, sl_hit_high_mfe, manual_close, invalid_data).
+  // anomaly-detector `s.win != null` filtresiyle neutral'lari dislar; boylece
+  // entry-not-filled veya yon-dogru-TP-yetersiz sinyaller PF'yi zehirlemez.
+  const _cls = classifyOutcome(signal.status);
+  const win = _cls === 'win' ? true : (_cls === 'loss' ? false : null);
+
+  // Invariant: entryHit=false iken hicbir SL/TP "hit" flag'i true olamaz —
+  // entry dolmadan pozisyon yok, dolayisiyla SL/TP fiilen tetiklenemez.
+  // FSLR-tipi gap-up senaryosunda fiyat tp1 seviyesini gecse de bu pre-entry
+  // bir gozlemdir; tp1Hit flag'i sadece fiilen acik pozisyon icin anlamlidir.
+  const flagOverrides = {};
+  if (!signal.entryHit) {
+    if (signal.tp1Hit) flagOverrides.tp1Hit = false;
+    if (signal.tp2Hit) flagOverrides.tp2Hit = false;
+    if (signal.tp3Hit) flagOverrides.tp3Hit = false;
+    if (signal.slHit) flagOverrides.slHit = false;
+  }
 
   return {
     ...signal,
+    ...flagOverrides,
     resolvedAt,
     outcome: signal.status,
     actualRR,
@@ -394,6 +602,16 @@ export async function checkAllOpenSignals(options = {}) {
   const signals = getOpenSignals();
   if (signals.length === 0) return { checked: 0, resolved: 0, errors: 0 };
 
+  // Stale detection: 12h+ kontrol edilmemis acik sinyaller polling kaybi
+  // belirtisidir. Operator gorunurlugu icin warning at.
+  const STALE_THRESHOLD_MS = 12 * 3600 * 1000;
+  const nowTs = Date.now();
+  const stale = signals.filter(s => s.lastCheckedAt && (nowTs - new Date(s.lastCheckedAt).getTime() > STALE_THRESHOLD_MS));
+  if (stale.length > 0) {
+    const sample = stale.slice(0, 5).map(s => `${s.symbol}/${s.timeframe} (${((nowTs - new Date(s.lastCheckedAt).getTime())/3600000).toFixed(0)}h)`).join(', ');
+    console.warn(`[Outcome] STALE WARNING: ${stale.length} acik sinyal 12h+ kontrol edilmemis. Ornek: ${sample}`);
+  }
+
   // Acquire chart lock with 30s timeout — if a scan is running, skip this cycle
   try {
     await acquireScanLock('outcome-checker', 30000);
@@ -424,6 +642,13 @@ async function _checkAllOpenSignalsInner(signals) {
 
   for (const [symbol, symbolSignals] of Object.entries(bySymbol)) {
     try {
+      // Market-hours gate: kapali piyasalarda (hafta sonu hisse, BIST gece, vb.)
+      // outcome-checker stale (donmus) Cuma kapanis barlarini yeniden islemesin.
+      // 2026-05-03: CRCL hafta sonu trailing_stop_exit bug'i icin eklendi.
+      const cat = symbolSignals[0]?.category || inferCategory(symbol);
+      if (cat && cat !== 'kripto' && !isMarketTradeable(cat)) {
+        continue;
+      }
       // Switch chart to this symbol (borsa prefix'i ile cozumle)
       const chartSymbol = symbol.includes(':') ? symbol : resolveSymbol(symbol, inferCategory(symbol));
       const setRes = await bridge.setSymbol(chartSymbol);
@@ -437,20 +662,30 @@ async function _checkAllOpenSignalsInner(signals) {
       for (const sig of symbolSignals) {
         try {
           // Validate signal has required data
-          if (!sig.entry || sig.entry <= 0 || !sig.sl) {
-            const updates = { status: 'invalid_data', lastCheckedAt: new Date().toISOString() };
+          const levelError = validateSignalPriceLevels(signalForLevelValidation(sig));
+          if (levelError) {
+            const warning = `[InvalidLevels] ${levelError}`;
+            const updates = {
+              status: 'invalid_data',
+              lastCheckedAt: new Date().toISOString(),
+              warnings: appendWarning(sig, warning),
+            };
             const updated = updateSignal(sig.id, updates);
             if (updated) {
               const archiveRecord = buildArchiveRecord({ ...updated, win: false });
               const yearMonth = new Date().toISOString().slice(0, 7);
               appendToArchive(yearMonth, archiveRecord);
-              try {
-                recordLadderOutcome(sig.symbol, sig.grade, {
-                  status: updated.status,
-                  resolvedAt: archiveRecord.resolvedAt || updates.lastCheckedAt,
-                  signalId: sig.id,
-                });
-              } catch (e) { console.log(`[Outcome] ladder.recordOutcome hatasi (${sig.id}): ${e.message}`); }
+              if (isLadderEligibleTF(sig.timeframe)) {
+                try {
+                  recordLadderOutcome(sig.symbol, sig.grade, {
+                    status: updated.status,
+                    resolvedAt: archiveRecord.resolvedAt || updates.lastCheckedAt,
+                    signalId: sig.id,
+                  });
+                } catch (e) { console.log(`[Outcome] ladder.recordOutcome hatasi (${sig.id}): ${e.message}`); }
+              } else {
+                console.log(`[Outcome] ${sig.symbol} TF${sig.timeframe} ladder'a yazilmadi (1H league'dan haric)`);
+              }
               removeOpenSignal(sig.id);
               resolved++;
             }
@@ -482,12 +717,25 @@ async function _checkAllOpenSignalsInner(signals) {
 
           const lastClose = bars[bars.length - 1].close;
 
-          // Sanity check: son fiyat entry'den %50+ uzaksa yanlis sembol/veri
+          // 2026-05-04: SUIUSDC tp3_hit hatasi sonrasi sıkılaştırıldı (50% → 10%).
+          // Ek olarak crypto sinyallerinde Binance live feed ile çapraz doğrulama:
+          // TV bar'ı Binance'den >%5 sapıyorsa kontamine veri, sinyali atla.
           const priceDeviation = Math.abs(lastClose - sig.entry) / sig.entry;
-          if (priceDeviation > 0.5) {
+          if (priceDeviation > 0.10) {
             console.log(`[Outcome] ${symbol}: fiyat sapmasi cok yuksek (entry=${sig.entry}, current=${lastClose}, sapma=%${(priceDeviation * 100).toFixed(1)}) — atlaniyor`);
             errors++;
             continue;
+          }
+          if ((sig.category === 'kripto' || sig.category === 'crypto')) {
+            const livePx = getLivePrice(sig.symbol);
+            if (livePx && Number.isFinite(livePx) && livePx > 0) {
+              const tvVsBinance = Math.abs(lastClose - livePx) / livePx;
+              if (tvVsBinance > 0.05) {
+                console.log(`[Outcome] ${symbol}: TV bar (${lastClose}) ile Binance (${livePx}) arasında %${(tvVsBinance*100).toFixed(1)} sapma — kontamine veri, atlandi`);
+                errors++;
+                continue;
+              }
+            }
           }
 
           // Barlari SIRAYLA degerlendir — bir syntetic barda birlestirmek
@@ -530,6 +778,14 @@ async function _checkAllOpenSignalsInner(signals) {
                 continue;
               } catch (e) {
                 console.log(`[Outcome] ${sig.symbol} 1m tie-break hatasi: ${e.message} — 5m bar ile SL-onceligi fallback`);
+                // 1m tie-break basarisiz — sonuc pesimist (SL-once) cikabilir.
+                // Ogrenme zehirlenmesin diye dataContaminated isaretle; readAllArchives
+                // varsayilan olarak bu kayitlari filtreler.
+                const contam = updateSignal(updated.id, {
+                  dataContaminated: true,
+                  contaminationReason: `tie_break_1m_failed: ${e.message}`,
+                });
+                if (contam) updated = contam;
                 // fall through: eski 5m davranis
               }
             }
@@ -549,13 +805,17 @@ async function _checkAllOpenSignalsInner(signals) {
             const archiveRecord = buildArchiveRecord(updated);
             const yearMonth = new Date().toISOString().slice(0, 7);
             appendToArchive(yearMonth, archiveRecord);
-            try {
-              recordLadderOutcome(sig.symbol, sig.grade, {
-                status: updated.status,
-                resolvedAt: archiveRecord.resolvedAt || updated.lastCheckedAt,
-                signalId: sig.id,
-              });
-            } catch (e) { console.log(`[Outcome] ladder.recordOutcome hatasi (${sig.id}): ${e.message}`); }
+            if (isLadderEligibleTF(sig.timeframe)) {
+              try {
+                recordLadderOutcome(sig.symbol, sig.grade, {
+                  status: updated.status,
+                  resolvedAt: archiveRecord.resolvedAt || updated.lastCheckedAt,
+                  signalId: sig.id,
+                });
+              } catch (e) { console.log(`[Outcome] ladder.recordOutcome hatasi (${sig.id}): ${e.message}`); }
+            } else {
+              console.log(`[Outcome] ${sig.symbol} TF${sig.timeframe} ladder'a yazilmadi (1H league'dan haric)`);
+            }
             removeOpenSignal(sig.id);
             resolved++;
             resolvedSignals.push(archiveRecord);
