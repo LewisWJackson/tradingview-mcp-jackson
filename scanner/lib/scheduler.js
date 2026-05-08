@@ -35,7 +35,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const NOTIFY_SCRIPT = path.resolve(__dirname, '../../scripts/notify-signal.sh');
 
 /** Otomatik tarama donguleri arasi bekleme suresi. */
-const SCAN_INTERVAL_MS = 60 * 60 * 1000; // 1 saat
+const SCAN_INTERVAL_MS = 3 * 60 * 60 * 1000; // 3 saat (2026-05-02: 1H sinyal kapatildi, dongu seyrekleştirildi)
 
 /**
  * Fire-and-forget: A veya B kalite sinyal icin `scripts/notify-signal.sh`
@@ -65,10 +65,12 @@ function dispatchSignalNotify(signal) {
  * executor ayaga kalkinca otomatik drain edilir (bkz. lib/okx-dispatcher.js).
  */
 function dispatchToOkxExecutor(signal) {
-  if (signal.category !== 'kripto') return;
+  if (signal.category !== 'kripto' && signal.category !== 'crypto') return;
   if (!['A', 'B', 'C'].includes(signal.grade)) return;
-  // Ladder filtresi: yalnizca league='real' sinyaller executor'a gider.
-  if (signal.league && signal.league !== 'real') return;
+  // 2026-05-03: routing/sizing artik executor tarafinda league'e gore yapiliyor.
+  // 'real' → auto, 'ara' → awaiting_approval, 'virtual' → reject. Burada virtual
+  // disindakileri serbest birakiyoruz.
+  if (signal.league === 'virtual') return;
   // Faz 2 wrapper shadow mode: dispatch yok (operator /api/wrapper/mode ile live'a geçer)
   if (!isWrapperLive()) {
     const m = getWrapperMode();
@@ -81,6 +83,7 @@ function dispatchToOkxExecutor(signal) {
     tf: String(signal.timeframe ?? ''),
     side: signal.direction === 'short' ? 'short' : 'long',
     quality: signal.grade,
+    league: signal.league || undefined,
     entry: Number(signal.entry),
     sl: Number(signal.sl),
     tp1: signal.tp1 != null ? Number(signal.tp1) : undefined,
@@ -88,6 +91,7 @@ function dispatchToOkxExecutor(signal) {
     tp3: signal.tp3 != null ? Number(signal.tp3) : undefined,
     reason: {
       id: signal.id,
+      league: signal.league || null, // approve flow'unda reason_json'dan okunabilir
       rr: signal.rr,
       indicators: signal.indicators,
       reasoning: signal.reasoning,
@@ -413,7 +417,7 @@ class ScanScheduler {
       marketStatus: marketStatusMap(),
       usMarketOpen: this.isUSMarketHours(),
       bistMarketOpen: this.isBISTMarketHours(),
-      nextCycleScan: this.running ? '~1 saat aralikla acik piyasalar' : 'Durduruldu',
+      nextCycleScan: this.running ? '~3 saat aralikla acik piyasalar' : 'Durduruldu',
       recentScans: this.scanHistory.slice(0, 10),
     };
   }
