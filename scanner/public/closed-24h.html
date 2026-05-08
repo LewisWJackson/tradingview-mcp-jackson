@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<title>Son 24 Saatte Kapanan Sinyaller</title>
+<style>
+  :root {
+    --bg: #0d1117; --bg2: #161b22; --border: #30363d;
+    --text: #c9d1d9; --text2: #8b949e; --text3: #6e7681;
+    --green: #3fb950; --red: #f85149; --yellow: #d29922; --blue: #58a6ff; --orange: #ff9800;
+  }
+  body { background: var(--bg); color: var(--text); font-family: -apple-system, system-ui, sans-serif; margin: 0; padding: 16px; }
+  .toolbar { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
+  .btn { background: transparent; color: var(--text); border: 1px solid var(--border); padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 12px; text-decoration: none; }
+  .btn:hover { border-color: var(--blue); }
+  .summary { display: flex; gap: 16px; padding: 8px 12px; background: var(--bg2); border: 1px solid var(--border); border-radius: 6px; margin-bottom: 12px; flex-wrap: wrap; }
+  .stat { display: flex; flex-direction: column; min-width: 60px; }
+  .stat .lbl { font-size: 10px; color: var(--text2); text-transform: uppercase; letter-spacing: 0.5px; }
+  .stat .val { font-size: 18px; font-weight: bold; }
+  .filter-bar { display: flex; gap: 6px; margin-bottom: 12px; flex-wrap: wrap; }
+  .filter-btn { background: transparent; color: var(--text2); border: 1px solid var(--border); padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 11px; }
+  .filter-btn.active { background: var(--blue); color: #fff; border-color: var(--blue); }
+  .card { background: var(--bg2); border: 1px solid var(--border); border-radius: 6px; padding: 12px; margin-bottom: 10px; cursor: pointer; transition: border-color 0.15s; }
+  .card:hover { border-color: var(--blue); }
+  .card-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+  .grade-A { color: var(--green); font-weight: bold; }
+  .grade-B { color: var(--blue); font-weight: bold; }
+  .grade-C { color: var(--yellow); font-weight: bold; }
+  .grade-BEKLE { color: var(--text2); }
+  .dir-long { color: var(--green); }
+  .dir-short { color: var(--red); }
+  .outcome-win { color: var(--green); font-weight: bold; }
+  .outcome-loss { color: var(--red); font-weight: bold; }
+  .outcome-neutral { color: var(--text2); }
+  .levels { color: var(--text2); font-size: 11px; margin: 4px 0; }
+  .basis { color: var(--text3); font-size: 10px; line-height: 1.4; margin-top: 4px; }
+  .meta { color: var(--text2); font-size: 10px; margin-top: 4px; }
+  .expand { display: none; margin-top: 10px; border-top: 1px dashed var(--border); padding-top: 10px; }
+  .card.open .expand { display: block; }
+  .reasoning-row { font-size: 11px; padding: 2px 0; line-height: 1.4; }
+  .vote-row { font-size: 11px; padding: 2px 0; }
+  .section-h { font-size: 11px; color: var(--blue); text-transform: uppercase; letter-spacing: 0.5px; margin: 8px 0 4px; }
+  .empty { text-align: center; padding: 40px; color: var(--text2); }
+</style>
+</head>
+<body>
+<div class="toolbar">
+  <a href="/" class="btn">&larr; Ana Sayfa</a>
+  <a href="/signals.html" class="btn">Acik Sinyaller</a>
+  <button class="btn" onclick="load()" style="border-color: var(--green); color: var(--green);">Yenile</button>
+  <span style="color: var(--text2); font-size: 11px; margin-left: auto;" id="genAt"></span>
+</div>
+<h2 style="margin: 0 0 12px; color: var(--blue);">Son 24 Saatte Kapanan Sinyaller</h2>
+<div class="summary" id="summary"></div>
+<div class="filter-bar" id="filterBar">
+  <button class="filter-btn active" data-f="all">Tumu</button>
+  <button class="filter-btn" data-f="win">Kazanc</button>
+  <button class="filter-btn" data-f="loss">Kayip</button>
+  <button class="filter-btn" data-f="neutral">Notr</button>
+</div>
+<div id="cards"></div>
+
+<script>
+function el(t,a,c){var n=document.createElement(t);if(a)for(var k in a){if(k==='className')n.className=a[k];else if(k==='textContent')n.textContent=a[k];else if(k==='style'&&typeof a[k]==='object')Object.assign(n.style,a[k]);else if(k==='onclick')n.onclick=a[k];else n.setAttribute(k,a[k]);}if(c){var arr=Array.isArray(c)?c:[c];for(var i=0;i<arr.length;i++){if(typeof arr[i]==='string')n.appendChild(document.createTextNode(arr[i]));else if(arr[i])n.appendChild(arr[i]);}}return n;}
+function clear(node){while(node.firstChild)node.removeChild(node.firstChild);}
+function fmt(v){return v==null||!isFinite(v)?'-':Number(v).toFixed(4).replace(/\.?0+$/,'');}
+function fmtPnl(v){return v==null||!isFinite(v)?'?':(v>=0?'+':'')+Number(v).toFixed(2)+'R';}
+
+var allSignals = [];
+var currentFilter = 'all';
+
+function classifyOutcome(s) {
+  var o = s.outcome || s.status;
+  if (o === 'tp1_hit' || o === 'tp2_hit' || o === 'tp3_hit' || o === 'trailing_stop_exit') return 'win';
+  if (o === 'sl_hit') return 'loss';
+  return 'neutral';
+}
+
+function load() {
+  fetch('/api/signals/closed-24h?hours=24').then(function(r){return r.json();}).then(function(d){
+    allSignals = d.signals || [];
+    document.getElementById('genAt').textContent = 'Guncel: ' + new Date(d.generatedAt || Date.now()).toLocaleString('tr-TR');
+    renderSummary(d.summary || {});
+    render();
+  }).catch(function(e){
+    var host = document.getElementById('cards');
+    clear(host);
+    host.appendChild(el('div', { className: 'empty', textContent: 'Yuklenemedi: ' + e.message }));
+  });
+}
+
+function renderSummary(s) {
+  var host = document.getElementById('summary');
+  clear(host);
+  var total = s.total || 0;
+  var wins = s.wins || 0;
+  var losses = s.losses || 0;
+  var neutral = s.neutral || 0;
+  var wr = (wins + losses) > 0 ? Math.round(wins * 100 / (wins + losses)) : null;
+  var stats = [
+    { lbl: 'Toplam', val: total, color: 'var(--text)' },
+    { lbl: 'Kazanc', val: wins, color: 'var(--green)' },
+    { lbl: 'Kayip', val: losses, color: 'var(--red)' },
+    { lbl: 'Notr/Missed', val: neutral, color: 'var(--text2)' },
+    { lbl: 'WR', val: wr != null ? '%' + wr : '-', color: wr != null && wr >= 50 ? 'var(--green)' : 'var(--red)' },
+  ];
+  stats.forEach(function(st){
+    var box = el('div', { className: 'stat' });
+    box.appendChild(el('span', { className: 'lbl', textContent: st.lbl }));
+    box.appendChild(el('span', { className: 'val', textContent: String(st.val), style: { color: st.color } }));
+    host.appendChild(box);
+  });
+}
+
+function render() {
+  var host = document.getElementById('cards');
+  clear(host);
+  var list = allSignals.filter(function(s){
+    if (currentFilter === 'all') return true;
+    return classifyOutcome(s) === currentFilter;
+  });
+  if (!list.length) {
+    host.appendChild(el('div', { className: 'empty', textContent: 'Bu filtreye uyan sinyal yok.' }));
+    return;
+  }
+  list.forEach(function(s){ host.appendChild(renderCard(s)); });
+}
+
+function renderCard(s) {
+  var card = el('div', { className: 'card' });
+  card.onclick = function(){ card.classList.toggle('open'); };
+
+  var head = el('div', { className: 'card-head' });
+  var left = el('div');
+  left.appendChild(el('span', { className: 'grade-' + (s.grade || 'B'), textContent: s.grade || '?' }));
+  left.appendChild(el('span', { textContent: ' ' }));
+  left.appendChild(el('span', { className: 'dir-' + (s.direction || ''), textContent: (s.direction || '').toUpperCase() }));
+  left.appendChild(el('span', { textContent: ' ' + (s.symbol || '?') + ' ' + (s.timeframe || '') + ' | Entry: ' + fmt(s.entry), style: { color: 'var(--text2)' } }));
+  head.appendChild(left);
+
+  var cls = classifyOutcome(s);
+  var oc = s.outcome || s.status;
+  var hitPx = s.tp3HitPrice || s.tp2HitPrice || s.tp1HitPrice || s.slHitPrice || null;
+  var statusText = oc + (hitPx ? ' @ ' + fmt(hitPx) : '');
+  if (s.actualRR != null) statusText += ' | ' + fmtPnl(s.actualRR);
+  head.appendChild(el('span', { className: 'outcome-' + cls, textContent: statusText }));
+  card.appendChild(head);
+
+  var lv = el('div', { className: 'levels' });
+  var parts = [];
+  if (s.sl != null) parts.push('SL ' + fmt(s.sl) + (s.slHit ? ' x' : '') + (s.breakevenAt ? ' [BE]' : ''));
+  if (s.tp1 != null) parts.push('TP1 ' + fmt(s.tp1) + (s.tp1Hit ? ' v' : ''));
+  if (s.tp2 != null) parts.push('TP2 ' + fmt(s.tp2) + (s.tp2Hit ? ' v' : ''));
+  if (s.tp3 != null) parts.push('TP3 ' + fmt(s.tp3) + (s.tp3Hit ? ' v' : ''));
+  lv.textContent = parts.join(' | ');
+  card.appendChild(lv);
+
+  var bp = [];
+  if (s.slReason) bp.push('SL <- ' + s.slReason);
+  if (s.tp1Source) bp.push('TP1 <- ' + s.tp1Source);
+  if (s.tp2Source) bp.push('TP2 <- ' + s.tp2Source);
+  if (s.tp3Source) bp.push('TP3 <- ' + s.tp3Source);
+  if (bp.length) card.appendChild(el('div', { className: 'basis', textContent: bp.join('  -  ') }));
+
+  var meta = el('div', { className: 'meta' });
+  var resAt = s.resolvedAt ? new Date(s.resolvedAt).toLocaleString('tr-TR') : '-';
+  var creAt = s.createdAt ? new Date(s.createdAt).toLocaleString('tr-TR') : '-';
+  meta.textContent = 'Acilis: ' + creAt + ' | Kapanis: ' + resAt + (s.holdingPeriodMinutes ? ' | Sure: ' + s.holdingPeriodMinutes + ' dk' : '') + (s.league ? ' | Lig: ' + s.league : '') + (s.entrySource ? ' | Entry kaynak: ' + s.entrySource : '');
+  card.appendChild(meta);
+
+  var ex = el('div', { className: 'expand' });
+  if (s.reasoning && s.reasoning.length) {
+    ex.appendChild(el('div', { className: 'section-h', textContent: 'Sinyal Gerekceleri (' + s.reasoning.length + ')' }));
+    s.reasoning.forEach(function(r){ ex.appendChild(el('div', { className: 'reasoning-row', textContent: '- ' + r })); });
+  }
+  if (s.tally || (s.voteBreakdown && s.voteBreakdown.length)) {
+    var head2 = 'Oylama';
+    if (s.tally) head2 += ' - ' + (s.tally.direction || '?').toUpperCase() + ' kanaat ' + (s.tally.conviction != null ? s.tally.conviction : '?') + ' / uyum %' + (s.tally.agreement != null ? s.tally.agreement : '?');
+    ex.appendChild(el('div', { className: 'section-h', textContent: head2 }));
+    if (s.tally) ex.appendChild(el('div', { className: 'reasoning-row', textContent: 'Long: ' + (s.tally.longScore != null ? s.tally.longScore : '?') + ' | Short: ' + (s.tally.shortScore != null ? s.tally.shortScore : '?') + ' | Oy: ' + (s.tally.voterCount != null ? s.tally.voterCount : '?'), style: { color: 'var(--text2)' } }));
+    (s.voteBreakdown || []).forEach(function(v){
+      var col = v.direction === 'long' ? 'var(--green)' : v.direction === 'short' ? 'var(--red)' : 'var(--text2)';
+      ex.appendChild(el('div', { className: 'vote-row', textContent: '- ' + (v.source || '?') + ' (' + (v.direction || 'amplifier') + ', w=' + (v.weight != null ? v.weight : '?') + ')', style: { color: col } }));
+    });
+  }
+  if (s.strategicCandidates && s.strategicCandidates.length) {
+    ex.appendChild(el('div', { className: 'section-h', textContent: 'Stratejik Hedef Adaylari' }));
+    s.strategicCandidates.slice(0, 6).forEach(function(c){
+      ex.appendChild(el('div', { className: 'reasoning-row', textContent: '- ' + fmt(c.price) + ' | ' + (c.distR || '?') + 'R | conf ' + (c.confluence || 1) + ' | ' + (c.label || ''), style: { color: 'var(--text2)' } }));
+    });
+  }
+  if (s.warnings && s.warnings.length) {
+    ex.appendChild(el('div', { className: 'section-h', textContent: 'Uyarilar', style: { color: 'var(--orange)' } }));
+    s.warnings.forEach(function(w){ ex.appendChild(el('div', { className: 'reasoning-row', textContent: '- ' + w, style: { color: 'var(--yellow)' } })); });
+  }
+  if (s.faultyTrade) {
+    ex.appendChild(el('div', { className: 'section-h', textContent: 'Hatali Trade', style: { color: 'var(--red)' } }));
+    if (s.faultyTradeReason) ex.appendChild(el('div', { className: 'reasoning-row', textContent: s.faultyTradeReason, style: { color: 'var(--red)' } }));
+  }
+  card.appendChild(ex);
+  return card;
+}
+
+document.querySelectorAll('#filterBar .filter-btn').forEach(function(b){
+  b.addEventListener('click', function(){
+    document.querySelectorAll('#filterBar .filter-btn').forEach(function(x){ x.classList.remove('active'); });
+    b.classList.add('active');
+    currentFilter = b.dataset.f;
+    render();
+  });
+});
+
+load();
+setInterval(load, 60000);
+</script>
+</body>
+</html>

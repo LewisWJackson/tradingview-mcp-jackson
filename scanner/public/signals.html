@@ -331,6 +331,7 @@
   </select>
 
   <button class="btn btn-refresh" onclick="loadSignals()">Yenile</button>
+  <button class="btn btn-refresh" onclick="window.location.href='/closed-24h.html'" style="background: #6c757d; color: #fff;">Son 24s Kapanan</button>
   <button class="btn btn-refresh" onclick="cleanupDuplicates()" style="background: #ff9800; color: #000;">Mukerrer Temizle</button>
 
   <div class="auto-refresh-indicator">
@@ -1068,6 +1069,73 @@ function showDetail(s) {
         }));
       });
     }
+  }
+
+  // TP/SL kaynak (dayanak) — 2026-05-04
+  var basisRows = [];
+  if (s.slReason) basisRows.push(['SL Dayanak', s.slReason]);
+  else if (s.slSource) basisRows.push(['SL Kaynak', s.slSource]);
+  if (s.tp1Source) basisRows.push(['TP1 Dayanak', s.tp1Source]);
+  if (s.tp2Source) basisRows.push(['TP2 Dayanak', s.tp2Source]);
+  if (s.tp3Source) basisRows.push(['TP3 Dayanak', s.tp3Source]);
+  if (basisRows.length) {
+    content.appendChild(el('div', { textContent: 'TP / SL Dayanak', style: { marginTop: '12px', fontSize: '11px', color: 'var(--text2)', textTransform: 'uppercase', letterSpacing: '0.5px' } }));
+    basisRows.forEach(function(r) {
+      content.appendChild(el('div', { className: 'detail-row' }, [
+        el('span', { className: 'dlabel', textContent: r[0] }),
+        el('span', { textContent: r[1], style: { fontSize: '11px', color: 'var(--text)' } }),
+      ]));
+    });
+  }
+  if (s.strategicCandidates && s.strategicCandidates.length) {
+    content.appendChild(el('div', { textContent: 'Stratejik Hedef Adaylari', style: { marginTop: '8px', fontSize: '10px', color: 'var(--text2)' } }));
+    s.strategicCandidates.slice(0, 6).forEach(function(c) {
+      content.appendChild(el('div', {
+        textContent: '• ' + (c.price != null ? Number(c.price).toFixed(4) : '-') + ' | ' + (c.distR != null ? c.distR + 'R' : '?') + ' | conf ' + (c.confluence || 1) + ' | ' + (c.label || ''),
+        style: { fontSize: '10px', color: 'var(--text2)', padding: '1px 0' },
+      }));
+    });
+  }
+
+  // Reasoning (sinyal acilma gerekceleri)
+  if (s.reasoning && s.reasoning.length > 0) {
+    var rsHeader = el('div', {
+      textContent: 'Sinyal Gerekceleri (' + s.reasoning.length + ') — tikla ac/kapat',
+      style: { marginTop: '12px', fontSize: '11px', color: 'var(--blue)', textTransform: 'uppercase', letterSpacing: '0.5px', cursor: 'pointer', userSelect: 'none' },
+    });
+    var rsBox = el('div', { style: { display: 'none', marginTop: '4px' } });
+    s.reasoning.forEach(function(r) {
+      rsBox.appendChild(el('div', {
+        textContent: '• ' + r,
+        style: { fontSize: '11px', color: 'var(--text)', padding: '2px 0', lineHeight: '1.4' },
+      }));
+    });
+    rsHeader.onclick = function() { rsBox.style.display = rsBox.style.display === 'none' ? 'block' : 'none'; };
+    content.appendChild(rsHeader);
+    content.appendChild(rsBox);
+  }
+
+  // Vote breakdown + tally
+  if ((s.voteBreakdown && s.voteBreakdown.length) || s.tally) {
+    var vbHeader = el('div', {
+      textContent: 'Oylama' + (s.tally ? ' — ' + (s.tally.direction || '?').toUpperCase() + ' kanaat ' + (s.tally.conviction != null ? s.tally.conviction : '?') + ' / uyum %' + (s.tally.agreement != null ? s.tally.agreement : '?') : '') + ' — tikla ac/kapat',
+      style: { marginTop: '10px', fontSize: '11px', color: 'var(--blue)', textTransform: 'uppercase', letterSpacing: '0.5px', cursor: 'pointer', userSelect: 'none' },
+    });
+    var vbBox = el('div', { style: { display: 'none', marginTop: '4px' } });
+    if (s.tally) {
+      vbBox.appendChild(el('div', {
+        textContent: 'Long: ' + (s.tally.longScore != null ? s.tally.longScore : '?') + ' | Short: ' + (s.tally.shortScore != null ? s.tally.shortScore : '?') + ' | Oy sayisi: ' + (s.tally.voterCount != null ? s.tally.voterCount : '?'),
+        style: { fontSize: '11px', color: 'var(--text2)', padding: '3px 0 6px' },
+      }));
+    }
+    (s.voteBreakdown || []).forEach(function(v) {
+      var dirCol = v.direction === 'long' ? 'var(--green)' : v.direction === 'short' ? 'var(--red)' : 'var(--text2)';
+      var line = (v.source || '?') + ' (' + (v.direction || 'amplifier') + ', w=' + (v.weight != null ? v.weight : '?') + ')';
+      vbBox.appendChild(el('div', { textContent: '• ' + line, style: { fontSize: '11px', color: dirCol, padding: '2px 0' } }));
+    });
+    vbHeader.onclick = function() { vbBox.style.display = vbBox.style.display === 'none' ? 'block' : 'none'; };
+    content.appendChild(vbHeader);
+    content.appendChild(vbBox);
   }
 
   // Warnings

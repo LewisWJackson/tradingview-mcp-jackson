@@ -77,7 +77,9 @@ function broadcastWS(data) {
 
 function findFibBasisForBarrierWarning(symbol, warning) {
   if (!symbol || typeof warning !== 'string') return null;
-  if (!warning.includes('[HTF-Barrier]') || !warning.includes('htf_fib') || warning.includes('Fib dayanak:')) return null;
+  if (!warning.includes('[HTF-Barrier]') || warning.includes('Fib dayanak:')) return null;
+  // Bariyer kaynagi smc_*, htf_fib_* veya kombinasyon olabilir; lookup hepsini kontrol etmeli.
+  if (!warning.includes('htf_fib') && !warning.includes('smc_')) return null;
   const match = warning.match(/\((1[DW]) @ ([0-9]+(?:\.[0-9]+)?)/);
   if (!match) return null;
   const [, tf, rawPrice] = match;
@@ -86,27 +88,46 @@ function findFibBasisForBarrierWarning(symbol, warning) {
 
   const cache = loadFibCache(symbol);
   const tfData = cache?.timeframes?.[tf];
-  const fib = tfData?.fib;
-  if (!fib) return null;
+  if (!tfData) return null;
+  const fib = tfData.fib || null;
 
-  const tolerance = Math.max(Math.abs(barrierPrice) * 0.00005, 0.0001);
+  // smcLines (yazilan price) tipik olarak 4 ondalikta yuvarlanmis (orn. 40.7),
+  // bariyer fiyati ise tam (40.7000). Tolerans hem fib (yuksek presizyon) hem smc
+  // (yuvarlanmis) eslesmeyi yakalamali.
+  const tolerance = Math.max(Math.abs(barrierPrice) * 0.0005, 0.001);
   const details = [];
-  const collect = (items, kind) => {
+
+  const collectFib = (items, kind) => {
     for (const item of items || []) {
       if (!item || typeof item.price !== 'number') continue;
       if (Math.abs(item.price - barrierPrice) > tolerance) continue;
       details.push({
-        tf,
-        kind,
+        tf, kind,
         level: item.level,
         price: item.price,
-        direction: fib.direction || null,
-        swing: fib.swing || null,
+        direction: fib?.direction || null,
+        swing: fib?.swing || null,
       });
     }
   };
-  collect(fib.retracement, 'retracement');
-  collect(fib.extensions || fib.extension, 'extension');
+  if (fib) {
+    collectFib(fib.retracement, 'retracement');
+    collectFib(fib.extensions || fib.extension, 'extension');
+  }
+
+  // SMC indikatoru tarafindan cizilen yatay S/R cizgileri — barrier-detector
+  // bunlari smc_1D / smc_1W kaynagi olarak rapor eder. Cache yapisi:
+  //   tfData.smcLines: number[]                 (legacy: fiyat listesi)
+  //   tfData.smc_lines / tfData.lines: number[] | object[]
+  const smcRaw = tfData.smcLines || tfData.smc_lines || tfData.lines || [];
+  for (const lv of smcRaw) {
+    const price = typeof lv === 'number' ? lv : (lv && typeof lv.price === 'number' ? lv.price : null);
+    if (price == null) continue;
+    if (Math.abs(price - barrierPrice) > tolerance) continue;
+    details.push({ tf, kind: 'smc_line', price });
+  }
+
+  if (!details.length) return null;
   return formatBarrierFibBasis({ fibDetails: details });
 }
 
@@ -114,9 +135,11 @@ function enrichDashboardWarnings(signal) {
   if (!Array.isArray(signal?.warnings)) return signal?.warnings || [];
   return signal.warnings.map(w => {
     const basis = findFibBasisForBarrierWarning(signal.symbol, w);
-    if (basis) return `${w} | Fib dayanak: ${basis}`;
-    if (typeof w === 'string' && w.includes('[HTF-Barrier]') && w.includes('htf_fib')) {
-      return `${w} | Fib dayanak: mevcut HTF fib cache icinde bu bariyer seviyesi bulunamadi; sinyal kaydi stale olabilir, rescan/migration gerekli.`;
+    if (basis) return `${w} | Bariyer dayanak: ${basis}`;
+    // Sadece SMC veya fib kaynaginin hicbir cache kaydiyla eslesmedigi durumda stale uyarisi
+    if (typeof w === 'string' && w.includes('[HTF-Barrier]') &&
+        (w.includes('htf_fib') || w.includes('smc_'))) {
+      return `${w} | Bariyer dayanak: HTF cache icinde bu seviye bulunamadi (fib retracement/extension veya smcLines hicbiriyle eslesmedi); sinyal kaydi stale olabilir, rescan/migration gerekli.`;
     }
     return w;
   });
@@ -1054,6 +1077,17 @@ app.get('/api/signals/open-dashboard', (req, res) => {
         createdAt: s.createdAt,
         lastCheckedAt: s.lastCheckedAt,
         warnings: enrichDashboardWarnings(s),
+        // Reasoning ve oylama (sinyal kart detayi icin) — 2026-05-04
+        reasoning: Array.isArray(s.reasoning) ? s.reasoning : [],
+        voteBreakdown: Array.isArray(s.voteBreakdown) ? s.voteBreakdown : null,
+        tally: s.tally || null,
+        tp1Source: s.tp1Source || null,
+        tp2Source: s.tp2Source || null,
+        tp3Source: s.tp3Source || null,
+        slReason: s.slReason || null,
+        slSource: s.slSource || null,
+        strategicCandidates: Array.isArray(s.strategicCandidates) ? s.strategicCandidates : null,
+        breakevenAt: s.breakevenAt || null,
         // Tek-poz + reverse-yok alanlari
         reverseAttempts,
         reverseAttemptCount: reverseAttempts.length,
@@ -1093,6 +1127,77 @@ app.get('/api/signals/open-dashboard', (req, res) => {
   }
 });
 
+// Son 24 saatte kapanan sinyaller — kart bazli, reasoning + oylama dahil.
+app.get('/api/signals/closed-24h', (req, res) => {
+  try {
+    const hours = Math.max(1, Math.min(168, parseInt(req.query.hours || '24', 10)));
+    const cutoff = Date.now() - hours * 60 * 60 * 1000;
+    const archived = readAllArchives();
+    const recent = archived.filter(s => {
+      const ts = new Date(s.resolvedAt || s.entryExpiredAt || s.updatedAt || s.createdAt || 0).getTime();
+      return Number.isFinite(ts) && ts >= cutoff;
+    });
+    recent.sort((a, b) => {
+      const ta = new Date(a.resolvedAt || a.entryExpiredAt || a.updatedAt || a.createdAt || 0).getTime();
+      const tb = new Date(b.resolvedAt || b.entryExpiredAt || b.updatedAt || b.createdAt || 0).getTime();
+      return tb - ta;
+    });
+    const enriched = recent.map(s => ({
+      id: s.id,
+      symbol: s.symbol,
+      category: s.category,
+      timeframe: s.timeframe,
+      grade: s.grade,
+      league: s.league || null,
+      direction: s.direction,
+      entry: s.entry,
+      sl: s.sl,
+      tp1: s.tp1, tp2: s.tp2, tp3: s.tp3,
+      tp1Hit: !!s.tp1Hit, tp2Hit: !!s.tp2Hit, tp3Hit: !!s.tp3Hit,
+      tp1HitPrice: s.tp1HitPrice || null,
+      tp2HitPrice: s.tp2HitPrice || null,
+      tp3HitPrice: s.tp3HitPrice || null,
+      slHit: !!s.slHit,
+      slHitPrice: s.slHitPrice || null,
+      status: s.status,
+      outcome: s.outcome || s.status,
+      win: s.win != null ? !!s.win : null,
+      actualRR: s.actualRR != null ? s.actualRR : null,
+      rr: s.rr || null,
+      entrySource: s.entrySource || null,
+      entryHit: s.entryHit !== false,
+      tp1Source: s.tp1Source || null,
+      tp2Source: s.tp2Source || null,
+      tp3Source: s.tp3Source || null,
+      slSource: s.slSource || null,
+      slReason: s.slReason || null,
+      strategicCandidates: Array.isArray(s.strategicCandidates) ? s.strategicCandidates : null,
+      reasoning: Array.isArray(s.reasoning) ? s.reasoning : [],
+      warnings: Array.isArray(s.warnings) ? s.warnings : [],
+      voteBreakdown: Array.isArray(s.voteBreakdown) ? s.voteBreakdown : null,
+      tally: s.tally || null,
+      breakevenAt: s.breakevenAt || null,
+      faultyTrade: !!s.faultyTrade,
+      faultyTradeReason: s.faultyTradeReason || null,
+      createdAt: s.createdAt,
+      resolvedAt: s.resolvedAt || s.entryExpiredAt || null,
+      holdingPeriodMinutes: s.holdingPeriodMinutes || null,
+    }));
+    // Outcome class özet
+    const wins = enriched.filter(x => x.outcome === 'tp3_hit' || x.outcome === 'tp2_hit' || x.outcome === 'tp1_hit' || x.outcome === 'trailing_stop_exit').length;
+    const losses = enriched.filter(x => x.outcome === 'sl_hit').length;
+    const neutral = enriched.length - wins - losses;
+    res.json({
+      hours,
+      generatedAt: new Date().toISOString(),
+      summary: { total: enriched.length, wins, losses, neutral },
+      signals: enriched,
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // Signal history for a specific symbol (last N days)
 app.get('/api/signals/history/:symbol', (req, res) => {
   const symbol = req.params.symbol.toUpperCase();
@@ -1125,6 +1230,41 @@ app.get('/api/signals/history/:symbol', (req, res) => {
         createdAt: s.createdAt,
         resolvedAt: s.resolvedAt || null,
       })),
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Patch 2 (2026-05-02) — Shadow snapshot for a single signal id.
+// Read-only gozlem datasi; canli karar mantigi bu alanlari okumaz. Karar
+// aliminda kullanilmadan once 24-72h gozlem ve backtest karsilastirmasi gerekli.
+app.get('/api/signals/:id/shadow', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const persistence = await import('./lib/learning/persistence.js');
+    const { readJSON, dataPath, readAllArchives } = persistence;
+    const OPEN_PATH = dataPath('signals', 'open.json');
+    const open = readJSON(OPEN_PATH, { signals: [] });
+    let signal = open.signals.find(s => s.id === id);
+    if (!signal) {
+      // Try archives
+      try {
+        const archived = readAllArchives();
+        signal = archived.find(s => s.id === id);
+      } catch { /* ignore */ }
+    }
+    if (!signal) return res.status(404).json({ error: 'Sinyal bulunamadi' });
+    res.json({
+      id: signal.id,
+      symbol: signal.symbol,
+      timeframe: signal.timeframe,
+      grade: signal.grade,
+      direction: signal.direction,
+      createdAt: signal.createdAt,
+      shadowMetrics: signal.shadowMetrics || null,
+      shadowVotes: signal.shadowVotes || null,
+      shadowMtfScore: signal.shadowMtfScore || null,
     });
   } catch (e) {
     res.status(500).json({ error: e.message });
