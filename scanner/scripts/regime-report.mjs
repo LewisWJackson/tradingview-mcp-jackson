@@ -31,12 +31,36 @@ const CHAOS_WINDOWS_PATH = path.join(REPO_ROOT, 'config', 'chaos-windows.json');
 // ---------------------------------------------------------------------------
 
 function parseArgs(argv) {
-  const args = { days: 7, json: false };
+  // 2026-05-02 — `--exclude=ISO1..ISO2[,ISO3..ISO4]` ile data quality penceresi
+  // hariclemek. Risk #17 zombi-feed pencereleri analizden cikarilabilir.
+  const args = { days: 7, json: false, exclude: [] };
   for (const a of argv.slice(2)) {
     if (a.startsWith('--days=')) args.days = Number(a.slice(7)) || 7;
     else if (a === '--json') args.json = true;
+    else if (a.startsWith('--exclude=')) {
+      const spec = a.slice('--exclude='.length);
+      for (const part of spec.split(',')) {
+        const m = part.split('..');
+        if (m.length !== 2) continue;
+        const fromMs = Date.parse(m[0]);
+        const toMs   = Date.parse(m[1]);
+        if (Number.isFinite(fromMs) && Number.isFinite(toMs) && toMs > fromMs) {
+          args.exclude.push({ fromMs, toMs, label: part });
+        }
+      }
+    }
   }
   return args;
+}
+
+function applyExclusions(records, exclude) {
+  if (!Array.isArray(exclude) || exclude.length === 0) return records;
+  return records.filter(r => {
+    const ts = Date.parse(r.utcTimestamp);
+    if (!Number.isFinite(ts)) return true;
+    for (const w of exclude) if (ts >= w.fromMs && ts <= w.toMs) return false;
+    return true;
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -111,33 +135,39 @@ function falseFlipAnalysis(records, hysteresisN = 3) {
   const examples = [];
 
   for (const [k, arr] of Object.entries(bySym)) {
-    // Sadece transitioned=true olanlar gercek rejim degisimleri
-    const trans = arr.filter(r => r.transitioned);
-    for (let i = 1; i < trans.length; i++) {
-      totalFlips++;
-      const prev = trans[i - 1];
+    // 2026-05-02 — savunmaci filtre: sadece gercek etiket degisimleri sayilir.
+    // (a) bootstrap kayitlari haric tut (compute-regime ilk gozlem icin
+    //     `bootstrap: true` tag atiyor; eski log'lar bu alani tasimaz, fallback
+    //     icin transitions[].from === null olabilir).
+    // (b) ardisik trans kaydinda etiket degismediyse (self-loop) sayma.
+    const trans = arr.filter(r => r.transitioned && !(r.transition?.bootstrap));
+    let prevRegime = null;
+    for (let i = 0; i < trans.length; i++) {
       const curr = trans[i];
-      // Bu transition'dan sonraki ilk transition geri donus mu?
-      if (i + 1 < trans.length) {
-        const next = trans[i + 1];
-        if (next.regime === prev.regime) {
-          // Y'de kac bar kalindi (curr.barsSinceTransition next anindaki)
-          const barsInY = next.barsSinceTransition || 0;
+      if (prevRegime != null && curr.regime === prevRegime) continue; // self-loop, skip
+      if (prevRegime != null) totalFlips++;
+      // Bu transition'dan sonraki ilk gercek transition geri donus mu?
+      if (prevRegime != null && i + 1 < trans.length) {
+        // Sonraki gercek geçişi (etiketi farkli olan ilk transition) bul
+        let nextIdx = -1;
+        for (let j = i + 1; j < trans.length; j++) {
+          if (trans[j].regime !== curr.regime) { nextIdx = j; break; }
+        }
+        if (nextIdx >= 0 && trans[nextIdx].regime === prevRegime) {
+          const barsInY = trans[nextIdx].barsSinceTransition || 0;
           if (barsInY < hysteresisN + 1) {
             falseFlips++;
             if (examples.length < 5) {
               examples.push({
-                key: k,
-                from: prev.regime,
-                via: curr.regime,
-                back: next.regime,
-                barsInVia: barsInY,
+                key: k, from: prevRegime, via: curr.regime,
+                back: trans[nextIdx].regime, barsInVia: barsInY,
                 at: curr.utcTimestamp,
               });
             }
           }
         }
       }
+      prevRegime = curr.regime;
     }
   }
 
@@ -382,8 +412,15 @@ function formatMarkdown(rep) {
 function main() {
   const args = parseArgs(process.argv);
   const data = loadRecords(args.days);
+  const filtered = applyExclusions(data.records, args.exclude);
+  if (args.exclude.length > 0) {
+    process.stderr.write(
+      `[regime-report] excluded windows: ${args.exclude.map(w => w.label).join(', ')} ` +
+      `→ ${data.records.length - filtered.length} kayit haric tutuldu\n`
+    );
+  }
   const chaosWindows = loadChaosWindows();
-  const report = buildReport(data, chaosWindows);
+  const report = buildReport({ records: filtered, files: data.files, exclusions: args.exclude }, chaosWindows);
 
   if (args.json) {
     process.stdout.write(JSON.stringify(report, null, 2) + '\n');
