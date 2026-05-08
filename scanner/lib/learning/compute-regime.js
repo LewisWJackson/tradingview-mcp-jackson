@@ -291,15 +291,25 @@ export function classifyRaw({
       return { regime: 'high_vol_chaos', subRegime: 'bist_decoupled_stress', notes };
     }
     // Alt rejim etiketi — histerezis sonrası ortak rejimle eşlenir
+    // 2026-05-02 — Esikler regime-profiles.js'ten okunuyordu (rhoStableMax,
+    // rhoDecoupledMax, rhoSpikeMin, usdtryStressSigma, usdtrySpikeSigma) ama
+    // burada hardcoded sayilar (0.3, 0.2, 0.7, 0.02, 0.03) vardi → profil
+    // dosyasi olu kod oluyordu. Profile thresholds'a gec, fallback olarak eski
+    // hardcoded sayilari koru (eksik profil olsa bile geri kalmamak icin).
     let subRegime = null;
     if (usdtrySigma != null && rho != null) {
-      if (usdtrySigma < t.usdtryStableSigma && Math.abs(rho) < 0.3) {
+      const rhoStableMax    = t.rhoStableMax    ?? 0.3;
+      const rhoSpikeMin     = t.rhoSpikeMin     ?? 0.7;
+      const rhoDecoupledMax = t.rhoDecoupledMax ?? 0.2;
+      const stressSigma     = t.usdtryStressSigma ?? 0.02;
+      const spikeSigma      = t.usdtrySpikeSigma  ?? 0.03;
+      if (usdtrySigma < t.usdtryStableSigma && Math.abs(rho) < rhoStableMax) {
         subRegime = 'bist_tl_stable_domestic';
-      } else if (usdtrySigma > 0.02 && (rho < 0.2 || rho < 0)) {
+      } else if (usdtrySigma > stressSigma && rho < rhoDecoupledMax) {
         subRegime = 'bist_decoupled_stress';
         notes.push('bist_decoupled_stress → long kesik');
         return { regime: 'high_vol_chaos', subRegime, notes };
-      } else if (usdtrySigma > 0.03 && rho > 0.7) {
+      } else if (usdtrySigma > spikeSigma && rho > rhoSpikeMin) {
         subRegime = 'bist_tl_spike_inflation';
       } else {
         subRegime = 'bist_normal_coupled';
@@ -408,13 +418,17 @@ export function computeRegime({
 
   let transitioned = false;
   if (st.regime == null) {
-    // İlk tespit — histerezis beklemeden set et
+    // İlk tespit — histerezis beklemeden set et. 2026-05-02: bu "ilk gözlem"
+    // semantik olarak bir GEÇİŞ değil; daha önce `transitioned=true` damgalanıyordu
+    // ve restart sonrası her sembol için sahte transition kaydı üretiyordu
+    // (rapor 1010 sahte self-loop sayıyordu). Initial bootstrap'ı transitioned=false
+    // olarak isaretliyoruz; gerçek geçiş histerezis dolduğunda (else if) yakalanır.
     st.regime = raw.regime;
     st.subRegime = raw.subRegime;
     st.since = now;
     st.stableBars = 1;
-    st.transitions = [{ day: today, at: now, from: null, to: raw.regime, raw: raw.regime }];
-    transitioned = true;
+    st.transitions = [{ day: today, at: now, from: null, to: raw.regime, raw: raw.regime, bootstrap: true }];
+    transitioned = false;
   } else if ((hysteresisMet || chaosImmediate) && raw.regime !== st.regime && !unstable) {
     st.transitions = [...st.transitions, { day: today, at: now, from: st.regime, to: raw.regime, raw: raw.regime }];
     st.regime = raw.regime;
@@ -424,7 +438,13 @@ export function computeRegime({
     transitioned = true;
   } else if (raw.regime === st.regime) {
     st.stableBars = (st.stableBars || 0) + 1;
-    if (raw.subRegime) st.subRegime = raw.subRegime;
+    // 2026-05-02 — subRegime'i her cyclede SENKRONIZE et: raw.subRegime null ise
+    // (klasifiye edici bu cyclede destekleyici veriye sahip degilse, orn. BIST
+    // macro fields eksikse) state'teki eski subRegime tag'i taze tutulmasin.
+    // Onceki davranis: `if (raw.subRegime) st.subRegime = raw.subRegime;` ardisik
+    // null cycle'larda eski tag'i (orn. bist_tl_stable_domestic) sonsuza dek
+    // korurdu — gecmis raporlarin %100 sticky gostermesinin sebebi buydu.
+    st.subRegime = raw.subRegime ?? null;
   } else {
     // Ham rejim farklı ama histerezis tamamlanmadı VEYA unstable
     // → mevcut rejim korunur, stableBars artar
