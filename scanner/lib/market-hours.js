@@ -26,6 +26,17 @@ export function isUSEquityOpen(now = new Date()) {
 }
 
 /**
+ * ABD hisse extended (pre + post): haftaici UTC 08:00-13:30 (pre) ve 20:00-24:00 (post).
+ * Yahoo bu pencerelerde de fiyat yayinliyor; outcome-checker live tick'leri bu sayede
+ * kabul eder. (Kis saati: gercekte 4am-9:30am ET pre-market, 4pm-8pm ET post-market.)
+ */
+export function isUSEquityExtendedOpen(now = new Date()) {
+  if (!isWeekday(now)) return false;
+  const total = now.getUTCHours() * 60 + now.getUTCMinutes();
+  return total >= 480 && total < 1440; // 08:00 - 24:00 UTC
+}
+
+/**
  * BIST: haftaici UTC 07:00 - 15:00 (TRT 10:00-18:00).
  */
 export function isBISTOpen(now = new Date()) {
@@ -71,8 +82,30 @@ export const SESSIONS = {
 
 export const ALL_CATEGORIES = Object.keys(SESSIONS);
 
+export function normalizeMarketCategory(category) {
+  if (!category) return category;
+  const c = String(category);
+  if (c === 'us_stock' || c === 'us_stocks' || c === 'stock') return 'abd_hisse';
+  if (c === 'crypto') return 'kripto';
+  if (c === 'commodity' || c === 'commodities') return 'emtia';
+  return c;
+}
+
+/**
+ * Outcome-checker / live-outcome-processor icin "tick kabul edilebilir mi" testi.
+ * abd_hisse'de regular + pre/post-market saatlerinde true; hafta sonu false.
+ * Diger kategoriler icin SESSIONS map'i ile ayni davranir.
+ */
+export function isMarketTradeable(category, now = new Date()) {
+  category = normalizeMarketCategory(category);
+  if (category === 'abd_hisse') return isUSEquityExtendedOpen(now);
+  const fn = SESSIONS[category];
+  return fn ? fn(now) : true;
+}
+
 /** Belirli kategori su an acik mi? Bilinmeyen kategori icin true. */
 export function isMarketOpen(category, now = new Date()) {
+  category = normalizeMarketCategory(category);
   const fn = SESSIONS[category];
   return fn ? fn(now) : true;
 }

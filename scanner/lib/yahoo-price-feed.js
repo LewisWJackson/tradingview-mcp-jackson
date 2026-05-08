@@ -19,6 +19,7 @@
 const CHART_URL = 'https://query1.finance.yahoo.com/v8/finance/chart/';
 const POLL_INTERVAL_MS = 5000; // 5 saniyede bir — Yahoo'ya nazik
 const REQUEST_TIMEOUT_MS = 4000;
+const BAR_RANGE_TOLERANCE = 0.02;
 
 // BIST kategori prefix takilacak TV sembol seti (registerSymbolsByCategory ile doldurulur)
 const _bistSymbols = new Set();
@@ -210,9 +211,11 @@ async function fetchOne(yahooSymbol) {
     let price = Number(regularPrice);
     let ts = meta.regularMarketTime ? meta.regularMarketTime * 1000 : Date.now();
 
+    const quote = result?.indicators?.quote?.[0] || {};
+
     if (marketState === 'PRE' || marketState === 'POST') {
       const timestamps = result?.timestamp || [];
-      const closes = result?.indicators?.quote?.[0]?.close || [];
+      const closes = quote.close || [];
       // Son gecerli (non-null) bari bul
       for (let i = closes.length - 1; i >= 0; i--) {
         if (closes[i] != null && isFinite(closes[i])) {
@@ -223,11 +226,24 @@ async function fetchOne(yahooSymbol) {
       }
     }
 
+    if (!isPlausibleYahooPrice(price, quote)) return null;
+
     return { price, regularPrice: Number(regularPrice), marketState, ts };
   } catch {
     clearTimeout(t);
     return null;
   }
+}
+
+export function isPlausibleYahooPrice(price, quote = {}, tolerance = BAR_RANGE_TOLERANCE) {
+  if (!Number.isFinite(Number(price))) return false;
+  const highs = Array.isArray(quote.high) ? quote.high.filter(Number.isFinite) : [];
+  const lows = Array.isArray(quote.low) ? quote.low.filter(Number.isFinite) : [];
+  if (!highs.length || !lows.length) return true;
+  const maxHigh = Math.max(...highs);
+  const minLow = Math.min(...lows);
+  return Number(price) <= maxHigh * (1 + tolerance)
+    && Number(price) >= minLow * (1 - tolerance);
 }
 
 async function pollOnce() {
@@ -289,6 +305,10 @@ export function getYahooFeedStats() {
 
 export function startYahooPriceFeed(options = {}) {
   _broadcastFn = options.broadcast || null;
+  if (_timer) {
+    console.log('[YahooFeed] Zaten calisiyor — yeni timer baslatilmadi');
+    return;
+  }
   _stopped = false;
   // Ilk polling hemen, sonra aralikli
   pollOnce().catch(e => console.log('[YahooFeed] ilk poll hatasi:', e.message));
