@@ -219,6 +219,10 @@ export function parseKhanSaabDashboard(tableData) {
     rsi: null,
     macd: null,
     adx: null,
+    plusDi: null,
+    minusDi: null,
+    plusDiPrev: null,
+    minusDiPrev: null,
     vwap: null,
     volume: null,
     emaStatus: null,
@@ -856,10 +860,14 @@ export function calcADX(bars, period = 14) {
   const smoothPlus = wilderRMA(plusDM, period);
   const smoothMinus = wilderRMA(minusDM, period);
   const dxArr = [];
+  const diPlusArr = [];
+  const diMinusArr = [];
   for (let i = period - 1; i < trArr.length; i++) {
     const tr = smoothTR[i], sp = smoothPlus[i], sm = smoothMinus[i];
-    if (!tr || tr === 0) continue;
+    if (!tr || tr === 0) { diPlusArr.push(null); diMinusArr.push(null); continue; }
     const diPlus = (sp / tr) * 100, diMinus = (sm / tr) * 100;
+    diPlusArr.push(diPlus);
+    diMinusArr.push(diMinus);
     const dsum = diPlus + diMinus;
     if (dsum === 0) continue;
     dxArr.push(Math.abs(diPlus - diMinus) / dsum * 100);
@@ -876,9 +884,21 @@ export function calcADX(bars, period = 14) {
     if (adxArr[i] != null) tail.unshift(Math.round(adxArr[i] * 10) / 10);
   }
 
+  // DMI: en güncel +DI/-DI ve bir önceki bar (cross dedektörü için)
+  const round1 = (v) => (typeof v === 'number' && isFinite(v)) ? Math.round(v * 10) / 10 : null;
+  const lastIdx = diPlusArr.length - 1;
+  const plusDi = round1(diPlusArr[lastIdx]);
+  const minusDi = round1(diMinusArr[lastIdx]);
+  const plusDiPrev = lastIdx > 0 ? round1(diPlusArr[lastIdx - 1]) : null;
+  const minusDiPrev = lastIdx > 0 ? round1(diMinusArr[lastIdx - 1]) : null;
+
   return {
     adx: Math.round(last * 10) / 10,
     adxSeries: tail,  // son 5 ADX değeri (en eski → en yeni)
+    plusDi,
+    minusDi,
+    plusDiPrev,
+    minusDiPrev,
   };
 }
 
@@ -905,6 +925,10 @@ export function calcTechnicals(bars) {
     macdSignal: macdResult?.macdSignal ?? null,
     adx: adxResult?.adx ?? null,
     adxSeries: adxResult?.adxSeries ?? null,  // Faz 2 v2.2 — slope için son 5 ADX
+    plusDi: adxResult?.plusDi ?? null,
+    minusDi: adxResult?.minusDi ?? null,
+    plusDiPrev: adxResult?.plusDiPrev ?? null,
+    minusDiPrev: adxResult?.minusDiPrev ?? null,
     vwap: null,
     bias: null,
     signalStatus: null,
@@ -1017,4 +1041,339 @@ export function parseKhanSaabLabels(labelData) {
   }
 
   return result;
+}
+
+// ===========================================================================
+// Patch 2 — Shadow primitives (Lloyd 2013, Swanson 2014, King 2022, Boroden 2008)
+// ALL functions below are read-only signal computations consumed only by the
+// shadow path. Live `tallyVotes` / `gradeShortTermSignal` decision logic does
+// not call any of them. Each returns null when input is insufficient — caller
+// silently omits the field.
+// ===========================================================================
+
+// Lloyd 2013, p.18 — Chaikin Money Flow, 20-period, oscillates around zero.
+// "Below the line is supply, above the line is demand."
+export function calcCMF(bars, period = 20) {
+  if (!Array.isArray(bars) || bars.length < period) return null;
+  const slice = bars.slice(-period);
+  let mfvSum = 0, volSum = 0;
+  for (const b of slice) {
+    const range = b.high - b.low;
+    if (!range || !b.volume) continue;
+    const mfm = ((b.close - b.low) - (b.high - b.close)) / range;
+    mfvSum += mfm * b.volume;
+    volSum += b.volume;
+  }
+  if (!volSum) return null;
+  const cmf = mfvSum / volSum;
+  return { cmf, bias: cmf > 0 ? 'demand' : cmf < 0 ? 'supply' : null };
+}
+
+// Lloyd 2013, p.10 — Money Flow Index, 14-period (volume-weighted RSI),
+// OB > 80, OS < 20.
+export function calcMFI(bars, period = 14) {
+  if (!Array.isArray(bars) || bars.length < period + 1) return null;
+  let posFlow = 0, negFlow = 0;
+  for (let i = bars.length - period; i < bars.length; i++) {
+    const tp  = (bars[i].high   + bars[i].low   + bars[i].close)   / 3;
+    const tpP = (bars[i-1].high + bars[i-1].low + bars[i-1].close) / 3;
+    const rmf = tp * (bars[i].volume || 0);
+    if (tp > tpP) posFlow += rmf;
+    else if (tp < tpP) negFlow += rmf;
+  }
+  if (negFlow === 0) return posFlow > 0 ? 100 : null;
+  return 100 - 100 / (1 + posFlow / negFlow);
+}
+
+// Lloyd ch.1 pp.4-7 — 20/50/200 SMA stack.
+export function calcMAStack(bars) {
+  if (!Array.isArray(bars) || bars.length < 200) return null;
+  const sma = (n) => {
+    let s = 0;
+    for (let i = bars.length - n; i < bars.length; i++) s += bars[i].close;
+    return s / n;
+  };
+  const sma20 = sma(20), sma50 = sma(50), sma200 = sma(200);
+  const c = bars[bars.length - 1].close;
+  let bias = null;
+  if (c > sma20 && sma20 > sma50 && sma50 > sma200) bias = 'bull';
+  else if (c < sma20 && sma20 < sma50 && sma50 < sma200) bias = 'bear';
+  return { sma20, sma50, sma200, bias };
+}
+
+// Lloyd ch.13 — death/golden cross 50x200.
+export function calcMACross(bars) {
+  if (!Array.isArray(bars) || bars.length < 201) return null;
+  const sma = (n, end) => {
+    let s = 0;
+    for (let i = end - n; i < end; i++) s += bars[i].close;
+    return s / n;
+  };
+  const N = bars.length;
+  const cur50  = sma(50,  N    ), prev50  = sma(50,  N - 1);
+  const cur200 = sma(200, N    ), prev200 = sma(200, N - 1);
+  if (prev50 <= prev200 && cur50 > cur200) return 'golden_cross';
+  if (prev50 >= prev200 && cur50 < cur200) return 'death_cross';
+  return null;
+}
+
+// Lloyd p.18, ch.10 p.152 — MACD histogram cycle phase + 5-bar divergence.
+export function calcMACDExtended(bars, fast = 12, slow = 26, sig = 9) {
+  if (!Array.isArray(bars) || bars.length < slow + sig + 10) return null;
+  const closes = bars.map(b => b.close);
+  const emaFast = calcEMA(closes, fast);
+  const emaSlow = calcEMA(closes, slow);
+  const macdLine = [];
+  for (let i = 0; i < closes.length; i++) {
+    if (emaFast[i] == null || emaSlow[i] == null) { macdLine.push(null); continue; }
+    macdLine.push(emaFast[i] - emaSlow[i]);
+  }
+  const cleanMacd = macdLine.filter(v => v != null);
+  if (cleanMacd.length < sig + 5) return null;
+  const sigLine = calcEMA(cleanMacd, sig);
+  const hist = [];
+  for (let i = sig - 1; i < cleanMacd.length; i++) hist.push(cleanMacd[i] - sigLine[i]);
+  if (hist.length < 5) return null;
+  const last = hist[hist.length - 1];
+  const cyclePhase = last > 0 ? 'buying' : last < 0 ? 'selling' : 'flat';
+  let divergence = null;
+  const cN = closes.length, hN = hist.length;
+  if (cN >= 5 && hN >= 5) {
+    const cNow = closes[cN - 1], cPrev = closes[cN - 5];
+    const hNow = hist[hN - 1],   hPrev = hist[hN - 5];
+    if (cNow < cPrev && hNow > hPrev) divergence = 'bullish';
+    else if (cNow > cPrev && hNow < hPrev) divergence = 'bearish';
+  }
+  return {
+    line: cleanMacd[cleanMacd.length - 1],
+    signal: sigLine[sigLine.length - 1],
+    hist: last,
+    cyclePhase,
+    divergence,
+  };
+}
+
+// Swanson 2014, lines 341-342 (30/70 cross) and 390-394 (60/40 in trend).
+// Returns the threshold-CROSS event (not the level), per the book's exact rule.
+export function detectRsiThresholdCross(rsiSeries, { trending = false } = {}) {
+  if (!Array.isArray(rsiSeries) || rsiSeries.length < 2) return null;
+  const cur  = rsiSeries[rsiSeries.length - 1];
+  const prev = rsiSeries[rsiSeries.length - 2];
+  if (!Number.isFinite(cur) || !Number.isFinite(prev)) return null;
+  const longTh  = trending ? 60 : 30;
+  const shortTh = trending ? 40 : 70;
+  const longCross  = prev <  longTh  && cur >= longTh;
+  const shortCross = prev >  shortTh && cur <= shortTh;
+  return { prev, cur, longCross, shortCross, longTh, shortTh, trending };
+}
+
+// Swanson 2014 (Wilder failure swing).
+// Bullish: low-point under 30, then a higher low above 30 with mid-cross.
+// Bearish: high-point above 70, then a lower high below 70 with mid-cross.
+// Operates on the last 30 RSI samples.
+export function detectRsiFailureSwing(rsiSeries) {
+  if (!Array.isArray(rsiSeries) || rsiSeries.length < 10) return null;
+  const slice = rsiSeries.slice(-30);
+  const localMin = (i) => i > 0 && i < slice.length - 1 && slice[i] <= slice[i-1] && slice[i] <= slice[i+1];
+  const localMax = (i) => i > 0 && i < slice.length - 1 && slice[i] >= slice[i-1] && slice[i] >= slice[i+1];
+
+  // Bullish failure swing
+  let bull = null;
+  for (let i = 1; i < slice.length - 1; i++) {
+    if (!localMin(i) || slice[i] >= 30) continue;
+    for (let j = i + 2; j < slice.length - 1; j++) {
+      if (!localMin(j) || slice[j] <= slice[i]) continue;
+      // Confirmation: any subsequent point exceeds the intervening peak between i and j.
+      let peakBetween = -Infinity;
+      for (let k = i + 1; k < j; k++) peakBetween = Math.max(peakBetween, slice[k]);
+      const post = slice.slice(j + 1);
+      if (post.some(v => v > peakBetween)) {
+        bull = { type: 'bullish', confirmed: true, low1: slice[i], low2: slice[j], peak: peakBetween };
+        break;
+      }
+    }
+    if (bull) break;
+  }
+
+  // Bearish failure swing
+  let bear = null;
+  for (let i = 1; i < slice.length - 1; i++) {
+    if (!localMax(i) || slice[i] <= 70) continue;
+    for (let j = i + 2; j < slice.length - 1; j++) {
+      if (!localMax(j) || slice[j] >= slice[i]) continue;
+      let troughBetween = Infinity;
+      for (let k = i + 1; k < j; k++) troughBetween = Math.min(troughBetween, slice[k]);
+      const post = slice.slice(j + 1);
+      if (post.some(v => v < troughBetween)) {
+        bear = { type: 'bearish', confirmed: true, high1: slice[i], high2: slice[j], trough: troughBetween };
+        break;
+      }
+    }
+    if (bear) break;
+  }
+
+  return bull || bear || null;
+}
+
+// King 2022, p.16, p.26 — mitigation tagging on parsed zones.
+// Adds `mitigated:boolean` and `mitigatedAt:timestamp|null` per zone, given
+// the bar series and an optional creation barIndex on each zone. Pure: returns
+// a NEW array; original input untouched.
+export function tagMitigation(zones, bars) {
+  if (!Array.isArray(zones) || !Array.isArray(bars) || bars.length === 0) {
+    return Array.isArray(zones) ? zones.map(z => ({ ...z })) : [];
+  }
+  return zones.map(z => {
+    if (!z || typeof z.high !== 'number' || typeof z.low !== 'number') return { ...(z || {}) };
+    const start = typeof z.barIndex === 'number' && z.barIndex >= 0 && z.barIndex < bars.length
+      ? z.barIndex + 1
+      : 0;
+    let mitigated = false, mitigatedAt = null;
+    for (let i = start; i < bars.length; i++) {
+      if (bars[i].high >= z.low && bars[i].low <= z.high) {
+        mitigated = true; mitigatedAt = bars[i].time; break;
+      }
+    }
+    return { ...z, mitigated, mitigatedAt };
+  });
+}
+
+// King 2022, p.55 — clean BOS vs liquidity grab.
+// Closed back inside the prior range with wick > body → liquidity grab; else BOS.
+export function classifyCleanBreak(breakBar, brokenLevel, dir) {
+  if (!breakBar || typeof brokenLevel !== 'number' || (dir !== 'up' && dir !== 'down')) return null;
+  const body = Math.abs(breakBar.close - breakBar.open);
+  const wickBeyond = dir === 'up'
+    ? Math.max(0, breakBar.high - brokenLevel)
+    : Math.max(0, brokenLevel - breakBar.low);
+  const closedBack = dir === 'up' ? breakBar.close < brokenLevel : breakBar.close > brokenLevel;
+  if (closedBack && wickBeyond > body) return 'liquidity_grab';
+  return 'BOS';
+}
+
+// King 2022, p.50 — EQH/EQL liquidity bias.
+// EQHs above price → likely sweep up (continuation-bias long if price was rising).
+// EQLs below price → likely sweep down (continuation-bias short if price was falling).
+// Returns 'long' | 'short' | null.
+export function deriveLiquidityBias(eqh, eql, quotePrice) {
+  if (!Number.isFinite(quotePrice)) return null;
+  const eqhNear = Array.isArray(eqh) && eqh.some(e => Number.isFinite(e?.price) && e.price > quotePrice);
+  const eqlNear = Array.isArray(eql) && eql.some(e => Number.isFinite(e?.price) && e.price < quotePrice);
+  if (eqhNear && !eqlNear) return 'long';   // anticipated upside sweep
+  if (eqlNear && !eqhNear) return 'short';  // anticipated downside sweep
+  return null;
+}
+
+// King 2022, p.9 — strong-pivot bias.
+// strongHigh present → pivot broke prior opposite zone going up → bullish-leaning.
+// strongLow  present → pivot broke prior opposite zone going down → bearish-leaning.
+export function deriveStrongPivotBias(strongHigh, strongLow) {
+  return {
+    long:  !!(strongHigh && (strongHigh.price != null || strongHigh.text)),
+    short: !!(strongLow  && (strongLow.price  != null || strongLow.text)),
+  };
+}
+
+// Boroden 2008, ch.3 — fib cluster proximity.
+// fibCache: structure from `data/fib/<sym>.json` (timeframes -> {fib: {retracement, extensions}, smcLines, ...}).
+// Returns { hits:[{tf,kind,level,price}], direction } or null. Hits ≥ 2 → cluster.
+export function findFibCluster(quotePrice, fibCache, tolerancePct = 0.003) {
+  if (!Number.isFinite(quotePrice) || !fibCache || typeof fibCache !== 'object') return null;
+  const tfs = fibCache.timeframes || {};
+  const tol = Math.max(Math.abs(quotePrice) * tolerancePct, 1e-6);
+  const hits = [];
+  let upCount = 0, downCount = 0;
+  for (const tf of Object.keys(tfs)) {
+    const fib = tfs[tf]?.fib;
+    if (!fib) continue;
+    const dir = fib.direction; // 'up' | 'down'
+    const collect = (arr, kind) => {
+      for (const it of arr || []) {
+        if (it && typeof it.price === 'number' && Math.abs(it.price - quotePrice) <= tol) {
+          hits.push({ tf, kind, level: it.level, price: it.price });
+          if (dir === 'up') upCount++;
+          else if (dir === 'down') downCount++;
+        }
+      }
+    };
+    collect(fib.retracement, 'retracement');
+    collect(fib.extensions || fib.extension, 'extension');
+  }
+  if (hits.length === 0) return null;
+  let direction = null;
+  if (upCount > downCount) direction = 'long';
+  else if (downCount > upCount) direction = 'short';
+  return { hits, count: hits.length, direction, isCluster: hits.length >= 2 };
+}
+
+// Boroden 2008, ch.3 — golden zone (0.618 - 0.786) on the highest available HTF.
+// Returns { tf, inside, swingDir, low, high } or null.
+export function priceInGoldenZone(quotePrice, fibCache) {
+  if (!Number.isFinite(quotePrice) || !fibCache || !fibCache.timeframes) return null;
+  // Prefer 1W > 1D > anything else.
+  const order = ['1W', '1D', '4H', '1H'];
+  const present = order.filter(tf => fibCache.timeframes[tf]?.fib?.goldenZone);
+  if (present.length === 0) return null;
+  const tf = present[0];
+  const fib = fibCache.timeframes[tf].fib;
+  const gz = fib.goldenZone;
+  if (!gz || gz.from == null || gz.to == null) return null;
+  const lo = Math.min(gz.from, gz.to);
+  const hi = Math.max(gz.from, gz.to);
+  return {
+    tf,
+    inside: quotePrice >= lo && quotePrice <= hi,
+    swingDir: fib.direction || null,
+    low: lo,
+    high: hi,
+  };
+}
+
+// MTF score per higher TF — uses already-collected per-TF data, no new fetch.
+// Inputs: tfResults (map { tf -> data }) and bestSignal (for direction context).
+// Returns { '<tf>': { direction, confidence, breakdown } } for each TF
+// in tfResults that has the required fields.
+export function computeMtfScore(tfResults) {
+  if (!tfResults || typeof tfResults !== 'object') return null;
+  const out = {};
+  for (const tf of Object.keys(tfResults)) {
+    const d = tfResults[tf];
+    if (!d || d.error) continue;
+    const ks = d.khanSaab;
+    const smc = d.smc;
+    let bullPts = 0, bearPts = 0;
+    const breakdown = {};
+
+    if (ks?.emaStatus === 'BULL') { bullPts++; breakdown.ema = 'bull'; }
+    else if (ks?.emaStatus === 'BEAR') { bearPts++; breakdown.ema = 'bear'; }
+
+    if (ks?.macd === 'BULL') { bullPts++; breakdown.macd = 'bull'; }
+    else if (ks?.macd === 'BEAR') { bearPts++; breakdown.macd = 'bear'; }
+
+    if (ks?.rsi != null) {
+      const r = Number(ks.rsi);
+      if (Number.isFinite(r)) {
+        if (r > 50) { bullPts += 0.5; breakdown.rsi = `>${50}`; }
+        else if (r < 50) { bearPts += 0.5; breakdown.rsi = `<${50}`; }
+      }
+    }
+
+    if (smc?.lastBOS?.direction === 'bullish' || smc?.lastCHoCH?.direction === 'bullish') {
+      bullPts++; breakdown.smc_structure = 'bullish';
+    } else if (smc?.lastBOS?.direction === 'bearish' || smc?.lastCHoCH?.direction === 'bearish') {
+      bearPts++; breakdown.smc_structure = 'bearish';
+    }
+
+    if (ks?.adx != null) {
+      const adx = Number(ks.adx);
+      if (Number.isFinite(adx) && adx > 25) breakdown.adx = adx;
+    }
+
+    const total = bullPts + bearPts;
+    if (total === 0) { out[tf] = { direction: null, confidence: 0, breakdown }; continue; }
+    const direction = bullPts > bearPts ? 'long' : bearPts > bullPts ? 'short' : 'mixed';
+    const confidence = direction === 'mixed' ? 0 : Math.round((Math.max(bullPts, bearPts) / total) * 100);
+    out[tf] = { direction, confidence, breakdown, bullPts, bearPts };
+  }
+  return Object.keys(out).length ? out : null;
 }
