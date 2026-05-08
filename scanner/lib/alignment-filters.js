@@ -23,14 +23,21 @@ import { formatBarTime } from './formation-detector.js';
  * (R:R 1:2 minimum'u boğar) — bu durumda cap REDDEDILIR, orijinal TP'ler
  * korunur.
  *
- * @param {{entry:number, sl:number, capped:number, minDistRatio?:number}} opts
- * @returns {{refused:boolean, slDist:number, cappedDist:number, minTpDist:number}}
+ * @param {{entry:number, sl:number, capped:number, direction?:'long'|'short', minDistRatio?:number}} opts
+ * @returns {{refused:boolean, slDist:number, cappedDist:number, minTpDist:number, reason?:string}}
  */
-export function shouldRefuseBarrierCap({ entry, sl, capped, minDistRatio = 1.3 }) {
+export function shouldRefuseBarrierCap({ entry, sl, capped, direction, minDistRatio = 1.3 }) {
   const slDist = Math.abs(entry - sl);
   const cappedDist = Math.abs(entry - capped);
   const minTpDist = slDist * minDistRatio;
-  return { refused: cappedDist < minTpDist, slDist, cappedDist, minTpDist };
+  if (direction === 'long' && capped <= entry) {
+    return { refused: true, reason: 'wrong_side', slDist, cappedDist, minTpDist };
+  }
+  if (direction === 'short' && capped >= entry) {
+    return { refused: true, reason: 'wrong_side', slDist, cappedDist, minTpDist };
+  }
+  const refused = cappedDist < minTpDist;
+  return { refused, reason: refused ? 'too_close' : undefined, slDist, cappedDist, minTpDist };
 }
 
 function fmtBarrierPrice(n) {
@@ -47,6 +54,10 @@ export function formatBarrierFibBasis(zone) {
   const details = Array.isArray(zone?.fibDetails) ? zone.fibDetails : [];
   if (!details.length) return null;
   return details.slice(0, 3).map(d => {
+    if (d.kind === 'smc_line') {
+      // SMC indikator tarafindan cizilen yatay S/R cizgisi: swing/level alanlari yok.
+      return `${d.tf} smc_line @ ${fmtBarrierPrice(d.price)}`;
+    }
     const swing = d.swing || {};
     return `${d.tf} ${d.kind} ${d.level} @ ${fmtBarrierPrice(d.price)}; top ${fmtFibPoint(swing.high)}; bottom ${fmtFibPoint(swing.low)}; swing=${d.direction || '?'}`;
   }).join(' | ');
@@ -480,10 +491,13 @@ export function applyAlignmentFilters({
 
     // Aşama A — bariyer min-distance kuralı (geçici köprü, Faz 4'te
     // unified-levels.js ile yerini alacak).
-    const refuseCheck = shouldRefuseBarrierCap({ entry, sl: adjustedSL, capped });
+    const refuseCheck = shouldRefuseBarrierCap({ entry, sl: adjustedSL, capped, direction });
 
     if (refuseCheck.refused) {
-      warnings.push(`[HTF-Barrier] Cap REDDEDILDI — bariyer (${majorZone.tf} @ ${majorZone.price.toFixed(4)}) çok yakın: cap mesafesi ${refuseCheck.cappedDist.toFixed(4)} < min ${refuseCheck.minTpDist.toFixed(4)} (1.3×SL). Orijinal TP'ler korundu (Aşama A geçici kural, Faz 4 unified-levels öncesi).${fibBasisText}`);
+      const reasonText = refuseCheck.reason === 'wrong_side'
+        ? `cap kâr tarafında değil: entry ${entry.toFixed(4)}, cap ${capped.toFixed(4)}, yön ${direction.toUpperCase()}`
+        : `bariyer (${majorZone.tf} @ ${majorZone.price.toFixed(4)}) çok yakın: cap mesafesi ${refuseCheck.cappedDist.toFixed(4)} < min ${refuseCheck.minTpDist.toFixed(4)} (1.3×SL)`;
+      warnings.push(`[HTF-Barrier] Cap REDDEDILDI — ${reasonText}. Orijinal TP'ler korundu (Aşama A geçici kural, Faz 4 unified-levels öncesi).${fibBasisText}`);
     } else {
       const cap = (tp) => {
         if (tp == null) return tp;
