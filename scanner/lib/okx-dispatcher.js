@@ -95,14 +95,19 @@ function ensureDrainTimer(url) {
  * Kripto + A/B/C filtresi disardaki kaynak tarafinda (scheduler/tracker) yapilir.
  */
 export function dispatchToOkxExecutor(payload) {
-  if (process.env.OKX_EXECUTOR_ENABLED !== '1') return;
+  const id = payload?.reason?.id || payload?.symbol_tv || '?';
+  if (process.env.OKX_EXECUTOR_ENABLED !== '1') {
+    // Sessizce duserse "OKX'e neden gitmedi?" sorusu cevapsiz kaliyor.
+    console.log(`[okx-dispatcher] skip (${id}): OKX_EXECUTOR_ENABLED!=1`);
+    return;
+  }
   // Risk #3 — Kill switch: halt aktifse yeni trade dispatch'i kesinlikle gitmez.
   // Kuyruga da yazmiyoruz — halt release'te eski sinyallerin ortaya cikmamasi icin.
   if (isHalted()) {
-    console.warn('[okx-dispatcher] HALT aktif — dispatch bloke edildi:', payload?.reason?.id || '?');
+    console.warn('[okx-dispatcher] HALT aktif — dispatch bloke edildi:', id);
     return;
   }
-  const url = process.env.OKX_EXECUTOR_URL || 'http://localhost:3939/api/signals/new';
+  const url = process.env.OKX_EXECUTOR_URL || 'http://127.0.0.1:3939/api/signals/new';
 
   ensureDrainTimer(url);
 
@@ -137,7 +142,7 @@ export function getQueueStats() {
  */
 export async function cancelAllAndFlatten({ attempts = 3, timeoutMs = 5000 } = {}) {
   const startedAt = Date.now();
-  const url = (process.env.OKX_EXECUTOR_URL || 'http://localhost:3939/api/signals/new')
+  const url = (process.env.OKX_EXECUTOR_URL || 'http://127.0.0.1:3939/api/signals/new')
     .replace(/\/api\/signals\/new\/?$/, '/api/emergency/cancel-all');
 
   if (process.env.OKX_EXECUTOR_ENABLED !== '1') {

@@ -49,7 +49,7 @@ echo ""
 # OKX Executor entegrasyonu — kripto A/B/C sinyalleri localhost:3939'a POST edilir.
 # Kapatmak icin: OKX_EXECUTOR_ENABLED=0 ./start.sh
 export OKX_EXECUTOR_ENABLED="${OKX_EXECUTOR_ENABLED:-1}"
-export OKX_EXECUTOR_URL="${OKX_EXECUTOR_URL:-http://localhost:3939/api/signals/new}"
+export OKX_EXECUTOR_URL="${OKX_EXECUTOR_URL:-http://127.0.0.1:3939/api/signals/new}"
 
 echo "[3/3] Sunucu baslatiliyor..."
 echo "  Web UI: http://localhost:3838"

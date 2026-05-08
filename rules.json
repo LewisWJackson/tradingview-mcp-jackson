@@ -7,13 +7,15 @@
       "BTCXAU",
       "ETHXAU",
       "USDT.D",
-      "DOTUSDC",
       "MONUSD",
       "RENDERUSDC",
       "LINKUSDT.P",
       "HYPEUSDT.P",
       "XRPUSDT.P",
-      "SOLUSDT.P"
+      "SOLUSDT.P",
+      "TAOUSDT.P",
+      "AIXBTUSDT.P",
+      "ONDOUSDT.P"
     ],
     "forex": [
       "EURUSD",
@@ -21,7 +23,6 @@
     ],
     "abd_hisse": [
       "BA",
-      "NFLX",
       "AVGO",
       "HON",
       "ARM",
@@ -40,7 +41,8 @@
       "INTC",
       "TSLA",
       "FLNC",
-      "COP"
+      "COP",
+      "LMT"
     ],
     "bist": [
       "PEKGY",
