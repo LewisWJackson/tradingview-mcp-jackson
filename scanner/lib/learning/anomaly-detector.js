@@ -20,6 +20,7 @@
  */
 
 import { readJSON, writeJSON, dataPath, readAllArchives } from './persistence.js';
+import { classifyOutcome } from './ladder-engine.js';
 
 const STATE_PATH = dataPath('anomaly-state.json');
 
@@ -74,12 +75,20 @@ function computePF(signals) {
  */
 export function evaluateAnomaly() {
   const state = loadState();
+  // 2026-05-04: NEUTRAL kapanislari (entry_missed_tp, entry_expired, sl_hit_high_mfe,
+  // manual_close, vb.) win/loss istatistiklerinden hariç tut. Bunlar “entry hic
+  // dolmadan kaçti” veya “SL koyuldu ama yon dogruydu” gibi notr durumlar; loss
+  // streak veya WR baseline hesabinda sayilmamali.
   const allResolved = readAllArchives().filter(s => s.win != null);
+  const isWinLoss = (s) => {
+    const cls = classifyOutcome(s.status || s.outcome);
+    return cls === 'win' || cls === 'loss';
+  };
   const archives = allResolved
-    .filter(s => s.grade !== 'BEKLE')
+    .filter(s => s.grade !== 'BEKLE' && isWinLoss(s))
     .sort((a, b) => new Date(a.resolvedAt) - new Date(b.resolvedAt));
   const virtualArchives = allResolved
-    .filter(s => s.grade === 'BEKLE')
+    .filter(s => s.grade === 'BEKLE' && isWinLoss(s))
     .sort((a, b) => new Date(a.resolvedAt) - new Date(b.resolvedAt));
 
   state.lastCheck = new Date().toISOString();
