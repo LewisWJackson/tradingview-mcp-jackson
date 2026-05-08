@@ -49,7 +49,7 @@ const DEFAULT_WEIGHTS = {
   indicatorWeights: {
     khanSaab: 1.0, smc_bos: 1.0, smc_choch: 1.0, smc_ob: 1.0, smc_fvg: 1.0,
     formation: 1.0, rsi_divergence: 1.0, rsi_level: 1.0, macd: 1.0, ema_cross: 1.0,
-    cdv: 1.0, adx_trend: 1.0, squeeze_filter: 1.0, macro_filter: 1.0, volume_confirm: 1.0,
+    cdv: 1.0, adx_trend: 1.0, dmi_cross: 1.0, squeeze_filter: 1.0, macro_filter: 1.0, volume_confirm: 1.0,
     stoch_rsi: 1.0,
   },
   slMultiplierOverrides: {},
@@ -319,47 +319,52 @@ function adjustGradeThresholds(weights, statsByGrade) {
 function adjustIndicatorWeights(weights, indicatorScores) {
   const changes = [];
 
+  // 2026-05-02 — Toplamsal model (additive_v1):
+  //   Effective = max(0, Base + Δ); Δ ∈ [-Base, +Base] (multiplier [0,2] aralığının dengi).
+  //   Adjuster artik Δ üzerinde çalışıyor. Sınıflandırma → Δ adımı (Base ile ölçekli).
   for (const [key, score] of Object.entries(indicatorScores)) {
-    // Faz 0 Part 2: indikator ogrenmesi icin min 30 ornek esigi (Risk #1).
-    // MIN_SAMPLE=20 diger ayarlamalar icin (TF, faulty) korunur.
     if (!score || score.aligned_count < INDICATOR_LEARNING_MIN_SAMPLE) continue;
-    if (!score.significant) continue; // Only adjust statistically significant results
-    // Pinned disabled indicators — 0 tabanindan sapmasinlar.
+    if (!score.significant) continue;
+
+    const base = DEFAULT_VOTE_WEIGHTS[key] || 1.0;
+
+    // Pinned disabled — multiplier=0 yerine indicatorDisabled bayragi kullan.
     if (DISABLED_INDICATORS.has(key)) {
-      if (weights.indicatorWeights[key] !== 0) {
-        weights.indicatorWeights[key] = 0;
-        changes.push(`${key} agirlik sabitlendi: 0 (DISABLED — canli lift negatif)`);
+      weights.indicatorDisabled = weights.indicatorDisabled || {};
+      if (!weights.indicatorDisabled[key]) {
+        weights.indicatorDisabled[key] = true;
+        if (weights.indicatorWeights && weights.indicatorWeights[key] != null) {
+          delete weights.indicatorWeights[key];
+        }
+        changes.push(`${key} disabled bayragi: true (DISABLED — canli lift negatif)`);
       }
       continue;
     }
 
-    const currentWeight = weights.indicatorWeights[key];
-    if (currentWeight == null) continue;
+    weights.indicatorWeights = weights.indicatorWeights || {};
+    const currentDelta = weights.indicatorWeights[key] != null ? Number(weights.indicatorWeights[key]) : 0;
+    let targetDelta = currentDelta;
 
-    let targetWeight = currentWeight;
+    if (score.classification === 'load_bearing')          targetDelta = currentDelta + 0.10 * base;
+    else if (score.classification === 'useful')           targetDelta = currentDelta + 0.05 * base;
+    else if (score.classification === 'decorative')       targetDelta = currentDelta - 0.10 * base;
+    else if (score.classification === 'counterproductive') targetDelta = currentDelta - 0.30 * base;
 
-    if (score.classification === 'load_bearing') {
-      targetWeight = clamp(currentWeight * 1.1, 0.3, 2.0); // Boost 10%
-    } else if (score.classification === 'useful') {
-      targetWeight = clamp(currentWeight * 1.05, 0.3, 2.0); // Small boost
-    } else if (score.classification === 'decorative') {
-      targetWeight = clamp(currentWeight * 0.9, 0.3, 2.0); // Reduce 10%
-    } else if (score.classification === 'counterproductive') {
-      targetWeight = clamp(currentWeight * 0.7, 0.3, 2.0); // Significant reduction
-    }
+    // Δ ∈ [-Base, +Base] — Effective ∈ [0, 2×Base], eski multiplier sınırının ile aynı.
+    targetDelta = clamp(targetDelta, -base, base);
 
-    // Apply damping: move only 50% toward target
-    const dampedWeight = Math.round((currentWeight + (targetWeight - currentWeight) * 0.5) * 100) / 100;
+    // 50% damping (Δ-uzayında aynı)
+    const dampedDelta = Math.round((currentDelta + (targetDelta - currentDelta) * 0.5) * 100) / 100;
 
-    // Faz 0 Part 2: rate cap (24h rolling %20). Damping + rate cap birlikte
-    // kontrolsuz surukulenmeyi onler — tek cycle'da %10, 24h'te toplam %20.
-    const finalWeight = rateCapClip(weights, key, currentWeight, dampedWeight);
+    // Rate cap: günlük toplam değişim Δ-uzayında 0.20×Base ile sınırlı (eski %20 multiplier sınırının dengi).
+    const finalDelta = rateCapClip(weights, key, currentDelta, dampedDelta);
 
-    if (Math.abs(finalWeight - currentWeight) >= 0.02) {
-      weights.indicatorWeights[key] = finalWeight;
-      logWeightChange(weights, key, currentWeight, finalWeight);
-      const capNote = finalWeight !== dampedWeight ? ' [RATE-CAPPED]' : '';
-      changes.push(`${key} agirlik: ${currentWeight} → ${finalWeight} (lift: ${score.lift}%, sinif: ${score.classification})${capNote}`);
+    if (Math.abs(finalDelta - currentDelta) >= 0.02) {
+      weights.indicatorWeights[key] = finalDelta;
+      logWeightChange(weights, key, currentDelta, finalDelta);
+      const capNote = finalDelta !== dampedDelta ? ' [RATE-CAPPED]' : '';
+      const eff = Math.max(0, base + finalDelta).toFixed(2);
+      changes.push(`${key} Δ: ${currentDelta.toFixed(2)} → ${finalDelta.toFixed(2)} (Base ${base.toFixed(2)}, Eff ${eff}, lift ${score.lift}%, sinif ${score.classification})${capNote}`);
     }
   }
 
@@ -623,17 +628,21 @@ function adjustFromFaultyTrades(weights, faultyStats, totalSignals, statsByTF = 
       else if (guiltKey.startsWith('squeeze_')) weightKey = 'squeeze_filter';
       else if (guiltKey.startsWith('khanSaab_vol_')) weightKey = 'volume_confirm';
     }
-    if (!weightKey || weights.indicatorWeights[weightKey] == null) continue;
-
-    const current = weights.indicatorWeights[weightKey];
-    const reduced = Math.max(
-      FAULTY_WEIGHT_FLOOR,
-      Math.round(current * FAULTY_REDUCE_PCT * 100) / 100
-    );
+    if (!weightKey) continue;
+    // 2026-05-02 — additive_v1: FAULTY cezasi Δ-uzayinda. Eski %10 azaltim
+    // (× 0.9) yerine Δ' = Δ - 0.10 × Base. Δ floor: -Base × (1 - FLOOR/Base);
+    // FAULTY_WEIGHT_FLOOR=0.3 multiplier sinirinin Δ karsiligi: max(-Base + 0.3, -Base).
+    weights.indicatorWeights = weights.indicatorWeights || {};
+    const base = DEFAULT_VOTE_WEIGHTS[weightKey] || 1.0;
+    const current = weights.indicatorWeights[weightKey] != null ? Number(weights.indicatorWeights[weightKey]) : 0;
+    const step = (1 - FAULTY_REDUCE_PCT) * base;     // 0.10 × base
+    const floorDelta = Math.max(-base, FAULTY_WEIGHT_FLOOR - base);
+    const reduced = Math.round(Math.max(floorDelta, current - step) * 100) / 100;
     if (reduced < current) {
       weights.indicatorWeights[weightKey] = reduced;
+      const eff = Math.max(0, base + reduced).toFixed(2);
       changes.push(
-        `[FAULTY] ${weightKey} agirlik: ${current} → ${reduced} (${guiltKey} ${count}/${totalSignals} hatali trade'de suclu, %${Math.round(guiltRate * 10000) / 100})`
+        `[FAULTY] ${weightKey} Δ: ${current.toFixed(2)} → ${reduced.toFixed(2)} (Base ${base.toFixed(2)}, Eff ${eff}; ${guiltKey} ${count}/${totalSignals} hatali, %${Math.round(guiltRate * 10000) / 100})`
       );
     }
   }
@@ -730,16 +739,23 @@ function adjustRegimeSpecificWeights(weights) {
       const weightKey = INDICATOR_KEY_MAP[scorerKey];
       if (!weightKey) continue;
 
-      const baseGlobal = weights.indicatorWeights[weightKey] ?? 1.0;
-      const currentRegimeW = rw[weightKey] != null ? rw[weightKey] : baseGlobal;
-      let targetMult = 1.0;
-      if (score.classification === 'load_bearing') targetMult = 1.15;
-      else if (score.classification === 'useful') targetMult = 1.07;
-      else if (score.classification === 'decorative') targetMult = 0.92;
-      else if (score.classification === 'counterproductive') targetMult = 0.70;
+      // 2026-05-02 — additive_v1: per-regime delta da Δ-semantiginde.
+      // Eski "global multiplier × regime mult" zinciri yerine Δ_regime, global
+      // Δ'ye eklenen ek bir offset. Effective = max(0, Base + Δ_global + Δ_regime)
+      // (voteWeight() su an sadece Δ_global okuyor; regime kanali ileride
+      //   getRegimeIndicatorDelta(regime, key) ile devreye alinir).
+      const base = DEFAULT_VOTE_WEIGHTS[weightKey] || 1.0;
+      const globalDelta = weights.indicatorWeights[weightKey] != null ? Number(weights.indicatorWeights[weightKey]) : 0;
+      const currentRegimeW = rw[weightKey] != null ? Number(rw[weightKey]) : 0;
+      let targetRegimeStep = 0;
+      if (score.classification === 'load_bearing')          targetRegimeStep = +0.15 * base;
+      else if (score.classification === 'useful')           targetRegimeStep = +0.07 * base;
+      else if (score.classification === 'decorative')       targetRegimeStep = -0.08 * base;
+      else if (score.classification === 'counterproductive') targetRegimeStep = -0.30 * base;
       else continue;
 
-      const targetRegimeW = clamp(baseGlobal * targetMult, 0.3, 2.0);
+      // Δ_regime aralık: ±Base. Effective floor = 0 (voteWeight max(0,..) ile garantili).
+      const targetRegimeW = clamp(currentRegimeW + targetRegimeStep, -base, base);
       const damped = Math.round((currentRegimeW + (targetRegimeW - currentRegimeW) * 0.5) * 100) / 100;
 
       // Faz 0 Part 2: rate cap per-regime key (rejim + indikator scoped).
