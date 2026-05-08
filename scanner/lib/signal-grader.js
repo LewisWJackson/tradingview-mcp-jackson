@@ -24,6 +24,7 @@ import { detectVolumeReaction } from './volume-reaction-detector.js';
 import { formatBarTime } from './formation-detector.js';
 import { detectPumpTop, pumpPullbackLevel } from './pump-guard.js';
 import { loadFibCache } from './fib-engine.js';
+import { buildStrategicLevels, pickStrategicTp2Tp3 } from './strategic-tp-engine.js';
 import {
   resolveCategory,
   getVolTier,
@@ -215,6 +216,7 @@ const DEFAULT_VOTE_WEIGHTS = {
   cdv: 0.8,            // Volume direction — moderate
   volume_confirm: 1.2, // Volume spike confirmation — crucial for EMA cross validation
   adx_trend: 1.5,      // ADX > 20 = MANDATORY trend filter (EMA+ADX: PF 2.16-2.21)
+  dmi_cross: 1.5,      // +DI / -DI yon oyu: ADX>=25 ile guclu trend yon teyidi (adx_trend ile ayni baz)
   macro_filter: 0.5,   // Macro — penalty only
   squeeze_filter: 1.0, // Squeeze — penalty only (negative weight)
   stoch_rsi: 1.2,     // StochRSI crossover/divergence — RSI level'dan guclu, EMA cross'tan zayif
@@ -286,11 +288,22 @@ function collectVotes({ khanSaab, smc, studyValues, ohlcv, formation, squeeze, d
   // learning bozulmadan "kripto'da macd daha onemli, forex'te daha az" gibi
   // kategori-spesifik ayarlarin hook'u kurulur. Weight-adjuster bir sonraki
   // iterasyonda bu tabloyu per-category sample gruplamasi ile doldurur.
+  // 2026-05-02 — Toplamsal model (additive_v1):
+  //   Effective = max(0, Base + Δ) × CategoryMult
+  //   `iw[key]` artik bir Δ (offset) — multiplier degil. Notr durumda Δ=0,
+  //   basari +Δ, basarisizlik -Δ. `indicatorDisabled[key]=true` ise indikator
+  //   tamamen susturulur (Effective=0). Bu, eski multiplier=0 absorbing
+  //   barrier sorununu kaldirir; manuel disable ile ogrenme kaynakli decay
+  //   ayri kanallarda saklanir.
   function voteWeight(key) {
-    const learned = iw[key] != null ? iw[key] : 1.0;
-    const base = DEFAULT_VOTE_WEIGHTS[key] || 1.0;
+    if (w?.indicatorDisabled?.[key] === true) return 0;
+    // 2026-05-02 — `|| 1.0` Base=0'i 1.0'a maskeliyor (manuel ban gizli sifirlanmis
+    // sayilirdi). Toplamsal modelde Base=0 kasitli bir disable; nullish coalesce
+    // ile bunu koru. Sadece undefined/null durumunda 1.0 fallback uygula.
+    const base = DEFAULT_VOTE_WEIGHTS[key] ?? 1.0;
+    const delta = iw[key] != null ? Number(iw[key]) : 0;
     const catMult = getCategoryWeightMultiplier(w, symbol, key);
-    return base * learned * catMult;
+    return Math.max(0, base + delta) * catMult;
   }
 
   // --- 1. KhanSaab (one vote, not a veto) ---
@@ -387,6 +400,40 @@ function collectVotes({ khanSaab, smc, studyValues, ohlcv, formation, squeeze, d
       } else if (khanSaab.adx < 20) {
         // No trend — PENALIZE momentum signals (backtest: mean reversion PF < 1.0 in range)
         votes.push({ source: 'adx_trend', direction: null, weight: -voteWeight('adx_trend') * 0.8, reasoning: `ADX ${khanSaab.adx} — trend yok, momentum sinyalleri ZAYIF` });
+      }
+    }
+
+    // DMI yon oyu — +DI / -DI: ADX >= 25 ise guclu trend yonunu teyit eder.
+    // ADX < 20'de oy verilmez (zayif trend, DI gurultu). 20 <= ADX < 25 ise yarim agirlik.
+    // Onceki barda ters durumdaysa "taze cross" → ekstra %30 agirlik.
+    {
+      // Once khanSaab (calcTechnicals) → yoksa TV ADX/DMI study fallback.
+      const tvDmi = (khanSaab.plusDi == null || khanSaab.minusDi == null)
+        ? extractADXAndDMI(studyValues) : null;
+      const dmiAdx = khanSaab.adx != null ? Number(khanSaab.adx)
+        : (tvDmi?.adx != null ? Number(tvDmi.adx) : null);
+      const pdi = khanSaab.plusDi != null ? Number(khanSaab.plusDi)
+        : (tvDmi?.plusDi != null ? Number(tvDmi.plusDi) : null);
+      const mdi = khanSaab.minusDi != null ? Number(khanSaab.minusDi)
+        : (tvDmi?.minusDi != null ? Number(tvDmi.minusDi) : null);
+      if (pdi != null && mdi != null && dmiAdx != null && dmiAdx >= 20) {
+        const dir = pdi > mdi ? 'long' : (mdi > pdi ? 'short' : null);
+        if (dir) {
+          const pdiP = khanSaab.plusDiPrev != null ? Number(khanSaab.plusDiPrev) : null;
+          const mdiP = khanSaab.minusDiPrev != null ? Number(khanSaab.minusDiPrev) : null;
+          const wasOpposite = (pdiP != null && mdiP != null) &&
+            (dir === 'long' ? pdiP <= mdiP : mdiP <= pdiP);
+          const strengthMult = dmiAdx >= 25 ? 1.0 : 0.5;
+          const freshMult = wasOpposite ? 1.3 : 1.0;
+          const w = voteWeight('dmi_cross') * strengthMult * freshMult;
+          const tag = wasOpposite ? ' (taze cross)' : '';
+          votes.push({
+            source: 'dmi_cross',
+            direction: dir,
+            weight: w,
+            reasoning: `DMI: +DI ${pdi} / -DI ${mdi}, ADX ${dmiAdx} → ${dir}${tag}`,
+          });
+        }
       }
     }
   }
@@ -771,6 +818,9 @@ export function gradeShortTermSignal({
   marketType = null,
   htfConfidence = null,
   mtfAlignment = null,
+  // Patch 2 — shadow primitives. tallyVotes'a girmez; sadece result objesine
+  // surface eder (shadowMetrics + shadowVotes alanlari).
+  shadow = null,
 }) {
   const result = {
     symbol, timeframe,
@@ -787,6 +837,10 @@ export function gradeShortTermSignal({
     volatilityRegime: null,
     votes: null,
     tally: null,
+    // Patch 2 — shadow output. Live decision path KESINLIKLE bu alanlari
+    // okumaz; sadece dashboard / API / learning replay icin gozlem datasi.
+    shadowMetrics: null,
+    shadowVotes: null,
   };
 
   // ====================================================================
@@ -1037,26 +1091,16 @@ export function gradeShortTermSignal({
     else if (grade === 'B') grade = 'A';
   }
 
-  // --- Degraded-mode grade dusurme DEVRE DISI 2026-04-27'YE KADAR ---
-  // Yeni strateji/matematik sonrasi sistemi 1 hafta boyunca kendi mantigiyla
-  // calistirip ogrenmesi icin savunma moduna gecisi askiya aldik. Tarih
-  // gecince blok otomatik geri aktiflesir. Bkz. anomaly-detector.js (evaluate
-  // tarafi da ayni tarihe kadar mod degisimi yapmiyor).
-  const DEGRADED_MODE_DISABLED_UNTIL = Date.UTC(2026, 3, 27); // 2026-04-27 00:00 UTC
-  if (Date.now() >= DEGRADED_MODE_DISABLED_UNTIL) {
-    try {
-      if (isDegradedMode() && grade !== 'IPTAL' && grade !== 'HATA') {
-        const downgradeMap = { 'A': 'B', 'B': 'C', 'C': 'BEKLE', 'BEKLE': 'BEKLE' };
-        const originalGrade = grade;
-        grade = downgradeMap[grade] || grade;
-        if (grade !== originalGrade) {
-          result.warnings = result.warnings || [];
-          result.warnings.push(`DEGRADED MODE: grade ${originalGrade} → ${grade} (sistem savunma modunda)`);
-          result.reasoning.push(`Anomali dedektoru aktif — grade bir kademe dusuruldu`);
-        }
-      }
-    } catch { /* anomaly module okunamazsa normal grade kullan */ }
-  }
+  // --- Degraded-mode grade dusurme KALICI OLARAK DEVRE DISI (2026-05-03) ---
+  // Kullanici talebi: "savunma modundan cikilsin, A/B/C grade'ler ladder/lig
+  // sistemine birakilsin". Anomaly-detector hala state tutar (telemetry icin)
+  // ama grade dusurmez. Sadece advisory not eklenir.
+  try {
+    if (isDegradedMode() && grade !== 'IPTAL' && grade !== 'HATA') {
+      result.warnings = result.warnings || [];
+      result.warnings.push(`Anomali dedektoru aktif (advisory) — grade korundu, ladder/lig sistemine birakildi`);
+    }
+  } catch { /* anomaly module okunamazsa sessiz gec */ }
 
   // 3-kademe lig sistemi (2026-04-23 guncel): TUM tradable gradeler (A/B/C/BEKLE)
   // sembol bazli ladder ile GERCEK / ARA / SANAL kovalarina atanir. Grade analytics
@@ -1260,6 +1304,20 @@ export function gradeShortTermSignal({
     }
 
     result.slSource = slSource;
+    // SL gerekçesi (kart için human-readable).
+    // 2026-05-04: result.sl henuz applyTpLevels (asagida) tarafindan atanmadigindan
+    // burada finalSL (entry'den uzaklik) ile gercek SL fiyatini elimizde hesaplayip
+    // formatliyoruz; aksi halde "SL ?" goruluyordu.
+    {
+      const slPctTxt = ((finalSL / entryPrice) * 100).toFixed(2);
+      const slPriceForLabel = tally.direction === 'long' ? entryPrice - finalSL : entryPrice + finalSL;
+      const slBaseTxt = slSource === 'structural_swing' ? `yapisal swing ${tally.direction === 'long' ? 'low' : 'high'} + 0.2×ATR buffer`
+                     : slSource === 'ob_boundary' ? `entry OB ${tally.direction === 'long' ? 'low' : 'high'} + 0.2×ATR buffer`
+                     : slSource === 'ob_conflict_adjusted' ? 'çakışan OB dışına alındı'
+                     : `ATR×${slMultiplier.toFixed(2)} (volRegime ${volRegime?.regime || '?'})`;
+      const slPriceTxt = Number.isFinite(slPriceForLabel) ? Number(slPriceForLabel).toFixed(4) : '?';
+      result.slReason = `${slBaseTxt} → SL ${slPriceTxt} (mesafe %${slPctTxt})`;
+    }
 
     const squeeze = computeSqueezeRatio(ohlcv.bars, 14, 20);
     const tpPolicy = resolveTpPolicy(squeeze ? squeeze.ratio : null, result.grade);
@@ -1269,6 +1327,9 @@ export function gradeShortTermSignal({
     result.tpRMultipliers = tpPolicy.tpR;
     result.tpQualityTier = tpPolicy.grade;
     applyTpLevels(result, entryPrice, finalSL, tally.direction, tpPolicy.tpR, tpPolicy.tpCount);
+    result.tp1Source = `R-multiple ${tpPolicy.tpR.tp1.toFixed(1)}R (kademeli kâr + breakeven tetikleyici)`;
+    result.tp2Source = `R-multiple ${tpPolicy.tpR.tp2.toFixed(1)}R (fallback — stratejik aday yok)`;
+    result.tp3Source = result.tp3 != null ? `R-multiple ${tpPolicy.tpR.tp3.toFixed(1)}R (fallback — stratejik aday yok)` : null;
 
     // Safety: entry must not be beyond SL (would make no sense)
     // Entry quote_price'a duserse SL/TP mesafesini yeni entry uzerinden
@@ -1411,7 +1472,17 @@ export function gradeShortTermSignal({
             ? `entry bu seviyenin %${distPct.toFixed(2)} altinda`
             : `entry bu seviyenin %${Math.abs(distPct).toFixed(2)} ustunde`;
           const roleText = tally.direction === 'short' ? 'destek (TP yolu)' : 'direnc (TP yolu)';
-          result.reasoning.push(`HTF Fib: ${nearest.tf} ${nearest.level} @ ${Number(nearest.price).toFixed(4)} ${roleText} / ${relText}`);
+          // Kaynak etiketi: barrier `sources` array'inde fib_X.Y / smc_TF / oss / equal_high vb. olabilir.
+          // Eski kod `nearest.level` (fib level) bekliyordu; SMC line'da undefined yazıyordu.
+          const _srcs = Array.isArray(nearest.sources) ? nearest.sources : [];
+          const _fibSrc = _srcs.find(s => /^fib[_:]/i.test(String(s)));
+          const _isFib = !!_fibSrc;
+          const _isSmc = _srcs.some(s => /^smc/i.test(String(s)));
+          const _label = _isFib ? `Fib ${String(_fibSrc).replace(/^fib[_:]/i, '')}`
+                       : _isSmc ? 'SMC line'
+                       : (_srcs[0] || 'level');
+          const _kindWord = _isFib ? 'HTF Fib' : (_isSmc ? 'HTF Barrier' : 'HTF Level');
+          result.reasoning.push(`${_kindWord}: ${nearest.tf} ${_label} @ ${Number(nearest.price).toFixed(4)} ${roleText} / ${relText}`);
         } else {
           const trendTFs = Array.isArray(align.htfSummary.htfTrends) ? align.htfSummary.htfTrends.map(t => `${t.tf}:${t.regime}`).join(', ') : '';
           result.reasoning.push(`HTF Fib: yakin TP-yonu seviyesi yok${trendTFs ? ` (HTF trend: ${trendTFs})` : ''}`);
@@ -1437,9 +1508,57 @@ export function gradeShortTermSignal({
       result.warnings.push(`[AlignFilter] hata: ${e.message}`);
     }
 
+    // ----------------------------------------------------------------------
+    // Stratejik TP override (2026-05-03) — alignment-filters SONRA çalışır,
+    // çünkü filtre HTF fib seviyelerini "engel" gibi cap'liyordu; biz aynı
+    // seviyeleri "hedef" olarak kullanmak istiyoruz. TP1 R-multiple sabit
+    // (kademeli kâr + BE tetikleyici). TP2/TP3 fib (sinyal TF + 1D + 1W) +
+    // SMC OB/FVG bantlarından seçilir. Aday yoksa R-multiple fallback korunur.
+    // ----------------------------------------------------------------------
+    try {
+      const fibCache = loadFibCache(symbol);
+      const stratLevels = buildStrategicLevels({
+        signalTF: timeframe,
+        signalBars: ohlcv.bars,
+        fibCache,
+        parsedBoxes: parsedBoxes || null,
+        currentPrice: result.entry,
+      });
+      const picked = pickStrategicTp2Tp3({
+        levels: stratLevels,
+        direction: tally.direction,
+        entry: result.entry,
+        sl: result.sl,
+        atr,
+      });
+      result.strategicCandidates = picked.candidates;
+      if (picked.tp2 != null) {
+        result.tp2 = picked.tp2;
+        result.tp2Source = `Stratejik: ${picked.tp2Source}`;
+        result.tp2Meta = picked.tp2Meta;
+      }
+      if (picked.tp3 != null) {
+        result.tp3 = picked.tp3;
+        result.tp3Source = `Stratejik: ${picked.tp3Source}`;
+        result.tp3Meta = picked.tp3Meta;
+        result.tpCount = 3;
+      }
+    } catch (stratErr) {
+      result.warnings.push(`[StrategicTP] hata: ${stratErr?.message || stratErr}`);
+    }
+
     const risk = Math.abs(result.entry - result.sl);
-    const reward = Math.abs(result.tp2 - result.entry);
+    // R:R, en yuksek STRATEJIK TP'ye gore hesaplanir. TP3 stratejik ise
+    // (tp3Source "Stratejik:" prefix'iyle baslar), R:R hedefi TP3'tur.
+    // Aksi halde TP2 kullanilir.
+    const tp3Strategic = typeof result.tp3Source === 'string'
+      && result.tp3Source.startsWith('Stratejik:')
+      && Number.isFinite(result.tp3);
+    const rrTarget = tp3Strategic ? result.tp3 : result.tp2;
+    const rrTargetLabel = tp3Strategic ? 'TP3' : 'TP2';
+    const reward = Math.abs(rrTarget - result.entry);
     result.rr = risk > 0 ? `1:${(reward / risk).toFixed(1)}` : 'N/A';
+    result.rrTarget = rrTargetLabel;
     result.slDistancePct = ((risk / entryPrice) * 100).toFixed(2) + '%';
 
     // Faz 2 v2.1 — Rejim-aware minRR override.
@@ -1456,10 +1575,10 @@ export function gradeShortTermSignal({
       minRRSource = `regime:${regimeContext.regime}`;
     }
     if (risk > 0 && reward / risk < minRR) {
-      result.warnings.push(`R:R ${result.rr} < 1:${minRR} minimum (${minRRSource})`);
+      result.warnings.push(`R:R ${result.rr} (hedef ${rrTargetLabel}) < 1:${minRR} minimum (${minRRSource})`);
       result.grade = 'IPTAL';
       const rrNum = (reward / risk).toFixed(2);
-      result.reasoning.push(`--- SERT BLOK IPTAL: R:R 1:${rrNum} < 1:${minRR} minimum (${minRRSource}) — pozisyon acilmaz`);
+      result.reasoning.push(`--- SERT BLOK IPTAL: R:R 1:${rrNum} (hedef ${rrTargetLabel}) < 1:${minRR} minimum (${minRRSource}) — pozisyon acilmaz`);
     }
   }
 
@@ -1496,9 +1615,8 @@ export function gradeShortTermSignal({
         wouldDispatch: wrapperResult.wouldDispatch,
       };
       if (wrapperResult.rejected) {
-        const prevGrade = result.grade;
-        result.grade = 'BEKLE';
-        result.reasoning.push(`[Faz 2 wrapper] ${wrapperResult.decision} — rejim ${regimeContext.regime}; eski grade ${prevGrade} → BEKLE${wrapperResult.shadowMode ? ' (shadow mode)' : ''}`);
+        // 2026-05-03: Rejim wrapper artık BEKLE'ye düşürmüyor — reasoning'e advisory yazılır.
+        result.reasoning.push(`[Rejim wrapper] ${wrapperResult.decision} — rejim ${regimeContext.regime} (advisory, grade korundu)`);
         if (wrapperResult.notes && wrapperResult.notes.length) {
           for (const n of wrapperResult.notes) result.reasoning.push(`  ${n}`);
         }
@@ -1509,7 +1627,129 @@ export function gradeShortTermSignal({
     }
   }
 
+  // ====================================================================
+  // Patch 2 — Shadow output (read-only; tallyVotes etkilenmez)
+  // Yeni primitifler ve hipotetik oylar burada result.shadowMetrics +
+  // result.shadowVotes olarak surface edilir. Hicbir karar mantigi bunlari
+  // okumaz; canli grade/direction/conviction degismez.
+  // ====================================================================
+  try {
+    if (shadow && typeof shadow === 'object') {
+      result.shadowMetrics = {
+        cmf:               shadow.cmf || null,
+        mfi:               shadow.mfi || null,
+        maStack:           shadow.maStack || null,
+        maCross:           shadow.maCross || null,
+        macdExt:           shadow.macdExt || null,
+        rsiThresholdCross: shadow.rsiThresholdCross || null,
+        rsiFailureSwing:   shadow.rsiFailureSwing || null,
+        mitigatedZones:    shadow.mitigatedZones || null,
+        cleanBOSstatus:    shadow.cleanBOSstatus || null,
+        liquidityBias:     shadow.liquidityBias || null,
+        strongPivotBias:   shadow.strongPivotBias || null,
+        fibCluster:        shadow.fibCluster || null,
+        goldenZone:        shadow.goldenZone || null,
+        // mtfScore is filled in by scanner-engine after all TFs are graded
+        // (per-scan, not per-TF) — see scanner-engine bestSignal post-process.
+        mtfScore: null,
+      };
+      result.shadowVotes = _buildShadowVotes(shadow, { khanSaab, smc, cdv });
+    }
+  } catch (shadowErr) {
+    // Shadow data path is best-effort; never block the live result.
+    result.warnings.push(`[shadow] olusturma hatasi: ${shadowErr?.message || shadowErr}`);
+  }
+
   return result;
+}
+
+// Patch 2 helper — projects shadow primitives into hypothetical (source/dir/weight)
+// votes. These are NEVER pushed into the live `votes` array.
+function _buildShadowVotes(shadow, ctx = {}) {
+  const out = [];
+  if (!shadow) return out;
+  const baseW = (key, def) => (DEFAULT_VOTE_WEIGHTS[key] ?? def);
+  const push = (source, direction, weight, reasoning) => {
+    out.push({ source, direction, weight: Math.round(weight * 100) / 100, reasoning, shadow: true });
+  };
+
+  // CMF (Lloyd p.18)
+  if (shadow.cmf?.bias) {
+    const dir = shadow.cmf.bias === 'demand' ? 'long' : 'short';
+    push('cmf', dir, baseW('cmf', 1.2), `CMF ${shadow.cmf.cmf?.toFixed?.(3) ?? '?'} ${shadow.cmf.bias} [Lloyd 2013 p.18]`);
+  }
+
+  // MFI threshold-cross (Lloyd p.10)
+  if (shadow.mfi && Number.isFinite(shadow.mfi.prev) && Number.isFinite(shadow.mfi.cur)) {
+    const { prev, cur } = shadow.mfi;
+    if (prev < 20 && cur >= 20) push('mfi_cross', 'long',  baseW('mfi_cross', 1.0), `MFI ${prev.toFixed(1)}->${cur.toFixed(1)} 20 cross [Lloyd 2013 p.10]`);
+    if (prev > 80 && cur <= 80) push('mfi_cross', 'short', baseW('mfi_cross', 1.0), `MFI ${prev.toFixed(1)}->${cur.toFixed(1)} 80 cross [Lloyd 2013 p.10]`);
+  }
+
+  // MA stack 20/50/200 (Lloyd ch.1)
+  if (shadow.maStack?.bias) {
+    const dir = shadow.maStack.bias === 'bull' ? 'long' : 'short';
+    push('ma_stack', dir, baseW('ma_stack', 1.5), `Price>SMA20>SMA50>SMA200 stack ${shadow.maStack.bias} [Lloyd 2013 ch.1]`);
+  }
+
+  // 50x200 cross (Lloyd ch.13)
+  if (shadow.maCross === 'golden_cross') push('ma_cross', 'long',  baseW('ma_cross', 1.6), 'Golden cross 50>200 [Lloyd 2013 ch.13]');
+  if (shadow.maCross === 'death_cross')  push('ma_cross', 'short', baseW('ma_cross', 1.6), 'Death cross 50<200 [Lloyd 2013 ch.13]');
+
+  // MACD histogram cycle + divergence (Lloyd p.18, ch.10 p.152)
+  if (shadow.macdExt?.cyclePhase === 'buying') push('macd_cycle', 'long',  baseW('macd_cycle', 1.2), 'MACD hist > 0 (buying) [Lloyd p.18]');
+  if (shadow.macdExt?.cyclePhase === 'selling') push('macd_cycle', 'short', baseW('macd_cycle', 1.2), 'MACD hist < 0 (selling) [Lloyd p.18]');
+  if (shadow.macdExt?.divergence === 'bullish') push('macd_div', 'long',  baseW('macd_div', 1.5), 'MACD bullish divergence [Lloyd p.18, ch.10 p.152]');
+  if (shadow.macdExt?.divergence === 'bearish') push('macd_div', 'short', baseW('macd_div', 1.5), 'MACD bearish divergence [Lloyd p.18, ch.10 p.152]');
+
+  // RSI threshold-cross (Swanson p.341-342, p.390-394)
+  if (shadow.rsiThresholdCross?.longCross) {
+    const t = shadow.rsiThresholdCross.longTh;
+    push('rsi_threshold_cross', 'long',  baseW('rsi_threshold_cross', 1.0), `RSI ${shadow.rsiThresholdCross.prev?.toFixed(1)}->${shadow.rsiThresholdCross.cur?.toFixed(1)} ${t} cross [Swanson 2014 p.341-342]`);
+  }
+  if (shadow.rsiThresholdCross?.shortCross) {
+    const t = shadow.rsiThresholdCross.shortTh;
+    push('rsi_threshold_cross', 'short', baseW('rsi_threshold_cross', 1.0), `RSI ${shadow.rsiThresholdCross.prev?.toFixed(1)}->${shadow.rsiThresholdCross.cur?.toFixed(1)} ${t} cross [Swanson 2014 p.341-342]`);
+  }
+
+  // RSI failure swing (Wilder via Swanson)
+  if (shadow.rsiFailureSwing?.confirmed) {
+    const dir = shadow.rsiFailureSwing.type === 'bullish' ? 'long' : 'short';
+    push('rsi_failure_swing', dir, baseW('rsi_failure_swing', 1.2), `RSI failure swing ${shadow.rsiFailureSwing.type} [Wilder/Swanson]`);
+  }
+
+  // EQH/EQL liquidity bias (King p.50)
+  if (shadow.liquidityBias) {
+    push('eq_liquidity', shadow.liquidityBias, baseW('eq_liquidity', 0.8), `EQH/EQL likidite egilimi: ${shadow.liquidityBias} [King 2022 p.50]`);
+  }
+
+  // Strong-pivot bias (King p.9)
+  if (shadow.strongPivotBias?.long)  push('strong_pivot', 'long',  baseW('strong_pivot', 0.6), 'Strong high resolved [King 2022 p.9]');
+  if (shadow.strongPivotBias?.short) push('strong_pivot', 'short', baseW('strong_pivot', 0.6), 'Strong low resolved [King 2022 p.9]');
+
+  // Fib cluster (Boroden ch.3)
+  if (shadow.fibCluster?.isCluster && shadow.fibCluster.direction) {
+    push('fib_cluster_proximity', shadow.fibCluster.direction, baseW('fib_cluster_proximity', 1.2),
+      `Fib cluster (${shadow.fibCluster.count} hit, ${shadow.fibCluster.hits.map(h => `${h.tf}@${h.level}`).join('+')}) [Boroden ch.3]`);
+  }
+
+  // Golden zone (Boroden ch.3)
+  if (shadow.goldenZone?.inside && shadow.goldenZone.swingDir) {
+    const dir = shadow.goldenZone.swingDir === 'up' ? 'long' : shadow.goldenZone.swingDir === 'down' ? 'short' : null;
+    if (dir) push('golden_zone', dir, baseW('golden_zone', 1.0), `Quote ${shadow.goldenZone.tf} golden zone icinde [Boroden ch.3]`);
+  }
+
+  // Hipotetik pozitif carpan kayitlari (sadece raporlama; oy degil).
+  // Bunlar ayri 'multiplier' tipi recordlar olarak shadowVotes'a eklenir,
+  // dashboard'da farkli renkte gozukur.
+  const ks = ctx.khanSaab || {};
+  if ((ks.volume === 'HIGH' || ks.volume === 'RISING') && shadow.rsiThresholdCross?.longCross) {
+    out.push({ source: 'multiplier:rsi_cross_x_high_vol', kind: 'multiplier', factor: 1.20, direction: 'long', reasoning: 'RSI cross + HIGH volume → ×1.20 [Swanson p.450]', shadow: true });
+  }
+  if (shadow.cleanBOSstatus === 'BOS') {
+    out.push({ source: 'multiplier:smc_bos_clean', kind: 'multiplier', factor: 1.20, direction: null, reasoning: 'Clean BOS (body > wick beyond level) → ×1.20 [King p.55]', shadow: true });
+  }
+  return out;
 }
 
 /**
@@ -1713,20 +1953,33 @@ function calculateATR(bars, period = 14) {
 }
 
 function extractADX(studyValues) {
+  const dmi = extractADXAndDMI(studyValues);
+  return dmi ? dmi.adx : null;
+}
+
+// ADX/DMI study'sinden hem ADX hem +DI / -DI degerlerini cek.
+// Geri donus: { adx, plusDi, minusDi } veya null. Tek bir alanin null olmasi
+// digerlerini yutmaz — caller alan-alan defansif okuma yapsin.
+function extractADXAndDMI(studyValues) {
   if (!studyValues) return null;
   for (const study of (Array.isArray(studyValues) ? studyValues : [])) {
     if (!study.values) continue;
-    // Study adi ADX/DMI ailesinden olmali — herhangi bir indicator'in "ADX"
-    // anahtari (ornegin baska trend strength metric'i) yanlis okunmasin.
     const sname = String(study.name || '').toLowerCase();
     const isAdxStudy = sname.includes('adx') || sname.includes('directional') || sname.includes('dmi');
     if (!isAdxStudy) continue;
+    let adx = null, plusDi = null, minusDi = null;
+    const clamp = (v) => Math.min(100, Math.max(0, v));
     for (const [key, val] of Object.entries(study.values)) {
-      const k = key.toLowerCase();
-      if (!k.includes('adx') || k.includes('+di') || k.includes('-di')) continue;
       if (typeof val !== 'number' || !isFinite(val)) continue;
-      // ADX 0-100 araliginda — disi degerler indicator bug'i, clamp et.
-      return Math.min(100, Math.max(0, val));
+      const k = key.toLowerCase();
+      const isPlus = k.includes('+di') || k === 'plus di' || k === 'plusdi' || k.includes('plus_di');
+      const isMinus = k.includes('-di') || k === 'minus di' || k === 'minusdi' || k.includes('minus_di');
+      if (isPlus) { if (plusDi == null) plusDi = clamp(val); continue; }
+      if (isMinus) { if (minusDi == null) minusDi = clamp(val); continue; }
+      if (k.includes('adx') && adx == null) { adx = clamp(val); }
+    }
+    if (adx != null || plusDi != null || minusDi != null) {
+      return { adx, plusDi, minusDi };
     }
   }
   return null;
@@ -1764,3 +2017,4 @@ function extractIFCCI(studyValues) {
   }
   return null;
 }
+
