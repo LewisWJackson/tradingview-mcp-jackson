@@ -1,5 +1,5 @@
 {
-  "watchlist": ["BTCUSDT"],
+  "watchlist": ["DELTAIN:BTCUSD.P"],
   "default_timeframe": "15",
 
   "strategy": {
