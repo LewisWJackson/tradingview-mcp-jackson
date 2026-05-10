@@ -9,6 +9,7 @@
 import { getOpenSignals, updateSignal, removeOpenSignal, diffIndicators, validateSignalPriceLevels } from './signal-tracker.js';
 import { appendToArchive } from './persistence.js';
 import { classifyOutcome, recordOutcome as recordLadderOutcome, isLadderEligibleTF } from './ladder-engine.js';
+import { maybeDispatchSlAmend } from './sl-amend-trigger.js';
 import * as bridge from '../tv-bridge.js';
 import { acquireScanLock, releaseScanLock } from '../scanner-engine.js';
 import { resolveSymbol, inferCategory } from '../symbol-resolver.js';
@@ -764,8 +765,11 @@ async function _checkAllOpenSignalsInner(signals) {
                 for (const m of oneBars) {
                   const updates = evaluateSignalOutcome(updated, m);
                   if (!updates) continue;
+                  const prev = updated;
                   const afterUpdate = updateSignal(updated.id, updates);
                   if (afterUpdate) {
+                    try { maybeDispatchSlAmend(prev, afterUpdate); }
+                    catch (e) { console.log(`[Outcome] sl-amend trigger hatası (${prev.id}): ${e.message}`); }
                     updated = afterUpdate;
                     anyUpdate = true;
                     if (isTerminal(afterUpdate.status, afterUpdate)) break;
@@ -791,8 +795,11 @@ async function _checkAllOpenSignalsInner(signals) {
             }
             const updates = evaluateSignalOutcome(updated, bar);
             if (!updates) continue;
+            const prev = updated;
             const afterUpdate = updateSignal(updated.id, updates);
             if (afterUpdate) {
+              try { maybeDispatchSlAmend(prev, afterUpdate); }
+              catch (e) { console.log(`[Outcome] sl-amend trigger hatası (${prev.id}): ${e.message}`); }
               updated = afterUpdate;
               anyUpdate = true;
               if (isTerminal(afterUpdate.status, afterUpdate)) break;

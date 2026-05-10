@@ -19,6 +19,7 @@ import { recordOutcome as recordLadderOutcome, isLadderEligibleTF } from './ladd
 import { evaluateSignalOutcome, isTerminal, buildArchiveRecord } from './outcome-checker.js';
 import { isMarketTradeable } from '../market-hours.js';
 import { inferCategory } from '../symbol-resolver.js';
+import { maybeDispatchSlAmend } from './sl-amend-trigger.js';
 
 let _broadcast = null;
 const _inflight = new Set(); // signalId -> tick processing flag
@@ -62,6 +63,11 @@ export function processLivePriceUpdate(update) {
 
       const updated = updateSignal(sig.id, updates);
       if (!updated) continue;
+
+      // TP1 transition: native trailing-stop kurulumu için executor'a tek
+      // seferlik amend gönder (idempotent helper). prev=sig, after=updated.
+      try { maybeDispatchSlAmend(sig, updated); }
+      catch (e) { console.log(`[LiveOutcome] sl-amend trigger hatası (${sig.id}): ${e.message}`); }
 
       const becameTerminal = isTerminal(updated.status, updated);
       if (becameTerminal) {
