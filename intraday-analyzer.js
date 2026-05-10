@@ -144,12 +144,34 @@ function analyzeVWAP(data) {
 function analyzeVolumeProfile(data) {
   const { pineLines, pineLabels, pineTables, studyValues } = data;
   const levels = { poc: null, vah: null, val: null, hvns: [], lvns: [] };
+  const context = { dayType: null, trend: null, priceZone: null, ibPosition: null, yPOC: null };
 
   function parseNum(s) {
     return Number(String(s).replace(/,/g, "").replace(/[^\d.\-]/g, ""));
   }
 
-  // Check pine labels for POC/VAH/VAL text
+  // Primary: parse pine tables (WillyAlgo format: "POC | 80730.0")
+  if (pineTables?.studies) {
+    for (const study of Object.values(pineTables.studies)) {
+      const tables = study.tables || (Array.isArray(study) ? study : []);
+      for (const table of tables) {
+        for (const row of (table.rows || [])) {
+          const [key, val] = String(row).split("|").map((s) => s.trim());
+          if (!key || !val) continue;
+          const kl = key.toLowerCase();
+          if (kl === "poc") levels.poc = parseNum(val);
+          else if (kl === "vah") levels.vah = parseNum(val);
+          else if (kl === "val") levels.val = parseNum(val);
+          else if (kl === "day type") context.dayType = val;
+          else if (kl === "trend") context.trend = val;
+          else if (kl === "price zone") context.priceZone = val;
+          else if (kl === "ib position") context.ibPosition = val;
+        }
+      }
+    }
+  }
+
+  // Fallback: check pine labels for POC/VAH/VAL text
   const allLabels = [];
   if (pineLabels?.studies) {
     for (const study of Object.values(pineLabels.studies)) {
@@ -161,11 +183,12 @@ function analyzeVolumeProfile(data) {
   for (const label of allLabels) {
     const txt = (label.text || label.label || "").toUpperCase();
     const price = label.price ?? label.y;
-    if (txt.includes("POC")) levels.poc = price;
-    else if (txt.includes("VAH")) levels.vah = price;
-    else if (txt.includes("VAL") && !txt.includes("VALUE")) levels.val = price;
+    if (!levels.poc && txt.includes("POC") && !txt.includes("YPOC")) levels.poc = price;
+    else if (!levels.vah && txt.includes("VAH")) levels.vah = price;
+    else if (!levels.val && txt.includes("VAL") && !txt.includes("VALUE")) levels.val = price;
     else if (txt.includes("HVN")) levels.hvns.push(price);
     else if (txt.includes("LVN")) levels.lvns.push(price);
+    else if (txt === "YPOC" || txt.includes("YPOC")) context.yPOC = price;
   }
 
   // Fallback: check study values for POC/VAH/VAL keys
@@ -182,28 +205,7 @@ function analyzeVolumeProfile(data) {
     }
   }
 
-  const allLines = [];
-  if (pineLines?.studies) {
-    for (const study of Object.values(pineLines.studies)) {
-      if (Array.isArray(study)) allLines.push(...study);
-      else if (study.lines) allLines.push(...study.lines);
-    }
-  }
-
-  if (!levels.poc && allLines.length > 0) {
-    const sorted = allLines
-      .map((l) => l.price ?? l.y)
-      .filter(Boolean)
-      .sort((a, b) => a - b);
-    if (sorted.length >= 3) {
-      const mid = Math.floor(sorted.length / 2);
-      levels.poc = sorted[mid];
-      levels.vah = sorted[Math.floor(sorted.length * 0.7)];
-      levels.val = sorted[Math.floor(sorted.length * 0.3)];
-    }
-  }
-
-  return levels;
+  return { ...levels, context };
 }
 
 function analyzePriceAction(data) {
@@ -420,6 +422,16 @@ async function run() {
   console.log(`  VAL: ${vpLevels.val ?? "not detected"}`);
   if (vpLevels.hvns.length) console.log(`  HVNs: ${vpLevels.hvns.join(", ")}`);
   if (vpLevels.lvns.length) console.log(`  LVNs: ${vpLevels.lvns.join(", ")}`);
+  if (vpLevels.context?.yPOC) console.log(`  yPOC: ${vpLevels.context.yPOC}`);
+  const ctx = vpLevels.context;
+  if (ctx?.dayType || ctx?.trend || ctx?.priceZone) {
+    const parts = [];
+    if (ctx.dayType) parts.push(`Day: ${ctx.dayType}`);
+    if (ctx.trend) parts.push(`Trend: ${ctx.trend}`);
+    if (ctx.priceZone) parts.push(ctx.priceZone);
+    if (ctx.ibPosition) parts.push(ctx.ibPosition);
+    console.log(`  WillyAlgo: ${parts.join(" | ")}`);
+  }
   console.log();
 
   console.log("── Price Action ───────────────────────────────────────");
