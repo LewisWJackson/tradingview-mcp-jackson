@@ -1,31 +1,311 @@
 {
-  "watchlist": ["BTCUSD", "ETHUSD", "SOLUSD"],
-  "default_timeframe": "240",
+  "watchlist": ["NSE:NIFTY50", "NSE:BANKNIFTY", "BSE:SENSEX"],
+  "default_timeframe": "dynamic",
 
-  "bias_criteria": {
-    "bullish": [
-      "Ribbon direction is up (bullish colour)",
-      "Price is above the 20 EMA on the 4H",
-      "RSI is below 60 (room to run)"
-    ],
-    "bearish": [
-      "Ribbon direction is down (bearish colour)",
-      "Price is below the 20 EMA on the 4H",
-      "RSI is above 40 (room to drop)"
-    ],
-    "neutral": [
-      "Ribbon is flat or mixed",
-      "Price is chopping around the 20 EMA",
-      "RSI is between 45 and 55"
+  "session": {
+    "pre_market_check": "9:00–9:15 IST — check GIFT Nifty, SGX Nifty, US futures, Asian markets for gap direction",
+    "opening_range_window": "9:15–9:30 IST (first 15 minutes)",
+    "prime_trading_window": "9:30–11:30 IST — highest momentum, best ORB follow-through",
+    "midday_avoid": "12:00–1:30 IST — low volume, chop zone, avoid new entries",
+    "afternoon_window": "1:30–2:30 IST — second opportunity if morning trade missed",
+    "no_entry_after": "2:30 IST — only manage open positions, no fresh trades",
+    "expiry_days": {
+      "nifty50": "Thursday (weekly), last Thursday of month (monthly)",
+      "banknifty": "Wednesday (weekly), last Thursday of month (monthly)",
+      "sensex": "Friday (weekly)"
+    }
+  },
+
+  "timeframes": {
+    "trend_bias": "D (daily — overall direction for the day)",
+    "structure": "75 (key levels, S/R zones)",
+    "orb_definition": "15 (opening range candle)",
+    "entry_trigger": "5 (breakout/retest confirmation)",
+    "scalp_entry": "3 (only for BankNifty on high-momentum days)"
+  },
+
+  "instruments": {
+    "NIFTY50": {
+      "character": "Steady, trend-following, fewer fakeouts",
+      "typical_daily_range_points": "100–250",
+      "orb_range_normal": "50–120 points",
+      "orb_range_wide": ">150 points (event/expiry days)",
+      "orb_range_skip": "<40 points (too tight, skip)",
+      "preferred_setup": "ORB breakout with retest — wait for pullback, don't chase",
+      "best_days": "Monday, Tuesday, Wednesday — cleanest trends",
+      "caution_days": "Thursday expiry — pin risk, avoid holding past 3:00 PM",
+      "key_levels_to_watch": "Previous day high/low, weekly open, round numbers (e.g. 22000, 22500)",
+      "position_sizing": "Risk 0.5% of capital per trade on normal days"
+    },
+    "BANKNIFTY": {
+      "character": "High volatility, fast moves, prone to fakeouts — requires tighter rules",
+      "typical_daily_range_points": "300–800",
+      "orb_range_normal": "150–350 points",
+      "orb_range_wide": ">450 points (RBI days, budget, expiry)",
+      "orb_range_skip": "<100 points (consolidating, skip or reduce size)",
+      "preferred_setup": "ORB breakout only if volume spikes on breakout candle — BankNifty fakes more than Nifty",
+      "best_days": "Monday, Tuesday — avoid Wednesday expiry unless setup is clean",
+      "caution_days": "Wednesday expiry and RBI policy days — widen stops or sit out",
+      "key_levels_to_watch": "Previous day high/low, weekly pivot, round numbers (e.g. 46000, 47000)",
+      "position_sizing": "Risk 0.35% of capital per trade — volatility is higher, size down accordingly",
+      "extra_rule": "If BankNifty ORB range > 2x its 5-day average range, reduce size by 50% — abnormal day"
+    },
+    "SENSEX": {
+      "character": "Similar to Nifty but BSE-listed, slightly less liquid futures — use as confirmation only",
+      "typical_daily_range_points": "300–700",
+      "preferred_setup": "Use Sensex as trend confirmation for Nifty trades — if both break out same direction, higher conviction",
+      "note": "Do not trade Sensex futures/options independently unless you have a specific edge — treat as a secondary confluence tool",
+      "position_sizing": "Same as Nifty rules if trading Sensex independently"
+    }
+  },
+
+  "orb_setup": {
+    "definition": "Opening range = high and low of 9:15–9:30 IST on the 15-min chart",
+    "bias_criteria": {
+      "bullish": [
+        "5-min candle closes above ORB high with body > 60% of candle size (strong close, not wick)",
+        "Breakout candle volume > 1.5x 5-day average volume at that time of day",
+        "Daily chart is in uptrend or above previous day close",
+        "GIFT Nifty was positive pre-market (gap-up context)",
+        "No major resistance (weekly high, round number) within 0.5x ORB range above breakout"
+      ],
+      "bearish": [
+        "5-min candle closes below ORB low with body > 60% of candle size",
+        "Breakdown candle volume > 1.5x 5-day average volume at that time of day",
+        "Daily chart is in downtrend or below previous day close",
+        "GIFT Nifty was negative pre-market (gap-down context)",
+        "No major support (weekly low, round number) within 0.5x ORB range below breakdown"
+      ],
+      "neutral_skip": [
+        "Price is inside the opening range — no trade",
+        "Breakout candle is a doji or has large wick — fake move likely",
+        "Volume on breakout is below average — no conviction",
+        "Daily chart at a major S/R level — wait for resolution",
+        "VIX India > 20 and no clear trend — reduce size or skip"
+      ]
+    },
+    "entry_rules": {
+      "preferred": "Retest entry — wait for price to break ORB high/low, pull back to retest that level, then enter on the first bullish/bearish confirmation candle on 5-min",
+      "aggressive": "Breakout entry — enter on close of the breakout candle itself (only if volume is very strong and HTF trend aligns)",
+      "long_trigger": "Buy when 5-min candle closes above ORB high AND next candle opens above — confirm, then enter",
+      "short_trigger": "Sell when 5-min candle closes below ORB low AND next candle opens below — confirm, then enter"
+    },
+    "stop_loss": {
+      "long": "Below ORB low (full stop) or below the retest candle low (tight stop for retest entries)",
+      "short": "Above ORB high (full stop) or above the retest candle high (tight stop for retest entries)",
+      "rule": "Never move stop loss against the trade — only trail in the direction of profit"
+    },
+    "targets": {
+      "T1": "1x ORB range from breakout point — book 50% of position here",
+      "T2": "2x ORB range — book 30% of position, trail stop to entry (risk-free)",
+      "T3": "Next key HTF level (previous day high/low, weekly pivot) — let remaining 20% run with trailing stop",
+      "trailing_stop": "After T1 hit, trail stop by 1x ATR(14) on 5-min chart"
+    }
+  },
+
+  "risk_rules": {
+    "position_sizing": {
+      "normal_day": "Risk 0.5% of total capital per trade (Nifty/Sensex), 0.35% for BankNifty",
+      "high_volatility_day": "Risk 0.25% — applies on expiry days, RBI policy, budget, global events",
+      "after_first_loss": "Reduce size by 50% for remaining trades of the day",
+      "after_two_losses": "Stop trading for the day — no more entries"
+    },
+    "dynamic_rr": {
+      "small_orb": "ORB range < 0.3% of instrument price — minimum R:R 1:1.5",
+      "normal_orb": "ORB range 0.3–0.6% — minimum R:R 1:2",
+      "wide_orb": "ORB range > 0.6% — minimum R:R 1:2.5 (wider range = bigger move potential)",
+      "rule": "If T1 is not achievable without hitting a major S/R level, skip the trade — forced trades lose"
+    },
+    "daily_limits": {
+      "max_trades_per_day": 3,
+      "max_daily_loss": "1.5% of capital — hard stop, no exceptions",
+      "max_daily_profit_target": "3% of capital — optional, but consider reducing size after hitting this",
+      "no_entry_after": "2:30 PM IST"
+    },
+    "skip_conditions": [
+      "ORB range is less than minimum for that instrument — range too tight",
+      "India VIX > 22 — market too unpredictable, sit out or halve size",
+      "Major global event overnight with unresolved outcome (Fed meeting, geopolitical)",
+      "Budget day, RBI policy day — wait for initial reaction (first 30 min) before taking any trade",
+      "Monday after a weekly expiry with a big move Friday — gap risk is high"
     ]
   },
 
-  "risk_rules": [
-    "Only take trades where R:R is at least 1:2",
-    "No trading in the first 15 minutes of the NY session open",
-    "Maximum 2 open positions at once",
-    "If I have 2 losing trades in a row, stop for the day"
+  "confluence_checklist": [
+    "GIFT Nifty direction aligns with ORB breakout direction",
+    "Sensex breaking out in same direction as Nifty (both confirm = higher conviction)",
+    "Daily trend aligns with trade direction",
+    "Volume on breakout candle is above average",
+    "No major news/event in next 2 hours that could reverse the move",
+    "Previous day high (for longs) or previous day low (for shorts) has already been cleared"
   ],
 
-  "notes": "Add any other context you want Claude to factor in — e.g. macro events this week, key dates, anything that should affect your bias."
+  "additional_setups": {
+
+    "gap_trading": {
+      "description": "Trade the gap open when GIFT Nifty signals a significant gap — before ORB even forms",
+      "gap_up_rules": [
+        "Gap up > 0.5% — do NOT buy the open, wait for ORB to form first",
+        "If gap fills back to previous day close within first 30 min, watch for bounce long at PDC with volume",
+        "If gap holds and ORB forms above PDH — strong bull day, trade ORB long with full size"
+      ],
+      "gap_down_rules": [
+        "Gap down > 0.5% — do NOT short the open, wait for ORB to form first",
+        "If gap fills back to PDC within first 30 min, watch for rejection short",
+        "If gap holds and ORB forms below PDL — strong bear day, trade ORB short with full size"
+      ],
+      "fade_the_gap": "Gap > 1.5% with no fundamental reason (just global cues) — fades are common. Wait for 15-min ORB to form above/below gap level, then trade in the fill direction",
+      "positive_output_edge": "Gap-hold days (gap > 0.5% that does not fill) produce the strongest ORB follow-through — these are your highest-conviction days"
+    },
+
+    "vwap_reclaim": {
+      "description": "Price reclaims VWAP after a dip — high-probability continuation trade",
+      "long_setup": [
+        "Price dips below VWAP between 10:00–11:30 IST",
+        "Reclaims VWAP on a strong 5-min bullish candle with above-average volume",
+        "ORB was bullish earlier in the day (trend context)",
+        "Enter on the candle that closes back above VWAP, stop below VWAP low"
+      ],
+      "short_setup": [
+        "Price pushes above VWAP between 10:00–11:30 IST",
+        "Rejected at VWAP on a strong 5-min bearish candle with above-average volume",
+        "ORB was bearish earlier in the day",
+        "Enter on the candle that closes back below VWAP, stop above VWAP high"
+      ],
+      "positive_output_edge": "VWAP reclaim in same direction as ORB bias = second entry opportunity if you missed the ORB trade. Win rate historically high on trend days."
+    },
+
+    "pdh_pdl_breakout": {
+      "description": "Previous day high/low breakout — significant level, strong move when broken with volume",
+      "long_setup": [
+        "Price consolidates near PDH in afternoon (1:30–2:30 IST)",
+        "Breaks above PDH on 5-min close with volume",
+        "Nifty and BankNifty both above their PDH (double confirmation)",
+        "Enter on breakout close, target next weekly resistance, stop below PDH"
+      ],
+      "short_setup": [
+        "Price consolidates near PDL in afternoon",
+        "Breaks below PDL on 5-min close with volume",
+        "Both indices below PDL",
+        "Enter on breakdown close, target next weekly support, stop above PDL"
+      ],
+      "positive_output_edge": "PDH/PDL breaks in afternoon have low failure rate because weak hands are already shaken out — strong institutional follow-through"
+    },
+
+    "banknifty_nifty_divergence": {
+      "description": "When BankNifty and Nifty diverge in direction, trade in BankNifty's direction — banks lead the market",
+      "rule": "If Nifty is flat/weak but BankNifty breaks out bullishly → go long Nifty (it will follow)",
+      "rule_short": "If Nifty is flat/strong but BankNifty breaks down → go short Nifty (it will follow)",
+      "positive_output_edge": "BankNifty leads Nifty by 15–30 minutes on most trend days — divergence is an early signal",
+      "caution": "Only use this if divergence is > 0.4% between the two — small divergence is noise"
+    },
+
+    "first_pullback_trend_day": {
+      "description": "On strong trend days, the first pullback to the 15-min EMA(9) is the best re-entry",
+      "identify_trend_day": [
+        "ORB breakout was strong (volume > 2x average)",
+        "Price moved > 1.5x ORB range without retracing",
+        "GIFT Nifty was strongly positive/negative (>0.7%)"
+      ],
+      "entry": "Wait for first pullback to 15-min EMA(9) — enter when a 5-min candle bounces off EMA with a bullish/bearish engulfing",
+      "stop": "Below the EMA pullback low (for longs)",
+      "target": "Continue to T3 — trend days go further than expected, hold runners",
+      "positive_output_edge": "Trend days occur ~2x per week on average. Catching the pullback re-entry doubles your profit on those days without adding risk."
+    },
+
+    "expiry_day_special_rules": {
+      "nifty_thursday": [
+        "Max pain level is the single most important level — price gravitates toward it into close",
+        "Do not hold any position past 2:45 PM on expiry — premium decay accelerates",
+        "Best trade: ORB in morning (9:30–11:00), exit fully by 1:00 PM",
+        "Avoid shorting puts or buying calls after 1:00 PM — theta crush kills premiums"
+      ],
+      "banknifty_wednesday": [
+        "Most volatile expiry day in Indian markets — ORB range can be 2–3x normal",
+        "Reduce all position sizes by 50% regardless of setup quality",
+        "Only trade if ORB gives crystal-clear breakout with very high volume",
+        "Exit all positions by 2:00 PM — final hour is extremely unpredictable"
+      ],
+      "positive_output_edge": "Expiry days with a clear directional bias from 9:15–10:00 tend to trend all day to max pain — if direction is clear early, these are your biggest single-day opportunities"
+    },
+
+    "rbi_policy_day_rules": {
+      "before_announcement": "No new trades — sit in cash until RBI announcement",
+      "after_announcement": [
+        "Wait 15 minutes after announcement for initial volatility to settle",
+        "Identify new ORB from the post-announcement candle",
+        "Trade the breakout of that ORB with normal rules",
+        "BankNifty moves 3–5x more than Nifty on RBI days — prefer BankNifty but with 0.25% risk only"
+      ],
+      "positive_output_edge": "Post-RBI moves are clean and sustained — the 15-min wait filters out the spike and you catch the real directional move"
+    }
+  },
+
+  "trailing_profit_rules": {
+    "description": "Lock in profits progressively as the trade moves in your favour — never give back more than 50% of open profit",
+
+    "standard_trail": {
+      "after_T1_hit": "Move stop to breakeven (entry price) — trade is now risk-free",
+      "after_T2_hit": "Move stop to T1 level — locks in 50% of full target profit",
+      "after_T3_hit": "Trail stop by 1x ATR(14) on 5-min chart — let runners run"
+    },
+
+    "atr_trailing_stop": {
+      "method": "After T1 is hit, trail stop 1.5x ATR(14) below each new 5-min higher low (for longs)",
+      "nifty": "ATR trailing works best on Nifty — smooth trends, fewer spikes",
+      "banknifty": "Use 2x ATR for BankNifty — volatile swings will stop you out on 1x ATR",
+      "how_to_apply": "Each new 5-min candle that makes a higher low → move stop to (new low - 1.5x ATR). Never move stop backward."
+    },
+
+    "time_based_trail": {
+      "description": "If price hasn't moved to T1 within 45 minutes of entry, tighten stop to just below the last swing low",
+      "rule": "Stale trade = tighten stop. If not working within 45 min, reduce exposure — the setup has lost momentum",
+      "exit_rule": "If price chops sideways for 3 consecutive 5-min candles after entry, exit 50% of position regardless of stop"
+    },
+
+    "profit_lock_by_session": {
+      "by_11:30_IST": "If trade is at T1 or beyond by 11:30 IST, move stop to entry — protect morning gains before chop zone",
+      "by_1:30_IST": "If trade is at T2 or beyond by 1:30 IST, move stop to T1 — lock in meaningful profit before close",
+      "by_2:30_IST": "Exit all remaining position by 2:30 IST — no overnight/late-session risk on index trades",
+      "expiry_day": "Exit 100% of position by 2:45 IST on expiry — premium decay destroys P&L in final 45 minutes"
+    },
+
+    "weekly_profit_trail": {
+      "description": "Manage capital preservation across the week, not just per trade",
+      "monday_tuesday": "Full risk allowed — fresh week, no P&L pressure",
+      "after_2pct_weekly_gain": "Reduce position size by 25% for remaining week — protect weekly gains",
+      "after_4pct_weekly_gain": "Reduce position size by 50% — strong week, protect it",
+      "after_1pct_weekly_loss": "Reduce position size by 25% — recalibrate, don't revenge trade",
+      "after_2pct_weekly_loss": "Stop trading for the week on Thursday/Friday — come back fresh Monday"
+    },
+
+    "never_rules": [
+      "Never remove stop loss to give a trade more room — widen it only if done before entry",
+      "Never give back more than 50% of the day's peak profit — if you're up 2%, don't let it go below 1%",
+      "Never hold a losing trade hoping for recovery — if stop is hit, it's hit"
+    ]
+  },
+
+  "positive_output_summary": {
+    "highest_winrate_setups": [
+      "ORB retest entry on gap-hold days (gap > 0.5% that does not fill by 10:00 IST)",
+      "VWAP reclaim in same direction as morning ORB bias",
+      "PDH/PDL breakout in the afternoon session with both indices confirming",
+      "First pullback to 15-min EMA on a confirmed trend day"
+    ],
+    "highest_rr_setups": [
+      "Wide ORB (> 0.6%) breakout on trend day — T3 runners can deliver 1:4 or more",
+      "Post-RBI BankNifty directional trade — sustained moves of 400–800 points common",
+      "Expiry day with clear early direction — max pain magnet provides clear target"
+    ],
+    "avoid_for_positive_output": [
+      "Chasing breakouts without volume confirmation — low winrate",
+      "Trading in the 12:00–1:30 PM chop zone — negative expected value",
+      "Holding positions through unknown events (earnings, policy) — risk/reward breaks down",
+      "Averaging down on a losing trade — violates risk rules, compounds losses",
+      "Trading all 3 indices simultaneously — overlapping correlation creates false diversification"
+    ]
+  },
+
+  "notes": "Strategy: ORB-primary with VWAP reclaim, PDH/PDL breakout, and trend-day pullback as secondary setups. Best edge: gap-hold days + ORB retest. BankNifty leads Nifty — watch it for early signals. Expiry days = reduce size, take profits early. Never trade the 12–1:30 PM zone. Always check GIFT Nifty before 9:15 IST."
 }
