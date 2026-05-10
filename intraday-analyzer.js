@@ -55,9 +55,10 @@ async function gatherData() {
     call("chart_get_state"),
   ]);
 
-  const [studyValues, ohlcv] = await Promise.all([
+  const [studyValues, ohlcvSummary, ohlcvBars] = await Promise.all([
     call("data_get_study_values"),
     call("data_get_ohlcv", { count: 50, summary: true }),
+    call("data_get_ohlcv", { count: 20 }),
   ]);
 
   let pineLines = null;
@@ -73,14 +74,14 @@ async function gatherData() {
     // Pine graphics may not be available if no custom indicators
   }
 
-  return { quote, state, studyValues, ohlcv, pineLines, pineLabels, pineTables };
+  return { quote, state, studyValues, ohlcvSummary, ohlcvBars, pineLines, pineLabels, pineTables };
 }
 
 // ── Analysis engine ─────────────────────────────────────────────
 function analyzeVWAP(data) {
   const { quote, studyValues } = data;
-  const price = quote?.last ?? quote?.lp;
-  const values = studyValues?.studies || studyValues?.values || {};
+  const price = quote?.last ?? quote?.close;
+  const studies = studyValues?.studies || [];
 
   let vwap = null;
   let upperBand1 = null;
@@ -88,24 +89,25 @@ function analyzeVWAP(data) {
   let upperBand2 = null;
   let lowerBand2 = null;
 
-  for (const [name, vals] of Object.entries(values)) {
-    const lower = name.toLowerCase();
+  for (const study of studies) {
+    const lower = (study.name || "").toLowerCase();
     if (lower.includes("vwap") || lower.includes("anchored")) {
-      const v = Array.isArray(vals) ? vals : Object.values(vals);
-      if (v.length >= 1) vwap = v[0];
-      if (v.length >= 3) {
-        upperBand1 = v[1];
-        lowerBand1 = v[2];
+      const vals = study.values || {};
+      const nums = Object.values(vals).map(Number).filter((n) => !isNaN(n));
+      if (nums.length >= 1) vwap = nums[0];
+      if (nums.length >= 3) {
+        upperBand1 = nums[1];
+        lowerBand1 = nums[2];
       }
-      if (v.length >= 5) {
-        upperBand2 = v[3];
-        lowerBand2 = v[4];
+      if (nums.length >= 5) {
+        upperBand2 = nums[3];
+        lowerBand2 = nums[4];
       }
     }
   }
 
   if (!vwap || !price) {
-    return { position: "unknown", vwap: null, distance: null };
+    return { position: "unknown", vwap: null, price, distPct: null };
   }
 
   const distPct = ((price - vwap) / vwap) * 100;
@@ -167,14 +169,14 @@ function analyzeVolumeProfile(data) {
 }
 
 function analyzePriceAction(data) {
-  const { ohlcv } = data;
-  const bars = ohlcv?.bars || ohlcv?.data || [];
+  const { ohlcvBars } = data;
+  const bars = ohlcvBars?.bars || [];
   if (bars.length < 5) return { trend: "insufficient_data", patterns: [] };
 
   const recent = bars.slice(-10);
-  const highs = recent.map((b) => b.high || b.h);
-  const lows = recent.map((b) => b.low || b.l);
-  const closes = recent.map((b) => b.close || b.c);
+  const highs = recent.map((b) => b.high);
+  const lows = recent.map((b) => b.low);
+  const closes = recent.map((b) => b.close);
 
   let higherHighs = 0;
   let lowerLows = 0;
@@ -192,12 +194,12 @@ function analyzePriceAction(data) {
   const last = bars[bars.length - 1];
   const prev = bars[bars.length - 2];
   if (last && prev) {
-    const lastO = last.open || last.o;
-    const lastC = last.close || last.c;
-    const lastH = last.high || last.h;
-    const lastL = last.low || last.l;
-    const prevO = prev.open || prev.o;
-    const prevC = prev.close || prev.c;
+    const lastO = last.open;
+    const lastC = last.close;
+    const lastH = last.high;
+    const lastL = last.low;
+    const prevO = prev.open;
+    const prevC = prev.close;
 
     const body = Math.abs(lastC - lastO);
     const range = lastH - lastL;
@@ -354,10 +356,22 @@ async function run() {
   const setups = findSetups(bias, vwapResult, vpLevels, paResult);
 
   // Report
+  const s = data.ohlcvSummary;
+  console.log("── Price Summary ──────────────────────────────────────");
+  console.log(`  Open:    ${s?.open ?? "N/A"}    High: ${s?.high ?? "N/A"}`);
+  console.log(`  Low:     ${s?.low ?? "N/A"}    Close: ${s?.close ?? "N/A"}`);
+  console.log(`  Range:   ${s?.range ?? "N/A"}    Change: ${s?.change_pct ?? "N/A"}`);
+  console.log(`  Avg Vol: ${s?.avg_volume ?? "N/A"}`);
+  console.log();
+
   console.log("── VWAP Analysis ──────────────────────────────────────");
-  console.log(`  Price:    ${vwapResult.price}`);
-  console.log(`  VWAP:     ${vwapResult.vwap}`);
-  console.log(`  Position: ${vwapResult.position} (${vwapResult.distPct}% from VWAP)`);
+  console.log(`  Price:    ${vwapResult.price ?? "N/A"}`);
+  if (vwapResult.vwap) {
+    console.log(`  VWAP:     ${vwapResult.vwap}`);
+    console.log(`  Position: ${vwapResult.position} (${vwapResult.distPct}% from VWAP)`);
+  } else {
+    console.log("  VWAP:     ⚠ Not detected — add VWAP indicator to chart");
+  }
   console.log();
 
   console.log("── Volume Profile Levels ──────────────────────────────");
