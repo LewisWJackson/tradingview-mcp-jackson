@@ -13,8 +13,32 @@ import * as data from "./data.js";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = resolve(__dirname, "../../");
 const SESSIONS_DIR = join(homedir(), ".tradingview-mcp", "sessions");
+const USER_DATA_DIR = resolve(join(homedir(), ".tradingview-mcp"));
+
+function assertSafeRulesPath(p) {
+  const resolved = resolve(p);
+  const inProject =
+    resolved === resolve(join(PROJECT_ROOT, "rules.json")) ||
+    resolved.startsWith(resolve(PROJECT_ROOT) + "/");
+  const inUserData = resolved.startsWith(USER_DATA_DIR + "/");
+  if (!inProject && !inUserData) {
+    throw new Error(
+      `rules_path must live inside the project (${PROJECT_ROOT}) or ~/.tradingview-mcp/. Got: ${resolved}`,
+    );
+  }
+}
+
+function assertSafeDate(dateStr) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+    throw new Error(
+      `Invalid date: ${dateStr}. Use YYYY-MM-DD (e.g. 2026-05-11).`,
+    );
+  }
+}
 
 function loadRules(rulesPath) {
+  if (rulesPath) assertSafeRulesPath(rulesPath);
+
   const candidates = [
     rulesPath,
     join(PROJECT_ROOT, "rules.json"),
@@ -115,9 +139,9 @@ export async function runBrief({ rules_path } = {}) {
 }
 
 export function saveSession({ brief, date } = {}) {
-  mkdirSync(SESSIONS_DIR, { recursive: true });
-
   const dateStr = date || new Date().toISOString().split("T")[0];
+  assertSafeDate(dateStr);
+  mkdirSync(SESSIONS_DIR, { recursive: true });
   const filePath = join(SESSIONS_DIR, `${dateStr}.json`);
 
   const existing = existsSync(filePath)
@@ -136,6 +160,7 @@ export function saveSession({ brief, date } = {}) {
 
 export function getSession({ date } = {}) {
   const dateStr = date || new Date().toISOString().split("T")[0];
+  assertSafeDate(dateStr);
   const filePath = join(SESSIONS_DIR, `${dateStr}.json`);
 
   if (existsSync(filePath)) {
