@@ -5,9 +5,13 @@
 // as a Runtime.bindingCalled event, which we append to a JSONL log.
 //
 // Usage:
-//   npm run clicks                                   # default logs/clicks.jsonl
-//   CLICKS_LOG_PATH=/tmp/foo.jsonl npm run clicks    # custom path
-//   CDP_PORT=9223 npm run clicks                     # custom CDP port
+//   npm run clicks                                       # default logs/clicks.jsonl
+//   npm run clicks -- --log /tmp/foo.jsonl               # custom path via flag
+//   npm run clicks -- /tmp/foo.jsonl                     # custom path positional
+//   CLICKS_LOG_PATH=/tmp/foo.jsonl npm run clicks        # custom path via env
+//   CDP_PORT=9223 npm run clicks                         # custom CDP port
+//
+// Precedence: --log flag > positional arg > CLICKS_LOG_PATH env > default.
 //
 // Run TradingView with --remote-debugging-port=9222 first (the MCP's
 // `tv_launch` tool sets this up automatically).
@@ -19,10 +23,48 @@ import { fileURLToPath } from "url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
+function parseArgs(argv) {
+  const out = { log: null, help: false };
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (a === "--log" || a === "-l" || a === "-o") {
+      out.log = argv[++i];
+    } else if (a.startsWith("--log=")) {
+      out.log = a.slice("--log=".length);
+    } else if (a === "-h" || a === "--help") {
+      out.help = true;
+    } else if (!a.startsWith("-") && out.log === null) {
+      out.log = a;
+    }
+  }
+  return out;
+}
+
+const args = parseArgs(process.argv.slice(2));
+
+if (args.help) {
+  process.stdout.write(
+    [
+      "Usage: node clicks-daemon.js [--log <path>] [path]",
+      "",
+      "Options:",
+      "  --log, -l, -o <path>   JSONL log file (default: ./logs/clicks.jsonl)",
+      "  -h, --help             Show this help",
+      "",
+      "Env vars:",
+      "  CLICKS_LOG_PATH        Same as --log",
+      "  CDP_HOST               TradingView CDP host (default: localhost)",
+      "  CDP_PORT               TradingView CDP port (default: 9222)",
+      "",
+    ].join("\n"),
+  );
+  process.exit(0);
+}
+
 const CDP_HOST = process.env.CDP_HOST || "localhost";
 const CDP_PORT = parseInt(process.env.CDP_PORT || "9222", 10);
 const LOG_PATH = resolve(
-  process.env.CLICKS_LOG_PATH || join(__dirname, "logs", "clicks.jsonl"),
+  args.log || process.env.CLICKS_LOG_PATH || join(__dirname, "logs", "clicks.jsonl"),
 );
 const BINDING = "tvClickPush";
 
