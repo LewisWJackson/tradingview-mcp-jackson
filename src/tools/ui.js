@@ -51,9 +51,9 @@ export function registerUiTools(server) {
     catch (err) { return jsonResult({ success: false, error: err.message }, true); }
   });
 
-  server.tool('ui_hover', 'Hover over a UI element by aria-label, data-name, or text content', {
-    by: z.enum(['aria-label', 'data-name', 'text', 'class-contains']).describe('Selector strategy'),
-    value: z.string().describe('Value to match'),
+  server.tool('ui_hover', 'Hover over a UI element by aria-label, data-name, text content, or raw coordinates', {
+    by: z.enum(['aria-label', 'data-name', 'text', 'class-contains', 'coords']).describe('Selector strategy. Use "coords" with value="x,y" for raw coordinate hover (e.g. to trigger hover state on chart pane legends)'),
+    value: z.string().describe('Value to match, or "x,y" when by=coords'),
   }, async ({ by, value }) => {
     try { return jsonResult(await core.hover({ by, value })); }
     catch (err) { return jsonResult({ success: false, error: err.message }, true); }
