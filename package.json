@@ -16,6 +16,7 @@
     "tv": "node src/cli/index.js",
     "clicks": "node clicks-daemon.js",
     "clicks:tail": "tail -f logs/clicks.jsonl",
+    "replay": "node replay-clicks.js",
     "test": "node --test tests/e2e.test.js tests/pine_analyze.test.js",
     "test:e2e": "node --test tests/e2e.test.js",
     "test:unit": "node --test tests/pine_analyze.test.js tests/cli.test.js",
