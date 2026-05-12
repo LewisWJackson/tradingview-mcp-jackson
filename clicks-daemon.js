@@ -1,8 +1,8 @@
-// Standalone click-capture daemon for TradingView Desktop.
+// Standalone click + drawing-delete capture daemon for TradingView Desktop.
 //
-// Push-based via CDP Runtime.addBinding — no polling. The page calls
-// window.tvClickPush(json) inside its click handler; CDP delivers the payload
-// as a Runtime.bindingCalled event, which we append to a JSONL log.
+// Push-based via CDP Runtime.addBinding. The page calls window.tvClickPush(json)
+// from its click handler and from a 1Hz drawing-delete watcher; CDP delivers
+// each payload as a Runtime.bindingCalled event, which we append to a JSONL log.
 //
 // Usage:
 //   npm run clicks                                       # default logs/clicks.jsonl
@@ -67,6 +67,8 @@ const LOG_PATH = resolve(
   args.log || process.env.CLICKS_LOG_PATH || join(__dirname, "logs", "clicks.jsonl"),
 );
 const BINDING = "tvClickPush";
+const DRAWING_WATCH_INTERVAL_MS = 2000;
+const VIEWPORT_WATCH_INTERVAL_MS = 2000;
 
 // Page-side installer. Idempotent (guarded by __tvClicksInstalled). The handler
 // looks up the chart fresh on each click so symbol/timeframe changes are picked
@@ -80,6 +82,14 @@ const INSTALL_SCRIPT = `(function install() {
   });
   window.__tvClicksHandlers.length = 0;
   window.__tvClicksInstalled = true;
+  if (window.__tvDrawingsWatcher) {
+    try { clearInterval(window.__tvDrawingsWatcher); } catch (e) {}
+    window.__tvDrawingsWatcher = null;
+  }
+  if (window.__tvViewportWatcher) {
+    try { clearInterval(window.__tvViewportWatcher); } catch (e) {}
+    window.__tvViewportWatcher = null;
+  }
 
   function findChart() {
     try {
@@ -247,6 +257,172 @@ const INSTALL_SCRIPT = `(function install() {
 
   window.__tvClicksHandlers.push(handler);
   document.addEventListener('click', handler, true);
+
+  // Drawing-delete watcher: enumerates line tools every 2s and diffs
+  // against last-known IDs. dataSources() lives on the inner model
+  // (chart._chartWidget.model().model()), same path used by src/core/data.js.
+  // Line tools have points(); studies don't, which is how we filter.
+  function listDrawings(chart) {
+    var out = new Map();
+    if (!chart || !chart._chartWidget) return out;
+    try {
+      var sources = chart._chartWidget.model().model().dataSources();
+      for (var i = 0; i < sources.length; i++) {
+        var src = sources[i];
+        try {
+          if (typeof src.points !== 'function') continue;
+          var pts = src.points();
+          if (!Array.isArray(pts)) continue;
+          var id = (typeof src.id === 'function') ? src.id() : null;
+          if (id != null) out.set(id, src);
+        } catch (e) {}
+      }
+    } catch (e) {}
+    return out;
+  }
+
+  var knownDrawings = new Map();
+  var lastSymbol = null;
+
+  function tickDrawings() {
+    try {
+      var chart = findChart();
+      if (!chart) return;
+      var sym = null; try { sym = chart.symbol(); } catch (e) {}
+      var res = null; try { res = chart.resolution(); } catch (e) {}
+      var current = listDrawings(chart);
+
+      // Symbol change: drawings can be symbol-scoped, so the diff is noise.
+      // Reset baseline silently instead of emitting false deletes.
+      if (sym !== lastSymbol) {
+        lastSymbol = sym;
+        var fresh = new Map();
+        current.forEach(function(src, id) { fresh.set(id, snapshotDrawing(src)); });
+        knownDrawings = fresh;
+        return;
+      }
+
+      knownDrawings.forEach(function(snap, id) {
+        if (current.has(id)) return;
+        var payload = {};
+        Object.keys(snap).forEach(function(k) { payload[k] = snap[k]; });
+        payload.ts = Date.now();
+        payload.type = 'drawing_delete';
+        payload.symbol = sym;
+        payload.resolution = res;
+        try { if (window.tvClickPush) window.tvClickPush(JSON.stringify(payload)); } catch (e) {}
+      });
+
+      var next = new Map();
+      current.forEach(function(src, id) {
+        next.set(id, knownDrawings.get(id) || snapshotDrawing(src));
+      });
+      knownDrawings = next;
+    } catch (e) {}
+  }
+
+  try {
+    var c0 = findChart();
+    if (c0) {
+      try { lastSymbol = c0.symbol(); } catch (e) {}
+      listDrawings(c0).forEach(function(src, id) {
+        knownDrawings.set(id, snapshotDrawing(src));
+      });
+    }
+  } catch (e) {}
+
+  // Exposed for the daemon's one-shot startup inventory query.
+  window.__tvGetDrawings = function() {
+    try {
+      var chart = findChart();
+      if (!chart) return { symbol: null, resolution: null, drawings: [] };
+      var sym = null; try { sym = chart.symbol(); } catch (e) {}
+      var res = null; try { res = chart.resolution(); } catch (e) {}
+      var out = [];
+      listDrawings(chart).forEach(function(src) {
+        out.push(snapshotDrawing(src));
+      });
+      return { symbol: sym, resolution: res, drawings: out };
+    } catch (e) { return { symbol: null, resolution: null, drawings: [] }; }
+  };
+
+  window.__tvDrawingsWatcher = setInterval(tickDrawings, ${DRAWING_WATCH_INTERVAL_MS});
+
+  // Viewport-change watcher: emits when visible time range or main-pane
+  // visible price range changes. Diff-suppressed; floats rounded to avoid
+  // jitter. First emission after chart-ready records the starting viewport.
+  function readViewport(chart) {
+    var v = {
+      time_from: null, time_to: null,
+      time_from_iso: null, time_to_iso: null,
+      price_top: null, price_bottom: null,
+    };
+    if (!chart) return v;
+    try {
+      var r = (typeof chart.getVisibleRange === 'function') ? chart.getVisibleRange() : null;
+      if (r && typeof r.from === 'number' && typeof r.to === 'number') {
+        v.time_from = r.from;
+        v.time_to = r.to;
+        v.time_from_iso = new Date(r.from * 1000).toISOString();
+        v.time_to_iso = new Date(r.to * 1000).toISOString();
+      }
+    } catch (e) {}
+    try {
+      var cw = chart._chartWidget;
+      var pws = cw.paneWidgets();
+      if (pws && pws.length > 0) {
+        var rect = pws[0].getElement().getBoundingClientRect();
+        var ms = cw.model().mainSeries();
+        var ps = ms.priceScale();
+        var fv = (ms.firstValue && ms.firstValue()) || null;
+        if (ps && typeof ps.coordinateToPrice === 'function' && rect && rect.height > 0) {
+          var top = ps.coordinateToPrice(0, fv);
+          var bot = ps.coordinateToPrice(rect.height, fv);
+          if (typeof top === 'number' && isFinite(top)) v.price_top = +top.toFixed(8);
+          if (typeof bot === 'number' && isFinite(bot)) v.price_bottom = +bot.toFixed(8);
+        }
+      }
+    } catch (e) {}
+    return v;
+  }
+
+  var lastViewport = null;
+
+  function viewportsEqual(a, b) {
+    if (!a || !b) return false;
+    return a.time_from === b.time_from
+        && a.time_to === b.time_to
+        && a.price_top === b.price_top
+        && a.price_bottom === b.price_bottom;
+  }
+
+  function tickViewport() {
+    try {
+      var chart = findChart();
+      if (!chart) return;
+      var sym = null; try { sym = chart.symbol(); } catch (e) {}
+      var res = null; try { res = chart.resolution(); } catch (e) {}
+      var v = readViewport(chart);
+      if (v.time_from == null) return;
+      if (viewportsEqual(lastViewport, v)) return;
+      lastViewport = v;
+      var payload = {
+        ts: Date.now(),
+        type: 'viewport_change',
+        symbol: sym,
+        resolution: res,
+        time_from: v.time_from,
+        time_to: v.time_to,
+        time_from_iso: v.time_from_iso,
+        time_to_iso: v.time_to_iso,
+        price_top: v.price_top,
+        price_bottom: v.price_bottom,
+      };
+      try { if (window.tvClickPush) window.tvClickPush(JSON.stringify(payload)); } catch (e) {}
+    } catch (e) {}
+  }
+
+  window.__tvViewportWatcher = setInterval(tickViewport, ${VIEWPORT_WATCH_INTERVAL_MS});
 })();`;
 
 async function findChartTarget() {
@@ -293,6 +469,39 @@ async function main() {
       target_id: target.id,
       cdp: `${CDP_HOST}:${CDP_PORT}`,
     }) + "\n",
+  );
+
+  // One-shot startup inventory of existing drawings. Retries briefly in case
+  // the chart widget is still initializing when we connect.
+  let inventory = { symbol: null, resolution: null, drawings: [] };
+  for (let attempt = 0; attempt < 5; attempt++) {
+    try {
+      const r = await Runtime.evaluate({
+        expression:
+          "JSON.stringify(window.__tvGetDrawings ? window.__tvGetDrawings() : { symbol: null, resolution: null, drawings: [] })",
+        returnByValue: true,
+      });
+      inventory = JSON.parse(r.result?.value || '{"drawings":[]}');
+      if (inventory.symbol) break;
+    } catch (e) {
+      log(`inventory probe failed (attempt ${attempt + 1}): ${e.message}`);
+    }
+    if (attempt < 4) await new Promise((r) => setTimeout(r, 500));
+  }
+  const invTs = Date.now();
+  for (const d of inventory.drawings || []) {
+    stream.write(
+      JSON.stringify({
+        ts: invTs,
+        type: "drawing_initial",
+        symbol: inventory.symbol,
+        resolution: inventory.resolution,
+        ...d,
+      }) + "\n",
+    );
+  }
+  log(
+    `initial inventory: ${(inventory.drawings || []).length} drawing(s) on ${inventory.symbol || "unknown"}`,
   );
 
   let count = 0;
