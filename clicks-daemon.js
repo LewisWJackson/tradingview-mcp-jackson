@@ -112,7 +112,7 @@ const INSTALL_SCRIPT = `(function install() {
   function translate(chart, ev) {
     var out = {
       symbol: null, resolution: null,
-      candle_time: null, candle_iso: null,
+      candle_time: null,
       bar_index: null, price: null,
       pane_index: null, future: false,
       is_candle_click: false, candle_ohlcv: null,
@@ -141,9 +141,9 @@ const INSTALL_SCRIPT = `(function install() {
       var ct = (tp && tp.timestamp != null) ? tp.timestamp : tp;
 
       out.bar_index = idx;
-      out.candle_time = ct;
+      // ISO is always UTC ('Z' suffix). Chart-display timezone has no effect.
       if (typeof ct === 'number' && isFinite(ct)) {
-        out.candle_iso = new Date(ct * 1000).toISOString();
+        out.candle_time = new Date(ct * 1000).toISOString();
       }
 
       try {
@@ -222,7 +222,6 @@ const INSTALL_SCRIPT = `(function install() {
       symbol: t.symbol,
       resolution: t.resolution,
       candle_time: t.candle_time,
-      candle_iso: t.candle_iso,
       bar_index: t.bar_index,
       price: t.price,
       pane_index: t.pane_index,
@@ -354,17 +353,15 @@ const INSTALL_SCRIPT = `(function install() {
   function readViewport(chart) {
     var v = {
       time_from: null, time_to: null,
-      time_from_iso: null, time_to_iso: null,
       price_top: null, price_bottom: null,
     };
     if (!chart) return v;
     try {
       var r = (typeof chart.getVisibleRange === 'function') ? chart.getVisibleRange() : null;
+      // ISO is always UTC ('Z' suffix). Chart-display timezone has no effect.
       if (r && typeof r.from === 'number' && typeof r.to === 'number') {
-        v.time_from = r.from;
-        v.time_to = r.to;
-        v.time_from_iso = new Date(r.from * 1000).toISOString();
-        v.time_to_iso = new Date(r.to * 1000).toISOString();
+        v.time_from = new Date(r.from * 1000).toISOString();
+        v.time_to = new Date(r.to * 1000).toISOString();
       }
     } catch (e) {}
     try {
@@ -413,8 +410,6 @@ const INSTALL_SCRIPT = `(function install() {
         resolution: res,
         time_from: v.time_from,
         time_to: v.time_to,
-        time_from_iso: v.time_from_iso,
-        time_to_iso: v.time_to_iso,
         price_top: v.price_top,
         price_bottom: v.price_bottom,
       };
