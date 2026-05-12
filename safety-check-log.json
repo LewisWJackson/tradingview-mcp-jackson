@@ -1,198 +1,73 @@
 [
   {
-    "timestamp": "2026-04-07T00:00:00Z",
-    "symbol": "BINANCE:BTCUSDT",
-    "timeframe": "4H",
-    "indicators": {
-      "price": 68334.79,
-      "ema_21": 68314.99,
-      "ema_50": 67981.18,
-      "ema_200": 69116.13,
-      "rsi_14": 51.95,
-      "macd_line": 385.87,
-      "signal_line": 421.52,
-      "macd_histogram": -35.65
+    "event": "STRATEGY_MIGRATION",
+    "timestamp": "2026-04-12T00:00:00Z",
+    "migratedFrom": "10-Second Momentum Scalper (BTCUSDT — BitGet spot crypto)",
+    "migratedTo": "1-Minute Options Scalper (US Equity Options — TradingView)",
+    "clearedEntries": 13,
+    "reason": "All prior log entries were from crypto/XRP runs and are no longer relevant to the active strategy."
+  },
+  {
+    "event": "SETTINGS_CONFIRMATION",
+    "timestamp": "2026-04-12T00:00:00Z",
+    "status": "CONFIRMED",
+    "strategy": {
+      "name": "1-Minute Options Scalper",
+      "asset_type": "equity_options",
+      "instrument": "ATM CALL (bullish) or ATM PUT (bearish) — 0DTE or next weekly expiry",
+      "default_timeframe": "1-minute"
     },
-    "conditions": {
-      "price_above_ema200": {
-        "required": true,
-        "actual": false,
-        "result": "FAIL"
-      },
-      "ema21_above_ema50": {
-        "required": true,
-        "actual": true,
-        "result": "PASS"
-      },
-      "price_in_ema21_50_zone": {
-        "required": true,
-        "actual": false,
-        "result": "FAIL"
-      },
-      "rsi_35_to_58": {
-        "required": true,
-        "actual": true,
-        "result": "PASS"
-      },
-      "macd_above_signal": {
-        "required": true,
-        "actual": false,
-        "result": "FAIL"
-      }
+    "watchlist": {
+      "symbols": ["MU", "AMZN", "PLTR", "SOFI", "NFLX", "MSFT", "APP", "AMD"],
+      "filter_only": ["VIX"],
+      "note": "VIX is a regime filter — not a tradeable symbol in this strategy"
     },
-    "verdict": "BLOCKED",
-    "blocked_reasons": [
-      "Price below EMA 200 (68334 < 69116) — no longs against macro trend",
-      "Price above EMA 21-50 zone — no pullback entry available",
-      "MACD bearish (385.87 < 421.52) — momentum fading"
-    ],
-    "orderPlaced": false
-  },
-  {
-    "tick": 1,
-    "timestamp": "2026-04-07T14:41:41.675Z",
-    "price": 1.3001,
-    "side": "buy",
-    "size": "7.0745",
-    "label": "BUY XRP with $7.0745 USDT",
-    "orderId": "1425421555869495297",
-    "orderPlaced": true,
-    "response": {
-      "code": "00000",
-      "msg": "success",
-      "requestTime": 1775572902637,
-      "data": {
-        "orderId": "1425421555869495297",
-        "clientOid": "cee1fed1-1b60-466e-9583-a7db21f82711"
-      }
+    "indicators_confirmed": {
+      "rsi_14": "Trade only when RSI is between 35 and 65",
+      "vwap": "Price above VWAP = CALL bias | Price below VWAP = PUT bias",
+      "volume": "Current bar must exceed 20-bar average volume",
+      "price_momentum": "Minimum 0.10% candle move required to trigger signal"
+    },
+    "vix_regimes_confirmed": {
+      "below_15":  "Normal — full size",
+      "15_to_20":  "Normal — full size",
+      "20_to_30":  "Elevated — 50% size, stop widens to -20%",
+      "30_to_40":  "High — 25% size, 1 trade max, AMZN/MSFT only",
+      "above_40":  "Extreme — NO TRADES"
+    },
+    "entry_rules_confirmed": {
+      "call": "Momentum up ≥ 0.10% + RSI 35–65 + price above VWAP + volume above avg → Buy ATM CALL",
+      "put":  "Momentum down ≥ 0.10% + RSI 35–65 + price below VWAP + volume above avg → Buy ATM PUT"
+    },
+    "exit_rules_confirmed": {
+      "profit_target": "+25% on option premium",
+      "stop_loss": "-15% on premium (-20% when VIX is elevated)",
+      "time_stop": "5 minutes max hold per trade",
+      "hard_close": "All positions closed by 3:30 PM EST"
+    },
+    "risk_rules_confirmed": {
+      "max_premium_normal":   "$50 per trade",
+      "max_premium_elevated": "$25 per trade (VIX 20–30)",
+      "max_premium_high":     "$12 per trade (VIX 30–40)",
+      "max_open_positions":   "3 (1 when VIX is high)",
+      "max_trades_per_day":   10,
+      "account_risk_per_trade": "1% of portfolio"
+    },
+    "market_hours_confirmed": {
+      "session": "NYSE/NASDAQ — 9:30 AM to 4:00 PM EST",
+      "no_trade_open": "9:30–9:45 AM (wide spreads)",
+      "no_trade_close": "3:30–4:00 PM (0DTE theta risk)",
+      "no_trade_events": "Within 30 min of earnings, FOMC, or CPI"
+    },
+    "symbol_notes": {
+      "MU":   "Good options volume. Check earnings calendar.",
+      "AMZN": "Mega-cap. Tight spreads. Preferred under high VIX.",
+      "PLTR": "Decent volume. Can gap — watch size.",
+      "SOFI": "Smaller cap. Wider spreads. Use reduced size.",
+      "NFLX": "High IV. Expensive premiums. Strong signal required.",
+      "MSFT": "Mega-cap. Tight spreads. Preferred under high VIX.",
+      "APP":  "Fast mover. Honor the 5-min time stop strictly.",
+      "AMD":  "High options volume. Strong intraday moves."
     }
-  },
-  {
-    "tick": 2,
-    "timestamp": "2026-04-07T14:41:52.759Z",
-    "price": 1.3,
-    "side": "sell",
-    "size": "5.4361",
-    "label": "SELL 5.4361 XRP → USDT",
-    "orderId": "0.0001111305XRP can be used at most",
-    "orderPlaced": false,
-    "response": {
-      "code": "12001",
-      "msg": "0.0001111305XRP can be used at most",
-      "requestTime": 1775572913620,
-      "data": null
-    }
-  },
-  {
-    "tick": 3,
-    "timestamp": "2026-04-07T14:42:03.718Z",
-    "price": 1.2998,
-    "side": "sell",
-    "size": "5.4361",
-    "label": "SELL 5.4361 XRP → USDT",
-    "orderId": "0.0001111305XRP can be used at most",
-    "orderPlaced": false,
-    "response": {
-      "code": "12001",
-      "msg": "0.0001111305XRP can be used at most",
-      "requestTime": 1775572924541,
-      "data": null
-    }
-  },
-  {
-    "tick": 4,
-    "timestamp": "2026-04-07T14:42:14.707Z",
-    "price": 1.2998,
-    "side": "sell",
-    "size": "5.4361",
-    "label": "SELL 5.4361 XRP → USDT",
-    "orderId": "0.0001111305XRP can be used at most",
-    "orderPlaced": false,
-    "response": {
-      "code": "12001",
-      "msg": "0.0001111305XRP can be used at most",
-      "requestTime": 1775572935517,
-      "data": null
-    }
-  },
-  {
-    "tick": 5,
-    "timestamp": "2026-04-07T14:42:25.619Z",
-    "price": 1.2999,
-    "side": "sell",
-    "size": "5.4361",
-    "label": "SELL 5.4361 XRP → USDT",
-    "orderId": "0.0001111305XRP can be used at most",
-    "orderPlaced": false,
-    "response": {
-      "code": "12001",
-      "msg": "0.0001111305XRP can be used at most",
-      "requestTime": 1775572946426,
-      "data": null
-    }
-  },
-  {
-    "tick": 6,
-    "timestamp": "2026-04-07T14:42:36.533Z",
-    "price": 1.2999,
-    "side": "sell",
-    "size": "5.4361",
-    "label": "SELL 5.4361 XRP → USDT",
-    "orderId": "0.0001111305XRP can be used at most",
-    "orderPlaced": false,
-    "response": {
-      "code": "12001",
-      "msg": "0.0001111305XRP can be used at most",
-      "requestTime": 1775572957307,
-      "data": null
-    }
-  },
-  {
-    "tick": 1,
-    "timestamp": "2026-04-07T14:44:05.883Z",
-    "price": 1.2991,
-    "side": "skip",
-    "reason": "balance too low",
-    "orderPlaced": false
-  },
-  {
-    "tick": 2,
-    "timestamp": "2026-04-07T14:44:16.746Z",
-    "price": 1.2991,
-    "side": "skip",
-    "reason": "balance too low",
-    "orderPlaced": false
-  },
-  {
-    "tick": 3,
-    "timestamp": "2026-04-07T14:44:27.448Z",
-    "price": 1.2996,
-    "side": "skip",
-    "reason": "balance too low",
-    "orderPlaced": false
-  },
-  {
-    "tick": 4,
-    "timestamp": "2026-04-07T14:44:38.140Z",
-    "price": 1.2991,
-    "side": "skip",
-    "reason": "balance too low",
-    "orderPlaced": false
-  },
-  {
-    "tick": 5,
-    "timestamp": "2026-04-07T14:44:48.846Z",
-    "price": 1.2991,
-    "side": "skip",
-    "reason": "balance too low",
-    "orderPlaced": false
-  },
-  {
-    "tick": 6,
-    "timestamp": "2026-04-07T14:44:59.488Z",
-    "price": 1.299,
-    "side": "skip",
-    "reason": "balance too low",
-    "orderPlaced": false
   }
 ]

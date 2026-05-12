@@ -1,31 +1,71 @@
 {
-  "watchlist": ["BTCUSD", "ETHUSD", "SOLUSD"],
-  "default_timeframe": "240",
+  "watchlist": ["AMZN", "MSFT", "AAPL", "AMD", "NVDA"],
+  "default_timeframe": "1",
+  "asset_type": "equity_options",
 
-  "bias_criteria": {
-    "bullish": [
-      "Ribbon direction is up (bullish colour)",
-      "Price is above the 20 EMA on the 4H",
-      "RSI is below 60 (room to run)"
+  "strategy": {
+    "name": "1-Minute Options Scalper",
+    "instrument": "0DTE or next-expiry ATM options (CALL for long bias, PUT for short bias)",
+    "sources": [
+      "Price momentum — 1-min candle close vs previous close",
+      "RSI filter — only trade between 35–65",
+      "VWAP filter — price above VWAP favors CALLs, below favors PUTs",
+      "Volume confirmation — current bar volume must exceed 20-bar average"
     ],
-    "bearish": [
-      "Ribbon direction is down (bearish colour)",
-      "Price is below the 20 EMA on the 4H",
-      "RSI is above 40 (room to drop)"
-    ],
-    "neutral": [
-      "Ribbon is flat or mixed",
-      "Price is chopping around the 20 EMA",
-      "RSI is between 45 and 55"
+    "primary_timeframes": [
+      "1-minute (signal source and execution)",
+      "5-minute (bias/trend context)"
     ]
   },
 
-  "risk_rules": [
-    "Only take trades where R:R is at least 1:2",
-    "No trading in the first 15 minutes of the NY session open",
-    "Maximum 2 open positions at once",
-    "If I have 2 losing trades in a row, stop for the day"
+  "vix_filter": {
+    "description": "Check CBOE:VIX before every trade. VIX level determines regime.",
+    "regimes": {
+      "normal":   { "vix_range": "below 20",  "action": "Full size, trade normally" },
+      "elevated": { "vix_range": "20 to 30",  "action": "50% size, widen stop to -20%" },
+      "high":     { "vix_range": "30 to 40",  "action": "25% size, 1 trade max, AMZN/MSFT only" },
+      "extreme":  { "vix_range": "above 40",  "action": "STOP — no trades" }
+    }
+  },
+
+  "bias_criteria": {
+    "bullish_call": [
+      "Last 1-min candle closed higher than the one before it by at least 0.10%",
+      "RSI is between 35 and 65",
+      "Price is above VWAP",
+      "Volume is above 20-bar average"
+    ],
+    "bearish_put": [
+      "Last 1-min candle closed lower than the one before it by at least 0.10%",
+      "RSI is between 35 and 65",
+      "Price is below VWAP",
+      "Volume is above 20-bar average"
+    ],
+    "neutral_skip": [
+      "RSI is above 65 (overbought — skip)",
+      "RSI is below 35 (oversold — skip)",
+      "Candle close change is less than 0.10% (chop — skip)",
+      "Price is within 0.05% of VWAP (indecision — skip)",
+      "Volume is below 20-bar average (low conviction — skip)",
+      "VIX is above 40 (extreme regime — no trades)"
+    ]
+  },
+
+  "exit_rules": [
+    "Profit target: exit when option premium gains +25%",
+    "Stop loss: exit when option premium loses -15% (or -20% when VIX is elevated)",
+    "Time stop: exit after 5 minutes regardless of P&L",
+    "Hard close: exit all positions by 3:30 PM EST"
   ],
 
-  "notes": "Add any other context you want Claude to factor in — e.g. macro events this week, key dates, anything that should affect your bias."
+  "risk_rules": [
+    "Check VIX regime FIRST — see vix_filter for size and permission rules",
+    "Maximum premium per trade: $50 normal | $25 elevated | $12 high VIX",
+    "Maximum 3 open positions (1 max when VIX is high)",
+    "Maximum 10 trades per session",
+    "Do not trade during earnings week on single stocks",
+    "Paper trade first to validate signals"
+  ],
+
+  "notes": "Starter config for the 1-minute options scalper. Swap in your own watchlist. Requires TradingView Desktop open on port 9222."
 }
