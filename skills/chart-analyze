@@ -1,0 +1,38 @@
+---
+description: Analyze the current chart — pulls quote, indicators, levels, and OHLCV summary into a structured trading report.
+user_invocable: true
+---
+
+Analyze the current TradingView chart. Follow these steps exactly:
+
+1. **Get chart state** — call `chart_get_state` to learn the current symbol, timeframe, and active indicators.
+
+2. **Pull price data** — call `quote_get` for the live price, then `data_get_ohlcv` with `summary: true` for recent price action stats.
+
+3. **Read indicators** — call `data_get_study_values` to get current readings from all visible indicators (RSI, MACD, EMAs, etc.).
+
+4. **Read custom levels** — call `data_get_pine_lines` for horizontal levels and `data_get_pine_labels` for labeled annotations from Pine indicators.
+
+5. **Screenshot** — call `capture_screenshot` for visual reference.
+
+6. **Synthesize** — Present a structured report:
+
+   **[SYMBOL] — [TIMEFRAME] Report**
+
+   **Price Action**
+   - Current price, daily change, range
+   - OHLCV summary stats (high, low, avg volume)
+
+   **Indicator Readings**
+   - List each indicator with its current value and what it suggests (bullish/bearish/neutral)
+
+   **Key Levels**
+   - Support and resistance levels from Pine drawings
+   - Any labeled levels (settlement, pivots, etc.)
+
+   **Bias**
+   - Overall lean based on the weight of evidence: Bullish / Bearish / Neutral
+   - Confidence: High / Medium / Low
+   - Key factors driving the bias
+
+Keep the report concise — facts and readings, not speculation. If an indicator is ambiguous, say so.
