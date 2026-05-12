@@ -1,0 +1,203 @@
+{
+  "meta": {
+    "descricao": "Contexto semanal contínuo JEAFX Sapa de Sniper. Lido obrigatoriamente no início de cada sessão diária antes de qualquer análise. Actualizado toda a segunda-feira após análise W+D e toda a sexta com resumo da semana.",
+    "instrucao_claude": "SEMPRE ler este ficheiro no início de cada sessão antes de qualquer análise ou screenshot. Os níveis aqui são a base de contexto — confirmar com data_get_ohlcv antes de usar em análise activa.",
+    "ficheiro": "C:\\Users\\mrasp\\tradingview-mcp-jackson\\weekly_context.json"
+  },
+
+  "semana_actual": {
+    "semana": "2026-W18",
+    "datas": "2026-04-28 a 2026-05-02",
+    "actualizado_em": "2026-04-29",
+
+    "eventos_macro_semana": [
+      {
+        "evento": "FOMC Decision",
+        "data": "2026-04-29",
+        "hora_lisboa": "19:00",
+        "expectativa": "Hold — 94% probabilidade. Foco na linguagem de Powell sobre tarifas e path de cortes.",
+        "resultado": "PENDENTE — atualizar após 19:00"
+      },
+      {
+        "evento": "GDP EUA Q1 2026",
+        "data": "2026-04-29",
+        "nota": "Dados de crescimento Q1 — relevante para narrativa stagflação"
+      }
+    ],
+
+    "contexto_macro": {
+      "narrativa_global": "USD estruturalmente fraco — preocupações com défice fiscal EUA, independência da Fed, guerra comercial US-China. EUR em máximos multi-meses. XAU paradoxalmente fraco apesar de guerra — inflação de tarifas → Fed hawkish → yields reais sobem → XAU vende.",
+      "trade_war": "Tarifas US-China elevadas. Pressão inflacionária nos EUA. Fed em posição difícil: inflação alta mas crescimento a abrandar (risco stagflação).",
+      "dxy_bias": "RANGING — flat entre 98.54 e 98.87. Sem momentum direcional. FOMC vai resolver."
+    },
+
+    "dxy": {
+      "bias_weekly": "Bearish estrutural — DXY em mínimos multi-meses",
+      "bias_daily": "Ranging — flat sem momentum",
+      "range_h": "pendente — confirmar com data_get_ohlcv",
+      "range_l": "pendente — confirmar com data_get_ohlcv",
+      "nivel_actual": 98.70,
+      "zonas_activas": [
+        {
+          "tipo": "Resistência",
+          "nivel": 98.87,
+          "nota": "Topo do range semanal — rejeição aqui = USD continua fraco"
+        },
+        {
+          "tipo": "Suporte",
+          "nivel": 98.54,
+          "nota": "Fundo do range semanal — break abaixo = DXY acelera bearish"
+        }
+      ],
+      "nota_fomc": "FOMC vai resolver o range. Hold + dovish = DXY quebra 98.54. Hold + hawkish = DXY sobe ao 98.87+"
+    },
+
+    "eurusd": {
+      "bias_weekly": "Bullish — máximos multi-meses",
+      "bias_daily": "Bullish — uptrend intacto com pullback normal",
+      "bias_4h": "Bullish — zona demand 4H respeitada",
+      "nivel_actual": 1.16842,
+      "zonas_activas": {
+        "supply_major": {
+          "tf": "4H",
+          "proximal": 1.17550,
+          "distal": 1.17911,
+          "nota": "BOS Up 1H em 1.17550 | BOS Up 4H em 1.17911 — alvos da fase D"
+        },
+        "demand_principal": {
+          "tf": "1H",
+          "proximal": 1.17020,
+          "distal": 1.16838,
+          "mid": 1.16929,
+          "nota": "Zona tocada esta semana. MID 1.16929 testado. Zona ainda activa enquanto BOS Down 1H não quebrar."
+        },
+        "demand_backup": {
+          "tf": "4H",
+          "proximal": 1.16000,
+          "distal": 1.15800,
+          "nota": "Zona demand 4H major — se 1H demand quebrar, este é o próximo POI"
+        }
+      },
+      "niveis_criticos": {
+        "bos_down_1h": 1.16775,
+        "bos_down_4h": 1.16692,
+        "asia_low_29abr": 1.16982,
+        "asia_high_29abr": 1.17208
+      },
+      "trade_activo": {
+        "existe": true,
+        "sl": 1.16775,
+        "risco_eur": 60,
+        "nota": "Posição aberta em 29/04 — SL no BOS Down 1H. Aguarda FOMC 19:00."
+      },
+      "leituras_semana": [
+        "Stop hunt de manhã (09:15) — sweep SSL 1.16936 com volume alto — armadilha para shorts",
+        "Falso CHoCH bullish (11:58) em 1.17083 com baixo volume — armadilha para longs",
+        "AMD dupla manipulação: M1 bearish (1.16936) + M2 bullish (1.17094) antes de D real",
+        "Preço actual 1.16842 — dentro zona demand 1H, acima BOS Down 1H (1.16775)"
+      ]
+    },
+
+    "xauusd": {
+      "bias_weekly": "Bearish após queda abrupta",
+      "bias_daily": "Bearish — zona demand 4H violada",
+      "nivel_actual": 4584.0,
+      "zonas_activas": {
+        "supply_rota": {
+          "tf": "4H",
+          "range": "4610 a 4670",
+          "nota": "Antiga zona demand que foi violada — agora supply. CE ~4640 é potencial SHORT se preço regressa."
+        }
+      },
+      "niveis_criticos": {
+        "resistencia_imediata": 4610,
+        "suporte_abaixo": 4555,
+        "suporte_major": 4520
+      },
+      "leituras_semana": [
+        "Zona demand 4H (4610-4670) completamente violada com volume 58K+",
+        "Paradoxo: guerra/tarifas → inflação → Fed hawkish → yields reais sobem → XAU vende",
+        "Sem setup de compra até FOMC resolver direcção",
+        "FOMC dovish → possível spike de recuperação. Hawkish → continua queda."
+      ],
+      "nota_fomc": "XAU reagirá 1-2% ao tom de Powell. Sem trade antes do FOMC."
+    },
+
+    "nas100": {
+      "bias_weekly": "Recovery após queda — estrutura ainda bearish no 4H",
+      "bias_daily": "Bearish com sinais de recuperação",
+      "nivel_actual": 27174.0,
+      "zonas_activas": {
+        "demand_1h_superior": {
+          "tf": "1H",
+          "proximal": 26975,
+          "distal": 26930,
+          "nota": "Zona testada 28/04 — low 26922 (sweep). Zona aguenta enquanto 26880 não quebrar."
+        },
+        "demand_1h_inferior": {
+          "tf": "1H",
+          "proximal": 26800,
+          "distal": 26720,
+          "nota": "Zona backup — se superior falhar"
+        }
+      },
+      "niveis_criticos": {
+        "last_s_low": 26553,
+        "resistencia_imediata": 27244,
+        "resistencia_major": 27350
+      },
+      "leituras_semana": [
+        "Baixo 26922 na 2ª feira — sweep da zona demand 1H superior",
+        "Recuperação para 27175 — estrutura ainda choppy pré-FOMC",
+        "Sem CHoCH 1H confirmado — aguarda NY Killzone ou FOMC"
+      ]
+    }
+  },
+
+  "semana_anterior": {
+    "semana": "2026-W17",
+    "datas": "2026-04-21 a 2026-04-25",
+    "resumo": "Primeira semana com novo procedimento JEAFX formalizado. Análise semanal completa realizada. EUR em uptrend forte — subiu de 1.1580 para 1.1755+. XAU em máximos históricos acima de 4700 antes de inversão. NAS100 a recuperar de lows. DXY a cair estruturalmente.",
+    "eventos_chave": [
+      "EUR subiu à zona supply 1H (1.17550) — BOS Up 1H marcado",
+      "XAU tocou zona supply major e reverteu — queda iniciada",
+      "NAS100 fez low na zona demand — bounce iniciado",
+      "DXY continuou fraco — correlação EUR confirmada"
+    ],
+    "trades_resultado": "Sem trades executados — semana de análise e setup do sistema"
+  },
+
+  "historico_resumos": [
+    {
+      "semana": "2026-W17",
+      "resumo_curto": "EUR forte, XAU inverteu de highs, NAS em recuperação, DXY bearish. Sistema JEAFX formalizado com estrutura N1/N2/N3, Killzones, FVG+MID integrados."
+    }
+  ],
+
+  "instrucoes_actualizacao": {
+    "segunda_manha": [
+      "1. Ler este ficheiro para absorver contexto semana anterior",
+      "2. Fazer análise W+D completa para cada ativo",
+      "3. Actualizar 'semana_actual' com novos valores confirmados por data_get_ohlcv",
+      "4. Mover 'semana_actual' anterior para 'semana_anterior'",
+      "5. Adicionar resumo à lista 'historico_resumos'"
+    ],
+    "inicio_sessao_diaria": [
+      "1. Ler weekly_context.json",
+      "2. Verificar se algum nível crítico foi tocado desde última sessão",
+      "3. Screenshot Daily rápido para confirmar macro intacto",
+      "4. Só então descer ao 4H/1H para análise do dia"
+    ],
+    "durante_semana": [
+      "Actualizar 'nivel_actual' de cada ativo no início de cada sessão",
+      "Actualizar 'trade_activo' quando trades abrem ou fecham",
+      "Adicionar a 'leituras_semana' quando acontece algo significativo",
+      "Actualizar 'resultado' de eventos macro após acontecerem"
+    ],
+    "sexta_fecho": [
+      "1. Preencher resumo completo da semana em 'semana_actual'",
+      "2. Documentar todos os trades e resultados",
+      "3. Ficheiro fica pronto para segunda-feira"
+    ]
+  }
+}

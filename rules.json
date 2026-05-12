@@ -1,65 +1,858 @@
 {
-  "watchlist": ["BTCUSDT"],
-  "default_timeframe": "1",
-
-  "strategy": {
-    "name": "10-Second Momentum Scalper",
-    "sources": [
-      "Price momentum — buy if last close > previous close (green candle)",
-      "RSI filter — only trade when RSI is not at an extreme (30–70 range)"
+  "rules": {
+    "method_name": "JEAFX Sapa de Sniper — Rasto Institucional",
+    "philosophy": "O foco não é o retalho — é o Rasto Institucional. O objetivo é validar cenários onde o Smart Money está a atuar, ignorando o ruído e focando na eficiência do preço. O dinheiro é um subproduto de sistemas vencedores. Só entrar quando o setup é válido — nunca forçar.",
+    "mindset": [
+      "Foco no processo, não no lucro — o dinheiro é um subproduto de sistemas vencedores",
+      "Sou responsável por todos os resultados — bons e maus",
+      "Sigo os meus sistemas com disciplina absoluta e sem exceções",
+      "Aplico paciência — sou seletivo com as minhas entradas",
+      "Estudo, faço backtest e journal consistentemente, sem exceções",
+      "Corto as perdas com uma mente neutra — não sou mais inteligente que o mercado",
+      "Abraço os erros e uso-os para otimizar os meus sistemas",
+      "Foco no resultado do trimestre/ano, não apenas do dia",
+      "Não apanho facas a cair — sigo o dinheiro pesado",
+      "Sem setup válido = sem trade. Nunca forçar uma entrada."
     ],
-    "primary_timeframes": [
-      "1-minute (signal source)",
-      "10-second execution loop"
-    ]
-  },
-
-  "indicators": {
-    "rsi_14": "Momentum filter. Only trade when RSI is between 30–70 (avoid extremes).",
-    "price_momentum": "Compare last close vs previous close. Up = long signal. Down = short signal."
-  },
-
-  "bias_criteria": {
-    "bullish": [
-      "Last 1-min candle closed higher than the one before it",
-      "RSI is between 30 and 70"
+    "assets": {
+      "anchor": {
+        "symbol": "DXY",
+        "note": "Analisar SEMPRE primeiro, independentemente do nível que se vai trabalhar. É o ponto de partida de toda a análise."
+      },
+      "nivel_1": {
+        "description": "🥇 Nível 1 — Sniper Intraday + Swing. Foco principal diário. Os 3 têm correlação máxima com DXY e cobrem 3 classes de ativos distintas: Forex + Commodity + Índice. Confirmação tripla quando DXY cai.",
+        "symbols": ["EURUSD", "XAUUSD", "NAS100"],
+        "execucao": {
+          "bias_tf": "Weekly + Daily",
+          "setup_tf": "4H + 1H",
+          "entrada_tf": "15M + 5M (regras completas JEAFX)",
+          "nota": "Regras totais do sistema — CHoCH/MSS 15M, CE obrigatório, CVD, SL/TP por POI técnico"
+        },
+        "prioridade": "Foco total se houver setup em N1. Só avançar para N2 se N1 não tiver setup válido OU se houver tempo disponível."
+      },
+      "nivel_2": {
+        "description": "🥈 Nível 2 — Swing HTF. Só analisar se N1 sem setup ou com tempo disponível. Ativos complementares ao N1 — confirmam a narrativa macro e oferecem oportunidades de swing.",
+        "symbols": ["BTCUSD", "USDJPY", "XAGUSD"],
+        "simbolos_descricao": {
+          "BTCUSD": "Ativo de risco — confirma NAS100. DXY fraco = BTC tende a subir. Mais independente mas parte do contexto macro.",
+          "USDJPY": "Expressão direta do DXY — quando DXY cai, USDJPY cai. Leitura muito limpa e direta.",
+          "XAGUSD": "Companheiro do ouro com mais volatilidade — mesma análise do XAU, moves maiores."
+        },
+        "execucao": {
+          "bias_tf": "Weekly + Daily",
+          "setup_tf": "4H",
+          "entrada_tf": "30M máximo — nunca descer a 15M/5M neste nível",
+          "nota": "Zonas maiores, SL maior, TP maior. Trades de swing de dias a semanas. Menos monitorização necessária."
+        },
+        "prioridade": "Só após verificar N1. Se N2 tiver setup — tratar como swing HTF com entrada máxima no 30M."
+      },
+      "nivel_3": {
+        "description": "🥉 Nível 3 — Swing Puro. Só com muito tempo disponível ou quando N1 e N2 não têm setup. Análise semanal, posições de dias a semanas.",
+        "symbols": ["GBPUSD", "EURGBP", "US30"],
+        "simbolos_descricao": {
+          "GBPUSD": "Segue EUR mas com ruído UK — secundário natural do N1.",
+          "EURGBP": "Mostra força relativa EUR vs GBP sem influência DXY direta — útil como filtro de confluência.",
+          "US30": "Índice mais lento que NAS — quando NAS tem setup, US30 confirma a narrativa de índices."
+        },
+        "execucao": {
+          "bias_tf": "Weekly + Daily",
+          "setup_tf": "Daily + 4H",
+          "entrada_tf": "30M máximo — swing puro",
+          "nota": "Análise semanal apenas. Gestão mais relaxada. Posições de dias a semanas."
+        },
+        "prioridade": "Último recurso. Nunca sacrificar foco em N1 por analisar N3."
+      },
+      "progressao_regras": [
+        "1. Analisar DXY sempre — âncora universal independente do nível",
+        "2. Analisar Nível 1 (EUR + XAU + NAS) — foco principal",
+        "3. SE setup em N1 → foco total em N1, não dispersar para outros níveis",
+        "4. SE sem setup em N1 OU tempo disponível → avançar para N2 (BTC + USDJPY + XAGUSD)",
+        "5. SE setup em N2 → tratar como swing HTF com entrada máxima 30M",
+        "6. SE sem setup em N2 OU ainda com tempo → avançar para N3 (GBP + EURGBP + US30)",
+        "7. N3 é swing puro — análise semanal, entrada máxima 30M",
+        "8. Nunca analisar N2 ou N3 em detrimento da qualidade de análise do N1"
+      ]
+    },
+    "dxy_correlation": {
+      "description": "O DXY é o ponto de partida de toda a análise. Define o bias macro para os restantes ativos. É um INPUT, não uma conclusão — a estrutura própria de cada ativo prevalece sempre.",
+      "regra_critica": "O DXY é um input de confirmação, não uma conclusão automática. A estrutura HTF do próprio ativo (CHoCH, BOS, HH+HL, LL+LH) SEMPRE prevalece sobre a correlação DXY. Se o DXY diz bullish EUR mas o EUR/USD semanal mostra CHoCH bearish — a estrutura do EUR/USD prevalece. Nunca sobrepor correlação DXY a estrutura confirmada do ativo.",
+      "rules": [
+        "Começar SEMPRE pelo DXY antes de qualquer outro ativo",
+        "DXY bullish (BOS para cima) = EURUSD bearish = XAUUSD bearish (tendencialmente) — confirmar com estrutura do ativo",
+        "DXY bearish (BOS para baixo) = EURUSD bullish = XAUUSD bullish (tendencialmente) — confirmar com estrutura do ativo",
+        "Se zona supply no DXY coincide inversamente com zona demand no EURUSD = confluência de alta probabilidade",
+        "Correlação inversa DXY/EURUSD confirmada = probabilidade de sucesso aumenta significativamente",
+        "BTCUSD e NAS100 têm correlação de risco — DXY fraco = risk-on = ambos tendem a subir",
+        "USDJPY é expressão directa do DXY — DXY cai = USDJPY cai (correlação positiva directa)",
+        "CONFLITO: Se DXY e estrutura do ativo contradizem-se → estrutura do ativo prevalece → reportar o conflito antes de definir bias"
+      ]
+    },
+    "trading_style": {
+      "primary": "daytrading",
+      "secondary": "swing",
+      "note": "Aproveitar oportunidades diárias (London/NY) e semanais (HTF bias). Sem mínimo nem máximo de trades — só entrar quando o setup é válido."
+    },
+    "sessions": {
+      "primary": [
+        "London",
+        "New York"
+      ],
+      "asia_range": "Monitorizar para Asia Liquidity Run (ALS) — oportunidade diária recorrente",
+      "transition_filter": "1H usado para ver transição entre sessões e encontrar FVGs"
+    },
+    "killzones": {
+      "description": "Janelas de sessão onde os Market Makers movem preço com intenção. Fora destas janelas a liquidez é baixa e os movimentos são pouco confiáveis. Aplicação diferenciada por nível de ativo.",
+      "conceito": "Cada sessão tem 3 fases: Acumulação (range) → Manipulação (spike/sweep) → Distribuição (movimento real). O spike de London de manhã é a fase de Manipulação clássica — reconhecer em que fase se está evita entrar na armadilha e permite esperar pela Distribuição.",
+      "janelas": {
+        "london_open": {
+          "hora_lisboa": "08:00–10:00",
+          "hora_utc": "07:00–09:00",
+          "descricao": "Killzone principal. Fase de Manipulação seguida do movimento real de London. Sweeps de liquidez asiática acontecem aqui. Maior probabilidade de setup diário."
+        },
+        "new_york_open": {
+          "hora_lisboa": "13:00–16:00",
+          "hora_utc": "12:00–15:00",
+          "descricao": "Segunda Killzone principal. Confirma ou inverte o movimento de London. NY frequentemente colhe a liquidez criada por London antes de distribuir."
+        },
+        "london_close": {
+          "hora_lisboa": "21:00–23:00",
+          "hora_utc": "20:00–22:00",
+          "descricao": "Killzone menor. Relevante principalmente para N2/N3 e em dias com confluência HTF clara. Evitar em N1 salvo setup muito óbvio."
+        },
+        "tokyo_session": {
+          "hora_lisboa": "01:00–04:00",
+          "hora_utc": "00:00–03:00",
+          "descricao": "Killzone asiática. Relevante para USDJPY e BTCUSD (N2). Cria o range asiático (Asia High / Asia Low) que London frequentemente vai testar."
+        }
+      },
+      "regras_por_nivel": {
+        "nivel_1": {
+          "assets": ["EURUSD", "XAUUSD", "NAS100"],
+          "regra": "Preferência total pelas Killzones London (08:00–10:00) e NY (13:00–16:00). Fora do horário apenas observação e preparação.",
+          "excepcao": "Pode entrar fora de Killzone SE a formação for claramente justificada: zona limpa unmitigated + confluência HTF forte + contexto macro favorável. A excepção exige nível de convicção superior ao normal — não é desculpa para entrar em qualquer setup."
+        },
+        "nivel_2": {
+          "assets": ["BTCUSD", "USDJPY", "XAGUSD"],
+          "regra": "Qualquer sessão é válida. USDJPY e BTC podem ter setups relevantes na Tokyo Session (01:00–04:00). Silver segue as mesmas janelas do ouro mas sem restrição."
+        },
+        "nivel_3": {
+          "assets": ["GBPUSD", "EURGBP", "US30"],
+          "regra": "Qualquer sessão é válida. O próprio TF mínimo de 30M já filtra naturalmente o ruído. Sem restrição de sessão."
+        }
+      },
+      "fora_de_killzone": {
+        "n1": "Observar, preparar zonas, colocar alertas, definir cenários A/B. NÃO entrar salvo excepção justificada.",
+        "n2_n3": "Avaliar normalmente — sem restrição de sessão."
+      }
+    },
+    "risk_management": {
+      "objective_monthly_eur": 5000,
+      "note_objective": "Objetivo de €5.000/mês mas sem limite de lucro — se o setup for válido continuar. Nunca parar por excesso de lucro.",
+      "entry_risk": {
+        "description": "Risco por trade entre €50 e €150 conforme o setup e convicção",
+        "minimo_eur": 50,
+        "maximo_eur": 150,
+        "EURUSD": {
+          "entrada_1_RE_instinto": "€50 a €100",
+          "entrada_2_CE_confirmacao": "€100 a €150",
+          "note": "Valor dentro do range conforme convicção no setup"
+        },
+        "XAUUSD": {
+          "entrada_1_RE_instinto": "€50 a €100",
+          "entrada_2_CE_confirmacao": "€100 a €150",
+          "note": "Valor dentro do range conforme convicção no setup"
+        },
+        "BTCUSD": {
+          "entrada_unica_CE": "€100 a €150",
+          "note": "BTC apenas uma entrada — sempre CE confirmado"
+        }
+      },
+      "daily_limits": {
+        "stop_emocional_eur": 650,
+        "note": "Se atingir €650 de perda num dia — parar imediatamente sem exceções",
+        "maximo_simultaneo": "€650 = os 3 ativos primários com risco total ao mesmo tempo",
+        "prop_firm_daily_limit_pct": 4,
+        "prop_firm_daily_limit_usd": 2000
+      },
+      "weekly_limits": {
+        "stop_semanal_eur": 1500,
+        "note": "Equivale a aproximadamente 2 dias maus consecutivos",
+        "trailing_profit_rule": "Se a semana estiver em lucro, nunca deixar o lucro semanal descer mais de 50%. Ex: €2.000 de lucro → parar se descer a €1.000."
+      },
+      "monthly_limits": {
+        "stop_mensal_eur": 3000,
+        "note": "Protege a conta FXIFY e mantém margem para recuperar",
+        "prop_firm_max_drawdown_pct": 10,
+        "prop_firm_max_drawdown_usd": 5000
+      },
+      "scaling_by_performance": {
+        "description": "Aumentar risco conforme a conta cresce. Reduzir automaticamente se descer um nível.",
+        "base": {
+          "condicao": "Início ou após drawdown",
+          "RE_eur": 100,
+          "CE_eur": 150,
+          "BTC_eur": 150,
+          "max_dia_eur": 650
+        },
+        "nivel_1": {
+          "condicao": "+10% de lucro na conta",
+          "RE_eur": 200,
+          "CE_eur": 300,
+          "BTC_eur": 300,
+          "max_dia_eur": 1300
+        },
+        "nivel_2": {
+          "condicao": "+20% de lucro na conta",
+          "RE_eur": 300,
+          "CE_eur": 450,
+          "BTC_eur": 450,
+          "max_dia_eur": 1950
+        },
+        "nivel_3": {
+          "condicao": "+30% de lucro na conta",
+          "RE_eur": 400,
+          "CE_eur": 600,
+          "BTC_eur": 600,
+          "max_dia_eur": 2600
+        },
+        "protecao": "Se descer um nível de profit → voltar ao risco do nível anterior automaticamente"
+      },
+      "rr_minimo": 1.5
+    },
+    "entry_system": {
+      "description": "Sistema de entrada split — duas entradas por setup (exceto BTC)",
+      "entrada_1": {
+        "tipo": "RE (Risk Entry) ou instinto",
+        "timing": "Na extremidade da zona supply/demand",
+        "risco_eur": 100,
+        "quando": "Liquidez muito clara, zona forte, contexto óbvio"
+      },
+      "entrada_2": {
+        "tipo": "CE (Confirmation Entry)",
+        "timing": "Após CHoCH/MSS confirmado no 15M/5M",
+        "risco_eur": 150,
+        "quando": "Sempre que possível — é a entrada preferida e de maior risco por ter mais probabilidade"
+      },
+      "btc_entrada_unica": {
+        "tipo": "CE sempre",
+        "risco_eur": 150,
+        "note": "BTC é mais volátil — nunca RE, sempre aguardar confirmação"
+      },
+      "gestao_sl": {
+        "regra": "Mover ambas as entradas para BE logo que a estrutura permita",
+        "gatilho": "Novo HH/HL (long) ou novo LL/LH (short) formado após entrada",
+        "abordagem": "Não mecânico — depende do que o preço está a fazer"
+      }
+    },
+    "fvg_mid": {
+      "description": "FVG e MID são ferramentas de refinamento de entrada dentro de uma zona S/D 1H já identificada. Não substituem a zona — precisam-na. A zona define a ÁREA, o FVG e o MID definem o PONTO dentro dessa área.",
+      "nomenclatura": {
+        "CE": "Confirmation Entry — tipo de entrada após CHoCH/MSS confirmado no LTF. Conceito de execução.",
+        "MID": "Midpoint da zona — ponto a 50% entre proximal e distal da zona S/D. Cálculo: (proximal + distal) / 2. Sempre disponível — fallback quando não existe FVG.",
+        "FVG": "Fair Value Gap — desequilíbrio de 3 velas onde a vela central se move tão rápido que deixa uma lacuna entre high da vela N e low da vela N+2 (bullish) ou low da vela N e high da vela N+2 (bearish). O mercado não transacionou nesse espaço — tende a regressar a preenchê-lo."
+      },
+      "fvg_definicao": {
+        "bullish_fvg": "High da vela N < Low da vela N+2. A lacuna entre esses dois valores é o FVG bullish. Preço tende a regressar a este espaço antes de continuar para cima.",
+        "bearish_fvg": "Low da vela N > High da vela N+2. A lacuna entre esses dois valores é o FVG bearish. Preço tende a regressar a este espaço antes de continuar para baixo.",
+        "confirmacao": "FVG só é válido se confirmado com data_get_ohlcv — verificar que High vela N < Low vela N+2 (bullish) ou Low vela N > High vela N+2 (bearish). NUNCA confirmar FVG apenas visualmente.",
+        "tf_valido": "FVG identificado no mesmo TF da zona (1H) ou no TF de execução (15M/5M) dentro da zona. Acima de 1H o FVG é contexto macro, não ponto de entrada."
+      },
+      "hierarquia_entrada_na_zona": {
+        "nivel_1": {
+          "condicao": "FVG + MID coincidem dentro da zona",
+          "qualidade": "🥇 Máxima convicção",
+          "stop": "Mínimo — abaixo do FVG ou do distal da zona",
+          "nota": "Quando o FVG inclui ou está muito próximo do MID — confluência máxima. Entrada de maior convicção e melhor R:R."
+        },
+        "nivel_2": {
+          "condicao": "FVG dentro da zona (sem confluência com MID)",
+          "qualidade": "🥈 Alta precisão",
+          "stop": "Pequeno — abaixo do FVG",
+          "nota": "FVG sozinho já dá entrada precisa. Melhor R:R que entrar pelo MID."
+        },
+        "nivel_3": {
+          "condicao": "MID da zona (sem FVG identificado)",
+          "qualidade": "🥉 Standard — fallback",
+          "stop": "Médio — abaixo do distal da zona",
+          "nota": "Sempre disponível. Usado quando não existe FVG dentro da zona. Cálculo: (proximal + distal) / 2."
+        },
+        "nivel_4": {
+          "condicao": "Sem FVG e sem MID claramente definido",
+          "qualidade": "⚠️ Baixa — RE apenas",
+          "stop": "Maior",
+          "nota": "RE só se a zona for muito óbvia com contexto HTF muito forte. Nunca CE sem ponto de entrada definido."
+        }
+      },
+      "processo_identificacao_fvg": [
+        "1. Screenshot para localizar visualmente a vela de impulso que criou a zona",
+        "2. data_get_ohlcv na vela N (antes do impulso) e vela N+2 (após o impulso)",
+        "3. Bullish: confirmar High(N) < Low(N+2). Bearish: confirmar Low(N) > High(N+2)",
+        "4. FVG range = High(N) a Low(N+2) para bullish | Low(N) a High(N+2) para bearish",
+        "5. Verificar se FVG está dentro dos limites da zona S/D 1H — se não estiver, não é válido para entrada",
+        "6. Calcular MID do FVG: (topo do FVG + fundo do FVG) / 2 — esse é o ponto de entrada ideal dentro do FVG"
+      ],
+      "regras": [
+        "FVG e MID são refinadores — só fazem sentido DENTRO de uma zona S/D 1H já validada",
+        "Nunca usar FVG fora de uma zona S/D como POI autónomo — é refinamento, não setup",
+        "FVG confirmado com data_get_ohlcv obrigatório — proibido confirmar apenas visualmente",
+        "Se FVG já foi preenchido pelo preço (mitigated) — não é válido para entrada",
+        "MID é sempre calculado: (proximal + distal) / 2 — nunca estimado visualmente",
+        "Quando FVG e MID coexistem — FVG tem prioridade como ponto de entrada",
+        "FVG parcialmente preenchido mas não totalmente: entrada válida no fundo do FVG restante"
+      ],
+      "formato_apresentacao": {
+        "fvg": "FVG [Bullish/Bearish] [TF] | Range: X.XXXXX → X.XXXXX | MID FVG: X.XXXXX | Dentro de zona [TF]: Sim/Não | Mitigated: Sim/Não",
+        "mid_zona": "MID Zona [TF]: X.XXXXX | Cálculo: (X.XXXXX + X.XXXXX) / 2"
+      }
+    },
+    "timeframe_hierarchy": {
+      "weekly_daily": "Bias direcional principal. DXY primeiro. Grandes zonas Smart Money. Premium vs Discount. Volume Profile semanal.",
+      "4H": "Gráfico de trabalho principal. Validar BOS e narrativa semanal. Supply/Demand + FVG. Weekly VWAP.",
+      "1H": "Filtro de transição entre sessões. FVGs intermédios. Daily VWAP como referência de bias intraday.",
+      "15m_10m": "Timeframe de execução. BOS local + CHoCH/MSS após sweep. CVD para confirmar gatilho.",
+      "5m_1m": "Refinamento de entrada. Pinpoint entry. Daily VWAP + CVD para confirmar absorção institucional."
+    },
+    "pillars": {
+      "structure_is_king": "Tendência definida por BOS no 4H e Diário. HH+HL = uptrend. LL+LH = downtrend. Nunca contra a estrutura macro.",
+      "liquidity_as_fuel": "O preço move-se de liquidez em liquidez. Identificar EQH/EQL, SSL e BSL. Saber quem vai ser estopado antes do preço andar.",
+      "supply_demand_real": "Zonas têm de ser frescas (Unmitigated) e ter causado movimento forte com FVG. Zona retestada = efficient = não usar.",
+      "the_trigger": "Não entrar no toque. Esperar MSS/CHoCH em M15/M5 após Sweep. Confirmar com CVD. Esta é a assinatura do Smart Money."
+    },
+    "volume_profile": {
+      "concepts": {
+        "POC": "Point of Control — zona de maior volume. Ímã de preço e confluência forte com zonas supply/demand.",
+        "VAH": "Value Area High — extremo superior. Confluência com supply em Premium.",
+        "VAL": "Value Area Low — extremo inferior. Confluência com demand em Discount.",
+        "LVN": "Low Volume Node — preço passa rapidamente. Ideal para alvos.",
+        "HVN": "High Volume Node — zona de consolidação. Possível obstáculo — ajustar alvos."
+      },
+      "usage": [
+        "Usar no Daily e 4H como confluência adicional às zonas JEAFX",
+        "Zona Unmitigated + POC ou VAH/VAL = probabilidade muito elevada",
+        "LVN entre entrada e alvo = caminho limpo — setup favorável",
+        "HVN entre entrada e alvo = obstáculo — ajustar alvo ou evitar",
+        "Premium = preço acima do VAH. Discount = preço abaixo do VAL."
+      ]
+    },
+    "vwap": {
+      "daily_vwap": {
+        "timeframe": "Intraday 15M/5M/1M",
+        "usage": [
+          "Acima = buyers no controlo = bias long intraday",
+          "Abaixo = sellers no controlo = bias short intraday",
+          "Zona supply/demand + Daily VWAP = entrada forte",
+          "Preço tende a regredir ao VWAP — usar como alvo intermédio"
+        ]
+      },
+      "weekly_vwap": {
+        "timeframe": "Swing 4H/1H",
+        "usage": [
+          "Referência de valor justo para a semana",
+          "Confluência com zonas 4H supply/demand",
+          "Acima = bias swing bullish. Abaixo = bias swing bearish."
+        ]
+      },
+      "anchored_vwap": {
+        "timeframe": "Flexível",
+        "usage": [
+          "Ancorar a swing highs ou swing lows relevantes",
+          "Ancorar ao início de uma tendência",
+          "Ancorar a eventos de grande volume ou notícias macro",
+          "Funciona como suporte/resistência dinâmica"
+        ]
+      }
+    },
+    "order_flow_cvd": {
+      "cvd": {
+        "usage": [
+          "CVD sobe com o preço = confirmação do movimento",
+          "Preço sobe mas CVD desce = divergência bearish = fraqueza = possível reversão",
+          "Preço desce mas CVD sobe = divergência bullish = fraqueza dos vendedores",
+          "CVD spike no CHoCH/MSS = confirmação com volume institucional"
+        ]
+      },
+      "delta_volume": {
+        "usage": [
+          "Delta negativo em zona demand = absorção institucional = sinal bullish forte",
+          "Delta positivo em zona supply = absorção institucional = sinal bearish forte",
+          "Não entrar em delta neutro — aguardar absorção clara"
+        ]
+      }
+    },
+    "narrative_questions": {
+      "description": "As 4 perguntas obrigatórias JFX antes de qualquer análise ou entrada. Responder a todas antes de abrir qualquer trade.",
+      "questions": [
+        "1. NARRATIVA: O que é que o mercado está a contar? Quem controla — compradores ou vendedores? Smart Money está a acumular ou a distribuir? Qual o próximo objetivo lógico do preço?",
+        "2. POIs SIGNIFICATIVOS: Onde estão os pontos de interesse relevantes? Supply/Demand unmitigated, SSL/BSL, FVG, EQH/EQL — o que é que o preço ainda precisa de tocar?",
+        "3. GATILHO ESPECÍFICO: O que me faz entrar? RE na zona? CE após CHoCH/MSS? Qual o sinal exato que confirma a entrada — não uma vaga sensação, um evento técnico preciso.",
+        "4. STOP E ALVO — PORQUÊ: Onde está o SL e porquê (sweep inválido? estrutura quebrada?)? Onde está o TP e porquê (próxima liquidez? zona oposta? POC?)? R:R justifica o trade?"
+      ],
+      "rule": "Sem resposta clara às 4 perguntas = sem trade. Nunca entrar com ambiguidade na narrativa."
+    },
+    "claude_analysis_procedure": {
+      "description": "Procedimento obrigatório e imutável para toda a análise feita pelo Claude. Não pode ser alterado sem consulta e aprovação explícita do utilizador.",
+      "principles": [
+        "Rigor máximo em todos os momentos — nunca estimativas visuais para definir níveis",
+        "Usar sempre as ferramentas MCP disponíveis com o máximo detalhe possível",
+        "Screenshots servem APENAS para leitura visual de estrutura e contexto — NUNCA para definir níveis exactos de zonas",
+        "Nunca alterar este procedimento sem consultar o utilizador primeiro",
+        "Se uma ferramenta falhar, reportar ao utilizador e aguardar instrução — nunca substituir por estimativa"
+      ],
+      "tools_obrigatorios": {
+        "data_get_ohlcv": {
+          "quando": "SEMPRE que se identifica uma zona S/D, BOS, CHoCH, ou qualquer nível relevante",
+          "para_que": "Ler os valores exactos OHLCV da vela de decisão — open, high, low, close — para definir os limites precisos da zona",
+          "nunca_substituir_por": "Estimativa visual do screenshot"
+        },
+        "quote_get": {
+          "quando": "No início de cada análise e sempre que o preço actual é relevante para o contexto",
+          "para_que": "Confirmar preço actual em tempo real — não estimar pelo screenshot"
+        },
+        "capture_screenshot": {
+          "quando": "Para leitura de estrutura, contexto macro, identificar padrões visuais e confirmar o estado geral do gráfico",
+          "limitacao": "NÃO usar para definir níveis exactos — apenas para contexto visual"
+        }
+      },
+      "procedimento_zona_sd": {
+        "descricao": "Como identificar e definir uma zona Supply/Demand com rigor. NÃO usar conceito de Order Block (OB) — terminologia proibida nesta estratégia.",
+        "conceito_supply": "Zona Supply = BASE DE CONSOLIDAÇÃO antes do impulso bearish. A zona abrange as velas de consolidação (base) antes da vela de impulso descendente. Proximal = fundo da base (lado mais próximo do preço quando este sobe). Distal = topo da base.",
+        "conceito_demand": "Zona Demand = BASE DE CONSOLIDAÇÃO antes do impulso bullish. A zona abrange as velas de consolidação (base) antes da vela de impulso ascendente. Proximal = topo da base (lado mais próximo do preço quando este desce). Distal = fundo da base.",
+        "passos": [
+          "1. Screenshot para identificar visualmente a BASE (consolidação antes do impulso) — nunca uma vela isolada",
+          "2. data_get_ohlcv para obter os valores OHLCV exactos das velas da base",
+          "3. Identificar: Low da base = distal (demand) ou proximal (supply) | High da base = proximal (demand) ou distal (supply)",
+          "4. Confirmar FVG: verificar se existe gap entre high/low de velas consecutivas na zona",
+          "5. Confirmar Unmitigated: o preço nunca voltou a tocar a zona depois de a criar",
+          "6. Definir zona com valores precisos: 'Supply [TF]: proximal X.XXXXX → distal X.XXXXX'"
+        ],
+        "nota_critica": "PROIBIDO identificar zonas S&D em 15M ou 5M — esses TF são exclusivamente para entradas (CHoCH/MSS trigger). Zonas S&D identificam-se do Weekly até ao 1H."
+      },
+      "tf_cascade_sd": {
+        "descricao": "Cascata obrigatória para identificação e validação de zonas Supply/Demand. Sempre especificar o TF de cada zona.",
+        "cascata": "Weekly → Daily → 4H → 1H",
+        "regra_cascata": "As zonas validam em cascata top-down. Uma zona 1H só é relevante se alinhada com a narrativa HTF. O 1H é o TF mínimo para identificar zonas S&D.",
+        "limite_inferior": "Abaixo do 1H (15M, 5M) = APENAS entradas. CHoCH/MSS para trigger. NUNCA identificar zonas S&D em 15M ou 5M.",
+        "zonas_por_tf": {
+          "weekly": "Zonas macro — contexto e bias direcional HTF. Definem o range principal (Range H / Range L).",
+          "daily": "Zonas de confluência — confirmam o bias semanal e identificam alvos intermédios.",
+          "4H": "Zonas de setup — POIs de entrada principais. Alinhadas com Daily+Weekly.",
+          "1H": "Zonas de refinamento — entrada mais precisa. Último TF onde se identificam zonas S&D. Deve estar alinhada com 4H+Daily+Weekly."
+        },
+        "regra_apresentacao": "SEMPRE incluir o TF na designação da zona. Correto: 'Zona Supply 1H', 'Zona Demand 4H', 'Zona Supply Daily'. PROIBIDO: apresentar uma zona sem TF identificado."
+      },
+      "procedimento_analise_semanal": {
+        "descricao": "Ordem e ferramentas para análise de início de semana. Claude faz o trabalho completo — utilizador valida.",
+        "workflow_conjunto": {
+          "passo_1_claude": "Narrativa HTF — quem controla, range, bias, para onde vai o preço. Verificar estrutura própria do ativo ANTES de aplicar correlação DXY.",
+          "passo_2_claude": "Identificar zonas S/D com rigor total: screenshot para localizar candidato → data_get_ohlcv para OHLCV exacto → confirmar FVG → confirmar Unmitigated → apresentar zona no formato obrigatório",
+          "passo_3_utilizador": "Utilizador VALIDA ou CORRIGE as zonas identificadas pelo Claude. O utilizador não propõe zonas — apenas confirma ou corrige o trabalho do Claude.",
+          "passo_4_claude": "Com zonas validadas: construir cenários A/B, definir CE/RE, SL/TP justificados por POI técnico",
+          "passo_5_conjunto": "Quando uma zona é tomada pelo preço → utilizador informa → Claude actualiza o setup para a próxima zona relevante"
+        },
+        "passos_tecnicos": [
+          "1. DXY: screenshot W+D+4H → quote_get preço actual → narrativa bias com estrutura verificada",
+          "2. Para cada ativo N1 (EUR, XAU, NAS): screenshot W+D+4H → estrutura própria do ativo → range H/L com data_get_ohlcv",
+          "3. Identificação de zonas: screenshot localiza candidato → data_get_ohlcv confirma OHLCV → formato obrigatório de zona",
+          "4. Utilizador valida as zonas — não propõe",
+          "5. Cenários e níveis de entrada com valores precisos confirmados por dados",
+          "6. Alertas nos níveis chave identificados"
+        ]
+      },
+      "pontos_deriva_e_correcao": {
+        "descricao": "Pontos específicos onde o rigor pode ser comprometido e as correcções obrigatórias",
+        "deriva_1": {
+          "risco": "Fazer afirmações de nível baseadas em screenshot antes de usar data_get_ohlcv",
+          "correcao": "PROIBIDO afirmar qualquer nível de preço sem ter corrido data_get_ohlcv primeiro. Screenshot só serve para localizar a vela candidata."
+        },
+        "deriva_2": {
+          "risco": "Usar linguagem vaga: 'aproximadamente', 'em torno de', 'cerca de', 'perto de' para definir zonas",
+          "correcao": "PROIBIDO usar linguagem vaga para níveis. Toda a zona tem de ter valores exactos confirmados por data_get_ohlcv. Se não tenho os dados, digo 'ainda não confirmado — vou verificar' antes de continuar."
+        },
+        "deriva_3": {
+          "risco": "Saltar data_get_ohlcv quando a zona 'parece óbvia' visualmente",
+          "correcao": "Não existe zona óbvia que não precise de confirmação. Quanto mais óbvia parece, mais importante é confirmar. Sem excepções."
+        },
+        "deriva_4": {
+          "risco": "Identificar CHoCH, BOS, FVG, ou swing high/low apenas por leitura visual",
+          "correcao": "Qualquer estrutura (CHoCH, BOS, FVG) tem de ser verificada com os valores OHLCV reais das velas envolvidas. Afirmar 'existe CHoCH' requer identificar a vela exacta e os seus valores."
+        },
+        "deriva_5": {
+          "risco": "Ceder à velocidade — responder rápido com estimativas para não atrasar a conversa",
+          "correcao": "Velocidade nunca justifica falta de rigor. Se precisar de tempo para correr as ferramentas, digo 'vou verificar os dados' e aguardo. O utilizador prefere esperar por precisão do que receber estimativas rápidas."
+        },
+        "deriva_6": {
+          "risco": "Definir range HTF (Range H / Range L) sem verificar os valores exactos dos swing points",
+          "correcao": "Range H e Range L requerem data_get_ohlcv para confirmar o high/low exacto das velas que os constituem."
+        },
+        "deriva_7": {
+          "risco": "Confirmar FVG visualmente sem verificar que high de vela N e low de vela N+2 não se sobrepõem",
+          "correcao": "FVG = high da vela anterior < low da vela seguinte (para demand) ou low da vela anterior > high da vela seguinte (para supply). Verificar com valores OHLCV exactos das duas velas."
+        },
+        "deriva_8": {
+          "risco": "Mudar o procedimento em resposta a pedidos de rapidez, simplificação ou pressão implícita",
+          "correcao": "Qualquer alteração ao procedimento requer pedido explícito do utilizador e confirmação. Pressão implícita ou percepcionada não é autorização."
+        },
+        "deriva_9": {
+          "risco": "Usar terminologia 'Order Block (OB)' ou 'OB' em vez de zona Supply/Demand",
+          "correcao": "PROIBIDO usar 'OB', 'Order Block', 'Bullish OB', 'Bearish OB' ou qualquer terminologia alheia à estratégia JEAFX. A estratégia usa exclusivamente 'Zona Supply [TF]' e 'Zona Demand [TF]'. Qualquer referência a OB deve ser imediatamente substituída pela terminologia correcta."
+        },
+        "deriva_10": {
+          "risco": "Apresentar uma zona S&D sem especificar o TF de onde foi identificada",
+          "correcao": "PROIBIDO apresentar zonas sem TF. Toda a zona deve incluir o TF na designação: 'Zona Supply 1H', 'Zona Demand 4H', etc. Se o TF não está claro — identificar antes de apresentar."
+        },
+        "deriva_11": {
+          "risco": "Identificar zona S&D a partir de uma vela isolada (comportamento de OB) em vez da base de consolidação antes do impulso",
+          "correcao": "Zona S&D é sempre definida pela BASE (consolidação antes do impulso). Pode ser uma ou várias velas de consolidação. Nunca usar uma vela bearish/bullish isolada como definição da zona — isso é OB, não S&D."
+        },
+        "deriva_12": {
+          "risco": "Usar valores de sessões anteriores, resumos de contexto ou memória sem verificar com as ferramentas na sessão actual",
+          "correcao": "PROIBIDO usar qualquer valor de análise anterior sem o confirmar com draw_get_properties ou data_get_ohlcv na sessão actual. Resumos e memória são auxiliares de contexto — nunca fonte de valores para análise."
+        },
+        "deriva_13": {
+          "risco": "Inferir níveis não marcados (Asia Low, sessão específica, suporte/resistência) a partir de heurísticas como volume, hora ou leitura visual",
+          "correcao": "Se o nível não está num drawing do utilizador e não pode ser confirmado por data_get_ohlcv de forma inequívoca → PERGUNTAR antes de apresentar. 'Não tenho este nível confirmado — qual é o valor que consideras?' é sempre a resposta correcta."
+        },
+        "deriva_14": {
+          "risco": "Assumir que um sweep ou tomada de nível ocorreu sem confirmação explícita do utilizador ou verificação rigorosa dos dados",
+          "correcao": "Um nível só foi 'tomado' quando: (a) o utilizador confirma explicitamente, OU (b) o preço fechou além do nível num TF relevante com dados OHLCV que o comprovam. Wicks que tocam mas não fecham além do nível NÃO constituem tomada do nível."
+        }
+      },
+      "formato_obrigatorio_zona": {
+        "descricao": "Formato obrigatório para apresentar qualquer zona S/D identificada. TF é sempre obrigatório.",
+        "template": "Zona [Supply/Demand] [TF] | Base: [data/hora vela(s) da base] | Proximal: X.XXXXX | Distal: X.XXXXX | FVG: [Sim/Não — gap de X.XXXXX a X.XXXXX] | Unmitigated: [Sim/Não]",
+        "exemplo": "Zona Supply 1H | Base: 2026-04-16 | Proximal: 1.17720 | Distal: 1.18080 | FVG: Não | Unmitigated: Sim",
+        "regras": [
+          "Nunca apresentar uma zona sem este formato completo",
+          "TF é SEMPRE obrigatório na designação da zona",
+          "Proximal = lado mais próximo do preço atual | Distal = lado mais afastado",
+          "Se algum campo não está confirmado, escrever 'pendente — a verificar' e correr data_get_ohlcv antes de continuar",
+          "PROIBIDO usar 'OB' em qualquer parte da apresentação da zona"
+        ]
+      },
+      "protocolo_inicio_sessao": {
+        "descricao": "Protocolo obrigatório no início de CADA sessão de análise, antes de apresentar qualquer nível ou zona. Garante qualidade à primeira — elimina iterações de correcção e desperdício de créditos.",
+        "passo_1_drawings": {
+          "acao": "draw_list + draw_get_properties para TODOS os drawings presentes no tab CLAUDE",
+          "regra": "NUNCA usar valores de sessões anteriores, resumos ou memória. Sempre ler os dados frescos directamente das ferramentas.",
+          "output_obrigatorio": "Tabela com todos os drawings: ID | Label | Tipo | Valor exacto lido agora"
+        },
+        "passo_2_dados_ohlcv": {
+          "acao": "data_get_ohlcv em cascata 4H → 1H → 15M para confirmar estrutura actual",
+          "regra": "Cada nível estrutural (BOS, CHoCH, zona S&D) tem de ser confirmado pelo timestamp e OHLCV da vela específica. Nunca citar um nível sem a vela de origem."
+        },
+        "passo_3_niveis_sem_drawing": {
+          "regra": "Se um nível relevante (ex: Asia Low, sessão específica) NÃO está marcado num drawing → PERGUNTAR ao utilizador antes de continuar. NUNCA inferir a partir de volume, hora ou outras heurísticas.",
+          "exemplo_correcto": "Não tenho o Asia Low marcado no chart — qual é o nível que consideras?",
+          "exemplo_proibido": "Inferi o Asia Low a partir das barras de baixo volume como sendo 1.17032"
+        },
+        "passo_4_citacao_de_fonte": {
+          "regra": "Cada valor apresentado na análise indica obrigatoriamente a sua origem: 'drawing X (lido agora)' ou 'vela timestamp Y, OHLCV confirmado'. Proibido apresentar qualquer valor sem fonte explícita.",
+          "formatos_aceites": [
+            "1.16924 — drawing 0NtZnF (lido agora)",
+            "H:1.17137 — vela 1776904200, data_get_ohlcv confirmado",
+            "1.17002 — ponto do rectângulo CFHCQJ (draw_get_properties)"
+          ]
+        },
+        "passo_5_tab": {
+          "regra": "NUNCA mudar de tab sem instrução explícita do utilizador. Toda a análise é feita no tab CLAUDE (Tab 0). Se o utilizador diz 've as marcações' = ver no tab actualmente aberto (CLAUDE), não mudar para outros tabs."
+        },
+        "beneficio": "Seguindo estes 5 passos na ordem correcta, a análise é completa, rigorosa e correcta à primeira — sem iterações de correcção, sem créditos desperdiçados."
+      },
+      "auto_verificacao": {
+        "descricao": "Antes de apresentar qualquer nível ou zona, o Claude verifica internamente:",
+        "checklist": [
+          "✓ Li os drawings com draw_get_properties esta sessão (não usei valores de memória)?",
+          "✓ Todos os valores têm fonte explícita (drawing ID ou timestamp de vela)?",
+          "✓ Algum nível necessário não está num drawing? Se sim, perguntei ao utilizador?",
+          "✓ Corri data_get_ohlcv para esta vela específica?",
+          "✓ Os valores que vou apresentar vêm de dados reais, não de estimativa visual?",
+          "✓ Confirmei o FVG com valores OHLCV (High vela N < Low vela N+2 para bullish) e não apenas visualmente?",
+          "✓ O FVG identificado está dentro dos limites da zona S/D 1H — não é um POI autónomo?",
+          "✓ Calculei o MID da zona com a fórmula (proximal + distal) / 2 e não por estimativa visual?",
+          "✓ Se existe FVG na zona, estou a usar o FVG como ponto de entrada e não o MID (FVG tem prioridade)?",
+          "✓ A zona é Unmitigated — o preço não regressou a ela?",
+          "✓ Estou a usar linguagem precisa (valores exactos) e não vaga ('cerca de', 'perto de')?",
+          "✓ Estou no tab CLAUDE sem ter mudado de tab?"
+        ],
+        "regra": "Se a resposta a qualquer ponto for NÃO — parar, correr as ferramentas necessárias ou perguntar ao utilizador, e só então apresentar os resultados."
+      },
+      "regra_imutavel": "Este procedimento não pode ser simplificado, acelerado ou substituído por estimativas visuais, mesmo que a análise demore mais. Velocidade nunca justifica falta de rigor. Se o utilizador não tiver dado permissão explícita para alterar qualquer ponto deste procedimento, ele mantém-se intacto. Qualquer deriva detectada pelo utilizador deve ser corrigida imediatamente e o motivo da deriva explicado."
+    },
+    "mtf_framework": {
+      "description": "Estrutura de análise multi-timeframe JFX. Para CADA nível identificar: Bias + Range + POIs. HTF dá contexto, MTF dá o setup, LTF dá a entrada.",
+      "HTF": {
+        "timeframes": "Weekly + Daily",
+        "role": "Contexto — não se tradeiam zonas aqui, apenas se define a direção macro",
+        "bias": "Bullish (HH+HL) ou Bearish (LL+LH)? BOS confirmado em que direção?",
+        "range": "Qual o high e low significativo atual? Entre que níveis está o preço a oscilar no semanal/diário?",
+        "pois": "Grandes zonas Supply/Demand, SSL/BSL macro, FVGs diários não preenchidos"
+      },
+      "MTF": {
+        "timeframes": "4H + 1H",
+        "role": "Setup — aqui se identifica a zona de entrada e se valida o contexto",
+        "bias": "Estrutura 4H alinhada com HTF? Premium ou Discount? VWAP Weekly acima/abaixo?",
+        "range": "Qual o range atual do 4H? Entre que swing high e swing low está o preço a trabalhar?",
+        "pois": "Zonas Supply/Demand 4H unmitigated, FVGs 4H/1H, EQH/EQL intermédios, POC/VAH/VAL"
+      },
+      "LTF": {
+        "timeframes": "15M + 5M",
+        "role": "Execução — confirmação do gatilho e pinpoint entry",
+        "bias": "CHoCH/MSS formado após sweep? CVD confirma pressão institucional? Daily VWAP como referência?",
+        "range": "Qual o micro-range do 15M após o sweep? Onde está o fractal de entrada?",
+        "pois": "Fractal CE, IMB 15M, Daily VWAP, CVD spike"
+      },
+      "rule": "Nunca saltar níveis. HTF define o campo, MTF define a zona, LTF define o momento."
+    },
+    "scenario_building": {
+      "description": "Obrigação de construir cenários 'if this then that' antes de qualquer entrada. Nunca reagir ao mercado — antecipar com lógica.",
+      "format": {
+        "cenario_A": "SE o preço fizer X → ENTÃO eu farei Y (entry/espera/alerta)",
+        "cenario_B": "SE o preço fizer Z → ENTÃO eu farei W (entry alternativo/espera/invalidar)",
+        "invalidacao": "SE acontecer Q → o setup está inválido e saio/não entro"
+      },
+      "exemplo": {
+        "cenario_A": "SE EUR cai à TRUE DEMAND 1.16700-1.16998 E forma CHoCH 15M → ENTÃO CE Long com €150 risco, SL 1.16450, TP 1.18300",
+        "cenario_B": "SE EUR rejeita no SSL 1.17550 sem chegar à TRUE DEMAND E DXY vira bearish → ENTÃO CE Long mais cedo no CHOC 4H 1.17800 com €100 risco",
+        "invalidacao": "SE EUR quebra abaixo de 1.16450 com vela de fecho → setup inválido, esperar nova estrutura"
+      },
+      "rule": "Proibido entrar sem Cenário A e Cenário B definidos. O mercado não nos apanha de surpresa — ou estava no plano ou não se entra."
+    },
+    "retracement_opportunities": {
+      "description": "Em toda a análise identificar SEMPRE duas camadas de oportunidade dentro do range: o trade principal (com o HTF) e o retracement (contra-tendência entre supply e demand). Capitalizar o range completo.",
+      "concept": "O preço oscila entre Supply e Demand. Dentro desse range existem duas oportunidades: vender a Supply para alimentar a Demand (retracement), e comprar a Demand para subir à Supply (trade principal). Identificar ambas em cada análise.",
+      "structure": {
+        "trade_principal": {
+          "prioridade": "🥇 1ª oportunidade — alinhado com HTF bias",
+          "direcao": "Com a tendência macro (DXY confirma)",
+          "entrada": "CE obrigatório — CHoCH/MSS no LTF após sweep da zona",
+          "tamanho": "Tamanho normal conforme regras de risco",
+          "rr_minimo": "1:3 preferencial"
+        },
+        "retracement": {
+          "prioridade": "🥈 2ª oportunidade — contra-tendência dentro do range",
+          "direcao": "Contra o HTF bias — de Supply para Demand ou vice-versa",
+          "entrada": "CE OBRIGATÓRIO — nunca RE em trade contra-tendência",
+          "tamanho": "Tamanho reduzido (50% do normal) — risco acrescido por ser contra HTF",
+          "condicao_extra": "Só válido se o trade principal ainda não tiver disparado. Se o trade principal já correu, não perseguir o retracement.",
+          "rr_minimo": "1:2 mínimo — range tem de compensar o risco contra-tendência"
+        }
+      },
+      "formato_analise_obrigatorio": {
+        "descricao": "Formato padrão de apresentação para cada ativo em toda a análise",
+        "template": [
+          "📍 ASSET — Semana XX",
+          "HTF Bias: [Bullish/Bearish] | Range: [Supply nível] ↔ [Demand nível]",
+          "",
+          "🥈 RETRACEMENT (2ª oportunidade — contra-tendência):",
+          "  Zona: [nível supply ou demand de partida]",
+          "  Direção: [SHORT/LONG]",
+          "  Condição: CE obrigatório + CHoCH [TF de confirmação]",
+          "  SL: [nível] | TP: [zona oposta do range]",
+          "  ⚠️ Tamanho reduzido — contra HTF | Só se trade principal ainda não disparou",
+          "",
+          "🥇 TRADE PRINCIPAL (1ª oportunidade — com tendência):",
+          "  Zona: [nível demand ou supply principal]",
+          "  Direção: [LONG/SHORT]",
+          "  Condição: CE — CHoCH [TF] + CVD confirma",
+          "  SL: [nível] | TP1: [parcial] | TP2: [alvo final]",
+          "  ✅ Tamanho normal — alinhado com HTF",
+          "",
+          "Invalidação: [nível que cancela toda a análise]"
+        ]
+      },
+      "regras": [
+        "Toda a análise apresentada ao utilizador DEVE incluir sempre as duas camadas — retracement E trade principal",
+        "O retracement é sempre de 2ª prioridade — nunca sacrificar o trade principal por perseguir o retracement",
+        "CE é mandatório no retracement — RE contra-tendência é proibido",
+        "Se o trade principal já disparou e o retracement ainda não ocorreu → ignorar o retracement",
+        "Tamanho reduzido no retracement — o risco é real por ser contra o HTF",
+        "O retracement só faz sentido se o range for suficientemente amplo para RR mínimo 1:2"
+      ]
+    },
+    "execution_checklist": [
+      "1. DXY: Qual é o bias macro? Correlação inversa com o ativo confirmada?",
+      "2. CONTEXTO: Premium (potencial short) ou Discount (potencial long)?",
+      "3. VOLUME PROFILE: POC/VAH/VAL confluente com a zona?",
+      "4. VWAP: Daily/Weekly VWAP confirma o bias?",
+      "5. LIQUIDEZ: EQH/EQL/SSL/BSL identificado?",
+      "6. ZONA: Unmitigated com FVG/IMB forte?",
+      "6B. FVG/MID: Existe FVG dentro da zona? Se sim — FVG é o ponto de entrada. Se não — usar MID da zona como fallback.",
+      "7. SWEEP: Price fez sweep da liquidez?",
+      "8. CONFIRMAÇÃO: CHoCH/MSS no 15M/5M confirmado?",
+      "9. CVD: Divergência ou spike confirma pressão institucional?",
+      "10. RISCO: SL definido? Risco dentro dos limites? Stop diário atingido?"
     ],
-    "bearish": [
-      "Last 1-min candle closed lower than the one before it",
-      "RSI is between 30 and 70"
+    "full_process": {
+      "steps": [
+        "PASSO 0 — NARRATIVA (JFX): Quem controla o mercado agora? O que está a mover o preço? Qual o próximo objetivo lógico do Smart Money? Construir Cenário A e Cenário B antes de continuar.",
+        "PASSO 1 — DXY (HTF): Estrutura Daily/4H. Bullish ou bearish? Qual o range atual? Zonas IMB? SSL/BSL macro? DXY em Premium ou Discount?",
+        "PASSO 2 — ESTRUTURA DO ATIVO: Verificar estrutura HTF própria do ativo (W+D) ANTES de aplicar correlação DXY. CHoCH confirmado? BOS em que direcção? HH+HL ou LL+LH? A estrutura do ativo define o bias primário.",
+        "PASSO 2B — CORRELAÇÃO DXY: Após verificar estrutura do ativo — DXY confirma ou contradiz? Se confirma = alta confluência. Se contradiz = estrutura do ativo prevalece, reportar conflito ao utilizador.",
+        "PASSO 3 — ATIVO (MTF): Estrutura 4H. Qual o range MTF (swing high/low atuais)? Premium ou Discount? Volume Profile — POC/VAH/VAL? Weekly VWAP acima/abaixo?",
+        "PASSO 4 — ZONA: Unmitigated com FVG no 4H. POI significativo identificado? É demand em Discount ou supply em Premium?",
+        "PASSO 4B — RETRACEMENT: Identificar a oportunidade de retracement dentro do range. SE o trade principal é LONG da demand → existe SHORT da supply para alimentar a demand? SE o trade principal é SHORT da supply → existe LONG da demand para alimentar a supply? Apresentar SEMPRE as duas camadas.",
+        "PASSO 5 — LIQUIDEZ: EQH/EQL visíveis? Quem vai ser estopado? SSL/BSL identificado? Inducement vs True Demand/Supply?",
+        "PASSO 6 — AGUARDAR SWEEP: Price faz sweep da liquidez? Confirmar que o sweep aconteceu antes de agir.",
+        "PASSO 7 — GATILHO (LTF): CHoCH/MSS no 15M após sweep? CVD confirma divergência/spike? Daily VWAP como confluência? Esta é a assinatura do Smart Money.",
+        "PASSO 8 — ENTRADA 1 (RE €100): Na extremidade da zona. SL atrás do sweep. Apenas se narrativa e zona forem óbvias.",
+        "PASSO 9 — ENTRADA 2 (CE €150): Após CHoCH confirmado. SL atrás do fractal. Entrada preferida — maior probabilidade.",
+        "PASSO 10 — ALVOS (porquê?): Próxima liquidez oposta. LVN no caminho? Zona supply/demand oposta? Justificar o alvo — não usar números arbitrários.",
+        "PASSO 11 — GESTÃO: Novo HH/HL → ambas as entradas para BE. Trailing SL estrutural. Fechar por POI técnico — nunca parciais fixas.",
+        "PASSO 12 — LIMITE: Atingi €650 de perda hoje? Parar. Lucro semanal desceu 50%? Parar a semana."
+      ]
+    },
+    "trade_management": {
+      "description": "Gestão determinada pela análise técnica — não por regras fixas de parciais",
+      "risco_por_trade_eur": "€50 a €150 conforme setup e convicção",
+      "rr_minimo": "1:1.5 — abaixo não entrar",
+      "entrada_stop": "SL atrás do sweep de liquidez ou estrutura invalidada",
+      "saida": "Fecho determinado pelo próximo POI tecnicamente válido",
+      "poi_alvos": [
+        "EQH/EQL — próxima liquidez",
+        "Zona supply/demand oposta Unmitigated",
+        "POC/VAH/VAL do Volume Profile",
+        "VWAP Daily ou Weekly no caminho",
+        "LVN — Low Volume Node (caminho limpo)"
+      ],
+      "gestao_sl": {
+        "regra": "Mover para BE quando a estrutura permitir — novo HH/HL formado",
+        "abordagem": "Não mecânico — depende do que o preço está a fazer"
+      },
+      "fechar_trade": "Quando o preço atinge o POI alvo OU quando a estrutura invalida o trade",
+      "ny_close": "Fechar posições intraday no NY close salvo confluência HTF clara para swing",
+      "nunca": "Parciais fixas por R:R — o mercado dita a saída"
+    },
+    "setups_continuation": {
+      "C1_standard": "Retest demand/supply em efficient range após BOS. RE + CE válidos.",
+      "C2_inducement": "Sweep EQL/EQH + fill IMB extrema. RE válido com liquidez clara.",
+      "C3_trend_liquidity": "Sweep trendline + reação demand/supply na tendência. RE e CE válidos.",
+      "C4_eql_eqh_sweep": "Sweep EQL/EQH + zona IMB. RE frequentemente melhor.",
+      "C5_hs_trap": "H&S como armadilha = C4. EQL floor no neckline. RE válido.",
+      "C6_momentum": "Supply/demand fail em mercados fortemente direcionais. Scale-ins. CE por natureza."
+    },
+    "setups_reversal": {
+      "R1_basic": "Shift de tendência + follow through. CE por natureza. Fractal CE opcional.",
+      "R2_rebalance_extreme": "Reversão + BOS de corpo para IMB. Entrar da zona extrema. CE.",
+      "R3_rebalance_ztbs": "Igual R2 mas zona mid-range do IMB. CE.",
+      "R4_liquidity_sweep_ce": "Distribution após shift. IMB supply/demand acima/abaixo EQH/EQL. CE.",
+      "R5_range_liquidity": "Sweep EQH/EQL + BOS obrigatório. Puro CE — nunca RE aqui."
+    },
+    "als_process": {
+      "steps": [
+        "Step 1: Marcar range asiático. Identificar SSL (low) e BSL (high).",
+        "Step 2: Aguardar sweep do high ou low asiático.",
+        "Step 3: Aguardar CHoCH/BOS de volta para dentro do range.",
+        "Step 4: CVD — divergência após sweep?",
+        "Step 5: Entrada 1 RE €100 na zona. Entrada 2 CE €150 após CHoCH. Alvo = lado oposto do range."
+      ]
+    },
+    "schedule": {
+      "manha_8h15": {
+        "descricao": "Análise conjunta diária com Claude",
+        "tarefas": [
+          "Analisar DXY — bias macro do dia",
+          "Analisar ativos N1: EURUSD, XAUUSD, NAS100",
+          "Identificar zonas, liquidez, bias intraday",
+          "Colocar alertas no TradingView nos níveis chave",
+          "Definir Plano A e Plano B para cada ativo"
+        ]
+      },
+      "durante_o_dia": {
+        "descricao": "Monitorização a pedido — não contínua",
+        "tarefas": [
+          "Quando alerta TradingView disparar → pedir verificação ao Claude",
+          "Quando setup estiver perto → pedir monitorização 15M ou 1H",
+          "Fora disso → continuar o trabalho normalmente"
+        ]
+      },
+      "apos_trade": {
+        "descricao": "Claude gera entrada no journal automaticamente",
+        "tarefas": [
+          "Informar Claude: ativo, direção, entrada, SL, TP, resultado",
+          "Claude preenche o journal com todos os campos",
+          "Claude gera resumo diário no final do dia"
+        ]
+      },
+      "sessao": {
+        "inicio": "08h15 Lisboa",
+        "fecho": "17h00 Lisboa",
+        "sessoes_cobertas": [
+          "Pré-London",
+          "London",
+          "NY Open"
+        ],
+        "no_trade": "High impact news releases"
+      }
+    },
+    "journal_process": {
+      "daily": "Trades, DXY bias correto?, correlação confirmada?, checklist seguida?, risco respeitado?, processo /10, mindset /10.",
+      "weekly": "Review completo. Forças, fraquezas, melhorias. Verificar nível de scaling. Realinhar foco.",
+      "cycle": "Journal → Review → Otimizar → Repetir"
+    },
+    "forbidden": [
+      "Analisar qualquer ativo sem ver o DXY primeiro",
+      "Forçar uma entrada quando não há setup válido",
+      "Entrar sem CHoCH/MSS após sweep — nunca no toque direto da zona",
+      "Ignorar correlação DXY quando contradiz o setup",
+      "Negociar contra a estrutura macro (4H/D)",
+      "Entrar com IMB por preencher",
+      "Usar zonas já retestadas (efficient)",
+      "Entrar com R:R abaixo de 1:1.5 — mínimo obrigatório",
+      "Usar parciais fixas por R:R — saída sempre por POI técnico",
+      "Negociar em consolidação pura sem setup ALS ou range liquidity",
+      "Negociar em high impact news",
+      "Ultrapassar €650 de perda num dia",
+      "Ultrapassar €1.500 de perda numa semana",
+      "Ultrapassar €3.000 de perda num mês",
+      "Deixar lucro semanal descer mais de 50%",
+      "Fazer RE em BTC — sempre CE",
+      "Deixar intraday aberto além do NY close sem confluência HTF",
+      "Usar indicadores de retalho — análise visual + Volume Profile + CVD + VWAP",
+      "Entrar sem ter Cenário A e Cenário B definidos previamente",
+      "Entrar sem responder às 4 perguntas JFX: narrativa, POIs, gatilho, stop/alvo com justificação",
+      "Ignorar o range MTF — saber sempre entre que swing high/low o preço está a trabalhar",
+      "Apresentar análise sem identificar a oportunidade de retracement — as duas camadas (trade principal + retracement) são sempre obrigatórias",
+      "Fazer RE num trade de retracement (contra-tendência) — CE é sempre obrigatório quando se vai contra o HTF",
+      "Perseguir o retracement depois do trade principal já ter disparado — cada oportunidade tem o seu momento no range",
+      "Descer a 15M/5M em ativos de Nível 2 ou Nível 3 — entrada máxima no 30M nesses níveis",
+      "Analisar N2 ou N3 quando ainda existe setup válido em N1 — foco total no nível mais alto com oportunidade",
+      "Sacrificar qualidade de análise do N1 para cobrir mais ativos — sniper, não metralhadora",
+      "Usar terminologia 'Order Block (OB)' ou 'OB' — a estratégia JEAFX usa exclusivamente zonas Supply e Demand",
+      "Apresentar uma zona S&D sem especificar o TF — toda a zona inclui sempre o TF na designação (ex: 'Zona Supply 1H')",
+      "Identificar zonas S&D em 15M ou 5M — esses TF são exclusivamente para entradas (CHoCH/MSS trigger)",
+      "Definir uma zona S&D a partir de uma vela isolada — a zona é sempre definida pela base de consolidação antes do impulso",
+      "Usar FVG como POI autónomo fora de uma zona S/D 1H — FVG é refinamento de entrada dentro da zona, não setup independente",
+      "Confirmar FVG apenas visualmente sem verificar High(N) < Low(N+2) com data_get_ohlcv",
+      "Usar MID como ponto de entrada quando existe FVG válido dentro da zona — FVG tem sempre prioridade sobre MID",
+      "Estimar o MID da zona visualmente — MID = (proximal + distal) / 2, sempre calculado com valores exactos",
+      "Usar terminologia 'CE' para referir o midpoint da zona — CE é exclusivamente Confirmation Entry (após CHoCH/MSS). O midpoint chama-se MID."
     ],
-    "neutral": [
-      "RSI is above 70 (overbought — skip)",
-      "RSI is below 30 (oversold — skip)",
-      "Candle close change is less than 0.05% (chop — skip)"
-    ]
-  },
-
-  "entry_rules": {
-    "long": [
-      "Last close > previous close by at least 0.05%",
-      "RSI between 30 and 70",
-      "Enter market buy immediately"
-    ],
-    "short": [
-      "Last close < previous close by at least 0.05%",
-      "RSI between 30 and 70",
-      "Enter market sell immediately"
-    ]
-  },
-
-  "exit_rules": [
-    "Exit automatically after 10 seconds (next loop tick closes previous position)",
-    "No manual exit management — pure time-based scalp"
-  ],
-
-  "risk_rules": [
-    "Fixed trade size: 1% of portfolio per trade",
-    "Maximum trade size: $3.00",
-    "Maximum 6 trades per 60-second run",
-    "No stop loss — exit is time-based at next tick",
-    "For demo purposes only — minimum BitGet order size may apply"
-  ],
-
-  "notes": "Demo strategy for YouTube video. Runs 6 trades over 60 seconds, one every 10 seconds. Signal is simple price momentum on 1-min candles with RSI sanity check."
+    "session_setup": {
+      "description": "Comandos e procedimentos para iniciar uma sessão de análise com Claude + TradingView MCP",
+      "chrome_command": {
+        "comando": "chrome.exe --remote-debugging-port=9222 --user-data-dir=\"C:\\Users\\mrasp\\chrome-debug\"",
+        "nota": "Executar este comando no terminal/PowerShell para abrir o Chrome com CDP ativo. Obrigatório antes de qualquer sessão de análise com o TradingView MCP.",
+        "onde_executar": "PowerShell ou CMD — navegar para qualquer diretoria e correr o comando",
+        "alternativa_run": "Windows + R → colar: chrome.exe --remote-debugging-port=9222 --user-data-dir=\"C:\\Users\\mrasp\\chrome-debug\""
+      },
+      "mcp_config": {
+        "ficheiro": "C:\\Users\\mrasp\\.claude\\mcp.json",
+        "conteudo": "{\"mcpServers\":{\"tradingview\":{\"command\":\"node\",\"args\":[\"C:\\\\Users\\\\mrasp\\\\tradingview-mcp-jackson\\\\src\\\\server.js\"]}}}"
+      },
+      "ordem_arranque": [
+        "1. Abrir PowerShell e correr: chrome.exe --remote-debugging-port=9222 --user-data-dir=\"C:\\Users\\mrasp\\chrome-debug\"",
+        "2. No Chrome que abre — navegar para tradingview.com e abrir um gráfico",
+        "3. Abrir Claude Code CLI no terminal: claude",
+        "4. Confirmar ligação: pedir ao Claude para fazer tv_health_check",
+        "5. Iniciar análise pela ordem: DXY → N1 (EUR, XAU, NAS) → N2 se necessário"
+      ],
+      "tab_architecture": {
+        "tab_0_claude": "Tab CLAUDE — tab de análise. Claude muda símbolos livremente aqui. Sem marcações do utilizador.",
+        "tab_1_eur": "Tab pessoal do utilizador — EURUSD com zonas e marcações próprias.",
+        "tab_2_xau": "Tab pessoal do utilizador — XAUUSD com zonas e marcações próprias.",
+        "tab_3_btc": "Tab pessoal do utilizador — BTCUSD com zonas e marcações próprias.",
+        "nota": "Nunca alterar os tabs pessoais do utilizador (1, 2, 3). Análise do Claude sempre no tab 0."
+      }
+    }
+  }
 }
