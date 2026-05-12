@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "mcp-server",
+      "runtimeExecutable": "/usr/local/bin/node",
+      "runtimeArgs": ["src/server.js"],
+      "port": 9222
+    },
+    {
+      "name": "tv-cli",
+      "runtimeExecutable": "/usr/local/bin/node",
+      "runtimeArgs": ["src/cli/index.js"],
+      "port": 9222
+    }
+  ]
+}
