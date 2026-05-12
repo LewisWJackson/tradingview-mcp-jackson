@@ -1,0 +1,93 @@
+//@version=6
+indicator("Warrior/BBT Momentum Strategy", overlay=true, max_bars_back=500)
+
+// ─── INPUTS ───────────────────────────────────────────────────────────────────
+ema9_len   = input.int(9,     "EMA 9",        group="EMAs")
+ema20_len  = input.int(20,    "EMA 20",       group="EMAs")
+ema50_len  = input.int(50,    "EMA 50",       group="EMAs")
+ema200_len = input.int(200,   "EMA 200",      group="EMAs")
+bb_len     = input.int(20,    "BB Length",    group="Bollinger Bands")
+bb_mult    = input.float(2.0, "BB Std Dev",   group="Bollinger Bands")
+rsi_len    = input.int(14,    "RSI Length",   group="Filters")
+macd_fast  = input.int(12,    "MACD Fast",    group="Filters")
+macd_slow  = input.int(26,    "MACD Slow",    group="Filters")
+macd_sig   = input.int(9,     "MACD Signal",  group="Filters")
+
+// ─── CALCULATIONS ─────────────────────────────────────────────────────────────
+ema9   = ta.ema(close, ema9_len)
+ema20  = ta.ema(close, ema20_len)
+ema50  = ta.ema(close, ema50_len)
+ema200 = ta.ema(close, ema200_len)
+[bb_upper, bb_mid, bb_lower] = ta.bb(close, bb_len, bb_mult)
+rsi = ta.rsi(close, rsi_len)
+[macd_line, signal_line, _] = ta.macd(close, macd_fast, macd_slow, macd_sig)
+vwap_val = ta.vwap(hlc3)
+avg_vol  = ta.sma(volume, 20)
+
+// ─── BIAS ─────────────────────────────────────────────────────────────────────
+bull_bias = close > ema200
+bear_bias = close < ema200
+
+// ─── ENTRY CONDITIONS ─────────────────────────────────────────────────────────
+long_ema   = low <= ema9 * 1.002 and close > ema9
+long_vwap  = low <= vwap_val * 1.002 and close > vwap_val
+long_macd  = macd_line > signal_line
+long_rsi   = rsi >= 50 and rsi <= 75
+long_vol   = volume > avg_vol
+long_align = ema9 > ema20
+long_sig   = bull_bias and (long_ema or long_vwap) and long_macd and long_rsi and long_vol and long_align
+
+short_ema   = high >= ema9 * 0.998 and close < ema9
+short_vwap  = high >= vwap_val * 0.998 and close < vwap_val
+short_macd  = macd_line < signal_line
+short_rsi   = rsi >= 25 and rsi <= 50
+short_vol   = volume > avg_vol
+short_align = ema9 < ema20
+short_sig   = bear_bias and (short_ema or short_vwap) and short_macd and short_rsi and short_vol and short_align
+
+// ─── PLOTS ────────────────────────────────────────────────────────────────────
+plot(ema9,     "EMA 9",   color=color.new(color.yellow, 0), linewidth=1)
+plot(ema20,    "EMA 20",  color=color.new(color.orange, 0), linewidth=1)
+plot(ema50,    "EMA 50",  color=color.new(color.aqua,   0), linewidth=1)
+plot(ema200,   "EMA 200", color=color.new(color.red,    0), linewidth=2)
+plot(vwap_val, "VWAP",    color=color.new(color.purple, 0), linewidth=1, style=plot.style_stepline)
+p_bb_u = plot(bb_upper, "BB Upper", color=color.new(color.gray, 60), linewidth=1)
+p_bb_l = plot(bb_lower, "BB Lower", color=color.new(color.gray, 60), linewidth=1)
+plot(bb_mid, "BB Mid", color=color.new(color.gray, 40), linewidth=1)
+fill(p_bb_u, p_bb_l, color=color.new(color.gray, 90))
+bgcolor(bull_bias ? color.new(color.green, 97) : color.new(color.red, 97))
+
+// ─── SIGNALS ──────────────────────────────────────────────────────────────────
+plotshape(long_sig,  title="Long",  style=shape.labelup,   location=location.belowbar, color=color.new(color.green, 0), text="LONG",  textcolor=color.white, size=size.small)
+plotshape(short_sig, title="Short", style=shape.labeldown, location=location.abovebar, color=color.new(color.red,   0), text="SHORT", textcolor=color.white, size=size.small)
+
+// ─── ALERTS ───────────────────────────────────────────────────────────────────
+alertcondition(long_sig,  title="Long Signal",  message="LONG: 9 EMA/VWAP hold - bull bias, MACD up, RSI 50-75")
+alertcondition(short_sig, title="Short Signal", message="SHORT: 9 EMA/VWAP rejection - bear bias, MACD down, RSI 25-50")
+
+// ─── DASHBOARD ────────────────────────────────────────────────────────────────
+var table dash = table.new(position.top_right, 2, 8, border_width=1, bgcolor=color.new(color.black, 60))
+if barstate.islast
+    hdr = color.new(color.gray,  20)
+    g   = color.new(color.green, 40)
+    r   = color.new(color.red,   40)
+    neu = color.new(color.gray,  60)
+    w   = color.white
+    table.cell(dash, 0, 0, "Condition",      bgcolor=hdr, text_color=w, text_size=size.small)
+    table.cell(dash, 1, 0, "Status",         bgcolor=hdr, text_color=w, text_size=size.small)
+    table.cell(dash, 0, 1, "Bias (200 EMA)", text_size=size.small, text_color=w)
+    table.cell(dash, 1, 1, bull_bias ? "BULL" : "BEAR", bgcolor=bull_bias ? g : r, text_color=w, text_size=size.small)
+    table.cell(dash, 0, 2, "VWAP",           text_size=size.small, text_color=w)
+    table.cell(dash, 1, 2, close > vwap_val ? "Above" : "Below", bgcolor=close > vwap_val ? g : r, text_color=w, text_size=size.small)
+    table.cell(dash, 0, 3, "EMA 9/20",       text_size=size.small, text_color=w)
+    table.cell(dash, 1, 3, ema9 > ema20 ? "Bull" : "Bear", bgcolor=ema9 > ema20 ? g : r, text_color=w, text_size=size.small)
+    table.cell(dash, 0, 4, "MACD",           text_size=size.small, text_color=w)
+    table.cell(dash, 1, 4, macd_line > signal_line ? "Bull" : "Bear", bgcolor=macd_line > signal_line ? g : r, text_color=w, text_size=size.small)
+    table.cell(dash, 0, 5, "RSI",            text_size=size.small, text_color=w)
+    table.cell(dash, 1, 5, str.tostring(math.round(rsi, 1)), bgcolor=rsi >= 50 and rsi <= 70 ? g : rsi > 70 ? color.new(color.orange, 40) : r, text_color=w, text_size=size.small)
+    table.cell(dash, 0, 6, "Volume",         text_size=size.small, text_color=w)
+    table.cell(dash, 1, 6, volume > avg_vol ? "High" : "Low", bgcolor=volume > avg_vol ? g : r, text_color=w, text_size=size.small)
+    table.cell(dash, 0, 7, "Setup",          text_size=size.small, text_color=w)
+    setup_txt = long_sig ? "LONG" : short_sig ? "SHORT" : "WAIT"
+    setup_clr = long_sig ? g : short_sig ? r : neu
+    table.cell(dash, 1, 7, setup_txt, bgcolor=setup_clr, text_color=w, text_size=size.small)

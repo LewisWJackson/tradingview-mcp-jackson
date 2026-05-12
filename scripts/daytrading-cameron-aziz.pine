@@ -1,0 +1,406 @@
+//@version=6
+indicator("Intraday Momentum - Cameron/Aziz", overlay=true, max_bars_back=500)
+
+// ─── INPUTS ───────────────────────────────────────────────────────────────────
+ema9_len  = input.int(9,    "EMA 9",         group="EMAs")
+ema20_len = input.int(20,   "EMA 20",        group="EMAs")
+bb_len    = input.int(20,   "BB Length",     group="Bollinger Bands")
+bb_mult   = input.float(2.0,"BB StdDev",     group="Bollinger Bands")
+rsi_len   = input.int(14,   "RSI Length",    group="Filters")
+vol_len   = input.int(20,   "Volume MA Len", group="Filters")
+
+// ─── AUTO SESSION DETECTION ───────────────────────────────────────────────────
+var string _stype = syminfo.type
+var string auto_session =
+     _stype == "crypto"  ? "0000-0000:1234567" :
+     _stype == "forex"   ? "0000-0000:23456"   :
+     _stype == "futures" ? "0000-0000:23456"   :
+     _stype == "fund"    ? "0930-1600:23456"   :
+                           "0930-1600:23456"
+
+session_active = not na(time("5", auto_session, "America/New_York"))
+
+// ─── CALCULATIONS ─────────────────────────────────────────────────────────────
+ema9  = ta.ema(close, ema9_len)
+ema20 = ta.ema(close, ema20_len)
+[bb_upper, bb_mid, bb_lower] = ta.bb(close, bb_len, bb_mult)
+rsi      = ta.rsi(close, rsi_len)
+avg_vol  = ta.sma(volume, vol_len)
+rel_vol  = volume / avg_vol
+vwap_val = ta.vwap(hlc3)
+atr_val  = ta.atr(14)
+
+// MACD (12,26,9) — dashboard only, not plotted
+[macd_line, signal_line, macd_hist] = ta.macd(close, 12, 26, 9)
+macd_bull = macd_line > signal_line
+
+// ─── MULTI-TIMEFRAME EMA BIAS ─────────────────────────────────────────────────
+ema9_1h  = request.security(syminfo.tickerid, "60",  ta.ema(close, ema9_len),  lookahead=barmerge.lookahead_off)
+ema20_1h = request.security(syminfo.tickerid, "60",  ta.ema(close, ema20_len), lookahead=barmerge.lookahead_off)
+ema9_4h  = request.security(syminfo.tickerid, "240", ta.ema(close, ema9_len),  lookahead=barmerge.lookahead_off)
+ema20_4h = request.security(syminfo.tickerid, "240", ta.ema(close, ema20_len), lookahead=barmerge.lookahead_off)
+ema9_1d  = request.security(syminfo.tickerid, "D",   ta.ema(close, ema9_len),  lookahead=barmerge.lookahead_off)
+ema20_1d = request.security(syminfo.tickerid, "D",   ta.ema(close, ema20_len), lookahead=barmerge.lookahead_off)
+
+mtf_bull_1h = ema9_1h > ema20_1h
+mtf_bull_4h = ema9_4h > ema20_4h
+mtf_bull_1d = ema9_1d > ema20_1d
+
+// ─── MTF OHLC — CONFIRMED CLOSED BARS ────────────────────────────────────────
+[o1h_1,h1h_1,l1h_1,c1h_1] = request.security(syminfo.tickerid,"60", [open[1],high[1],low[1],close[1]], lookahead=barmerge.lookahead_off)
+[o1h_2,h1h_2,l1h_2,c1h_2] = request.security(syminfo.tickerid,"60", [open[2],high[2],low[2],close[2]], lookahead=barmerge.lookahead_off)
+[o1h_3,h1h_3,l1h_3,c1h_3] = request.security(syminfo.tickerid,"60", [open[3],high[3],low[3],close[3]], lookahead=barmerge.lookahead_off)
+[o1h_4,h1h_4,l1h_4,c1h_4] = request.security(syminfo.tickerid,"60", [open[4],high[4],low[4],close[4]], lookahead=barmerge.lookahead_off)
+
+[o4h_1,h4h_1,l4h_1,c4h_1] = request.security(syminfo.tickerid,"240",[open[1],high[1],low[1],close[1]], lookahead=barmerge.lookahead_off)
+[o4h_2,h4h_2,l4h_2,c4h_2] = request.security(syminfo.tickerid,"240",[open[2],high[2],low[2],close[2]], lookahead=barmerge.lookahead_off)
+[o4h_3,h4h_3,l4h_3,c4h_3] = request.security(syminfo.tickerid,"240",[open[3],high[3],low[3],close[3]], lookahead=barmerge.lookahead_off)
+[o4h_4,h4h_4,l4h_4,c4h_4] = request.security(syminfo.tickerid,"240",[open[4],high[4],low[4],close[4]], lookahead=barmerge.lookahead_off)
+
+[o1d_1,h1d_1,l1d_1,c1d_1] = request.security(syminfo.tickerid,"D",  [open[1],high[1],low[1],close[1]], lookahead=barmerge.lookahead_off)
+[o1d_2,h1d_2,l1d_2,c1d_2] = request.security(syminfo.tickerid,"D",  [open[2],high[2],low[2],close[2]], lookahead=barmerge.lookahead_off)
+[o1d_3,h1d_3,l1d_3,c1d_3] = request.security(syminfo.tickerid,"D",  [open[3],high[3],low[3],close[3]], lookahead=barmerge.lookahead_off)
+[o1d_4,h1d_4,l1d_4,c1d_4] = request.security(syminfo.tickerid,"D",  [open[4],high[4],low[4],close[4]], lookahead=barmerge.lookahead_off)
+
+// HTF bar transition detection
+t_1h   = request.security(syminfo.tickerid, "60",  time, lookahead=barmerge.lookahead_off)
+t_4h   = request.security(syminfo.tickerid, "240", time, lookahead=barmerge.lookahead_off)
+t_1d   = request.security(syminfo.tickerid, "D",   time, lookahead=barmerge.lookahead_off)
+new_1h = ta.change(t_1h) != 0
+new_4h = ta.change(t_4h) != 0
+new_1d = ta.change(t_1d) != 0
+
+// Timestamp of most recently closed HTF bar (for label accumulator)
+ts1h_1 = request.security(syminfo.tickerid, "60",  time[1], lookahead=barmerge.lookahead_off)
+ts4h_1 = request.security(syminfo.tickerid, "240", time[1], lookahead=barmerge.lookahead_off)
+ts1d_1 = request.security(syminfo.tickerid, "D",   time[1], lookahead=barmerge.lookahead_off)
+
+// ─── CANDLE PATTERN FUNCTION ─────────────────────────────────────────────────
+f_pat(o, c, h, l, po, pc) =>
+    body      = math.abs(c - o)
+    rng       = h - l
+    up_wick   = h - math.max(o, c)
+    low_wick  = math.min(o, c) - l
+    is_bull   = c >= o
+    is_bear   = c <  o
+    prev_bear = pc <  po
+    prev_bull = pc >= po
+    prev_body = math.abs(pc - po)
+
+    doji      = rng > 0 and body <= rng * 0.1
+    hammer    = not doji and body > 0 and low_wick >= body * 2.0 and up_wick  <= body * 0.5
+    shooting  = not doji and body > 0 and up_wick  >= body * 2.0 and low_wick <= body * 0.5
+    maru_bull = is_bull and rng > 0 and up_wick <= rng * 0.03 and low_wick <= rng * 0.03
+    maru_bear = is_bear and rng > 0 and up_wick <= rng * 0.03 and low_wick <= rng * 0.03
+    spinning  = not doji and rng > 0 and body < rng * 0.3 and up_wick > body * 0.5 and low_wick > body * 0.5
+    bull_eng  = prev_bear and is_bull and prev_body > 0 and o <= pc and c >= po
+    bear_eng  = prev_bull and is_bear and prev_body > 0 and o >= pc and c <= po
+    bull_har  = prev_bear and is_bull and prev_body > 0 and o >= pc and c <= po
+    bear_har  = prev_bull and is_bear and prev_body > 0 and o <= pc and c >= po
+
+    lbl = bull_eng  ? "BullEngulf" :
+          bear_eng  ? "BearEngulf" :
+          bull_har  ? "BullHarami" :
+          bear_har  ? "BearHarami" :
+          maru_bull ? "Maru ▲"    :
+          maru_bear ? "Maru ▼"    :
+          doji      ? "Doji"       :
+          hammer    ? (is_bull ? "Hammer ▲" : "HangMan ▼") :
+          shooting  ? (is_bull ? "InvHmr"   : "ShootStr ▼") :
+          spinning  ? "SpinTop"    : "—"
+
+    is_b = bull_eng or bull_har or maru_bull or (hammer and is_bull)
+    is_r = bear_eng or bear_har or maru_bear or (hammer and is_bear) or (shooting and is_bear)
+    [lbl, is_b, is_r]
+
+// ─── PATTERN DETECTION ───────────────────────────────────────────────────────
+[p1h_1, p1h_1b, p1h_1r] = f_pat(o1h_1, c1h_1, h1h_1, l1h_1, o1h_2, c1h_2)
+[p1h_2, p1h_2b, p1h_2r] = f_pat(o1h_2, c1h_2, h1h_2, l1h_2, o1h_3, c1h_3)
+[p1h_3, p1h_3b, p1h_3r] = f_pat(o1h_3, c1h_3, h1h_3, l1h_3, o1h_4, c1h_4)
+
+[p4h_1, p4h_1b, p4h_1r] = f_pat(o4h_1, c4h_1, h4h_1, l4h_1, o4h_2, c4h_2)
+[p4h_2, p4h_2b, p4h_2r] = f_pat(o4h_2, c4h_2, h4h_2, l4h_2, o4h_3, c4h_3)
+[p4h_3, p4h_3b, p4h_3r] = f_pat(o4h_3, c4h_3, h4h_3, l4h_3, o4h_4, c4h_4)
+
+[p1d_1, p1d_1b, p1d_1r] = f_pat(o1d_1, c1d_1, h1d_1, l1d_1, o1d_2, c1d_2)
+[p1d_2, p1d_2b, p1d_2r] = f_pat(o1d_2, c1d_2, h1d_2, l1d_2, o1d_3, c1d_3)
+[p1d_3, p1d_3b, p1d_3r] = f_pat(o1d_3, c1d_3, h1d_3, l1d_3, o1d_4, c1d_4)
+
+// ─── PATTERN HISTORY ACCUMULATORS ────────────────────────────────────────────
+// Every time a new HTF bar opens, the bar that just closed is checked for a
+// pattern. If found, it is prepended to the record (most recent first).
+// Pine replays every historical bar so these arrays build up automatically —
+// labels can always find 3 patterned bars no matter how far back they are.
+
+var array<int>    rec1h_ts  = array.new<int>()
+var array<float>  rec1h_h   = array.new<float>()
+var array<float>  rec1h_l   = array.new<float>()
+var array<bool>   rec1h_ib  = array.new<bool>()
+var array<bool>   rec1h_ir  = array.new<bool>()
+var array<string> rec1h_pat = array.new<string>()
+
+var array<int>    rec4h_ts  = array.new<int>()
+var array<float>  rec4h_h   = array.new<float>()
+var array<float>  rec4h_l   = array.new<float>()
+var array<bool>   rec4h_ib  = array.new<bool>()
+var array<bool>   rec4h_ir  = array.new<bool>()
+var array<string> rec4h_pat = array.new<string>()
+
+var array<int>    rec1d_ts  = array.new<int>()
+var array<float>  rec1d_h   = array.new<float>()
+var array<float>  rec1d_l   = array.new<float>()
+var array<bool>   rec1d_ib  = array.new<bool>()
+var array<bool>   rec1d_ir  = array.new<bool>()
+var array<string> rec1d_pat = array.new<string>()
+
+if new_1h and not na(p1h_1) and p1h_1 != "—"
+    array.unshift(rec1h_ts,  ts1h_1)
+    array.unshift(rec1h_h,   h1h_1)
+    array.unshift(rec1h_l,   l1h_1)
+    array.unshift(rec1h_ib,  p1h_1b)
+    array.unshift(rec1h_ir,  p1h_1r)
+    array.unshift(rec1h_pat, p1h_1)
+    if array.size(rec1h_ts) > 3
+        array.pop(rec1h_ts)
+        array.pop(rec1h_h)
+        array.pop(rec1h_l)
+        array.pop(rec1h_ib)
+        array.pop(rec1h_ir)
+        array.pop(rec1h_pat)
+
+if new_4h and not na(p4h_1) and p4h_1 != "—"
+    array.unshift(rec4h_ts,  ts4h_1)
+    array.unshift(rec4h_h,   h4h_1)
+    array.unshift(rec4h_l,   l4h_1)
+    array.unshift(rec4h_ib,  p4h_1b)
+    array.unshift(rec4h_ir,  p4h_1r)
+    array.unshift(rec4h_pat, p4h_1)
+    if array.size(rec4h_ts) > 3
+        array.pop(rec4h_ts)
+        array.pop(rec4h_h)
+        array.pop(rec4h_l)
+        array.pop(rec4h_ib)
+        array.pop(rec4h_ir)
+        array.pop(rec4h_pat)
+
+if new_1d and not na(p1d_1) and p1d_1 != "—"
+    array.unshift(rec1d_ts,  ts1d_1)
+    array.unshift(rec1d_h,   h1d_1)
+    array.unshift(rec1d_l,   l1d_1)
+    array.unshift(rec1d_ib,  p1d_1b)
+    array.unshift(rec1d_ir,  p1d_1r)
+    array.unshift(rec1d_pat, p1d_1)
+    if array.size(rec1d_ts) > 3
+        array.pop(rec1d_ts)
+        array.pop(rec1d_h)
+        array.pop(rec1d_l)
+        array.pop(rec1d_ib)
+        array.pop(rec1d_ir)
+        array.pop(rec1d_pat)
+
+// ─── CHART LABELS ─────────────────────────────────────────────────────────────
+var label lbl1h_1 = na
+var label lbl1h_2 = na
+var label lbl1h_3 = na
+var label lbl4h_1 = na
+var label lbl4h_2 = na
+var label lbl4h_3 = na
+var label lbl1d_1 = na
+var label lbl1d_2 = na
+var label lbl1d_3 = na
+
+f_lbl(ts, h, l, ib, ir, num, pat, atr) =>
+    lc  = ib ? color.new(color.green,20) : ir ? color.new(color.red,20) : color.new(color.gray,30)
+    sty = ib ? label.style_label_up : label.style_label_down
+    y   = ib ? l - atr * 0.4 : h + atr * 0.4
+    label.new(ts, y, num + "\n" + pat, xloc=xloc.bar_time, style=sty, color=lc, textcolor=color.white, size=size.small)
+
+if barstate.islast
+    if timeframe.period == "60"
+        label.delete(lbl1h_1)
+        label.delete(lbl1h_2)
+        label.delete(lbl1h_3)
+        lbl1h_1 := na
+        lbl1h_2 := na
+        lbl1h_3 := na
+        n1h = array.size(rec1h_ts)
+        if n1h >= 1
+            lbl1h_1 := f_lbl(array.get(rec1h_ts,0), array.get(rec1h_h,0), array.get(rec1h_l,0), array.get(rec1h_ib,0), array.get(rec1h_ir,0), "1", array.get(rec1h_pat,0), atr_val)
+        if n1h >= 2
+            lbl1h_2 := f_lbl(array.get(rec1h_ts,1), array.get(rec1h_h,1), array.get(rec1h_l,1), array.get(rec1h_ib,1), array.get(rec1h_ir,1), "2", array.get(rec1h_pat,1), atr_val)
+        if n1h >= 3
+            lbl1h_3 := f_lbl(array.get(rec1h_ts,2), array.get(rec1h_h,2), array.get(rec1h_l,2), array.get(rec1h_ib,2), array.get(rec1h_ir,2), "3", array.get(rec1h_pat,2), atr_val)
+
+    if timeframe.period == "240"
+        label.delete(lbl4h_1)
+        label.delete(lbl4h_2)
+        label.delete(lbl4h_3)
+        lbl4h_1 := na
+        lbl4h_2 := na
+        lbl4h_3 := na
+        n4h = array.size(rec4h_ts)
+        if n4h >= 1
+            lbl4h_1 := f_lbl(array.get(rec4h_ts,0), array.get(rec4h_h,0), array.get(rec4h_l,0), array.get(rec4h_ib,0), array.get(rec4h_ir,0), "1", array.get(rec4h_pat,0), atr_val)
+        if n4h >= 2
+            lbl4h_2 := f_lbl(array.get(rec4h_ts,1), array.get(rec4h_h,1), array.get(rec4h_l,1), array.get(rec4h_ib,1), array.get(rec4h_ir,1), "2", array.get(rec4h_pat,1), atr_val)
+        if n4h >= 3
+            lbl4h_3 := f_lbl(array.get(rec4h_ts,2), array.get(rec4h_h,2), array.get(rec4h_l,2), array.get(rec4h_ib,2), array.get(rec4h_ir,2), "3", array.get(rec4h_pat,2), atr_val)
+
+    if timeframe.period == "D"
+        label.delete(lbl1d_1)
+        label.delete(lbl1d_2)
+        label.delete(lbl1d_3)
+        lbl1d_1 := na
+        lbl1d_2 := na
+        lbl1d_3 := na
+        n1d = array.size(rec1d_ts)
+        if n1d >= 1
+            lbl1d_1 := f_lbl(array.get(rec1d_ts,0), array.get(rec1d_h,0), array.get(rec1d_l,0), array.get(rec1d_ib,0), array.get(rec1d_ir,0), "1", array.get(rec1d_pat,0), atr_val)
+        if n1d >= 2
+            lbl1d_2 := f_lbl(array.get(rec1d_ts,1), array.get(rec1d_h,1), array.get(rec1d_l,1), array.get(rec1d_ib,1), array.get(rec1d_ir,1), "2", array.get(rec1d_pat,1), atr_val)
+        if n1d >= 3
+            lbl1d_3 := f_lbl(array.get(rec1d_ts,2), array.get(rec1d_h,2), array.get(rec1d_l,2), array.get(rec1d_ib,2), array.get(rec1d_ir,2), "3", array.get(rec1d_pat,2), atr_val)
+
+// ─── OPENING RANGE ────────────────────────────────────────────────────────────
+var float or_high = na
+var float or_low  = na
+if session.isfirstbar
+    or_high := high
+    or_low  := low
+
+// ─── BIAS ─────────────────────────────────────────────────────────────────────
+above_vwap   = close > vwap_val
+below_vwap   = close < vwap_val
+ema_bull     = ema9 > ema20
+ema_bear     = ema9 < ema20
+high_vol     = rel_vol >= 1.5
+ema_cross_up = ta.crossover(ema9, ema20)
+ema_cross_dn = ta.crossunder(ema9, ema20)
+
+// ─── LONG TRIGGERS ────────────────────────────────────────────────────────────
+vwap_bounce  = low <= vwap_val * 1.002 and close > vwap_val and above_vwap[1]
+ema_cross_l  = ema_cross_up and above_vwap
+or_breakout  = not na(or_high) and close > or_high and above_vwap
+long_trigger = vwap_bounce or ema_cross_l or or_breakout
+long_sig     = session_active and above_vwap and ema_bull and high_vol and long_trigger
+
+// ─── SHORT TRIGGERS ───────────────────────────────────────────────────────────
+vwap_reject   = high >= vwap_val * 0.998 and close < vwap_val and below_vwap[1]
+ema_cross_s   = ema_cross_dn and below_vwap
+or_breakdown  = not na(or_low) and close < or_low and below_vwap
+short_trigger = vwap_reject or ema_cross_s or or_breakdown
+short_sig     = session_active and below_vwap and ema_bear and high_vol and short_trigger
+
+// ─── OVEREXTENDED REVERSALS ───────────────────────────────────────────────────
+xshort = rsi >= 85 and close >= bb_upper and session_active
+xlong  = rsi <= 15 and close <= bb_lower and session_active
+
+// ─── 150% VWAP EXHAUSTION BELOW VWAP ─────────────────────────────────────────
+// Candle range >= 1.5% of VWAP while closing below VWAP = exhaustion / mean-reversion setup
+vwap_exhaust_dn = (high - low) / vwap_val >= 0.015 and close < vwap_val and session_active
+
+// ─── PLOTS ────────────────────────────────────────────────────────────────────
+plot(ema9,     "EMA 9",  color=color.new(color.yellow, 0), linewidth=1)
+plot(ema20,    "EMA 20", color=color.new(color.orange, 0), linewidth=2)
+plot(vwap_val, "VWAP",   color=color.new(color.purple, 0), linewidth=2, style=plot.style_stepline)
+p_bb_u = plot(bb_upper, "BB Upper", color=color.new(color.gray, 70))
+p_bb_l = plot(bb_lower, "BB Lower", color=color.new(color.gray, 70))
+fill(p_bb_u, p_bb_l, color=color.new(color.gray, 93))
+plot(or_high, "OR High", color=color.new(color.lime, 50), linewidth=1, style=plot.style_circles)
+plot(or_low,  "OR Low",  color=color.new(color.red,  50), linewidth=1, style=plot.style_circles)
+bgcolor(session_active ? color.new(color.blue, 97) : na, title="Trade Window")
+
+// ─── SIGNALS ──────────────────────────────────────────────────────────────────
+plotshape(long_sig,        title="Long",        style=shape.labelup,   location=location.belowbar, color=color.new(color.green,   0), text="LONG",     textcolor=color.white, size=size.small)
+plotshape(short_sig,       title="Short",       style=shape.labeldown, location=location.abovebar, color=color.new(color.red,     0), text="SHORT",    textcolor=color.white, size=size.small)
+plotshape(xshort,          title="XShort",      style=shape.labeldown, location=location.abovebar, color=color.new(color.fuchsia, 0), text="XSHORT",   textcolor=color.white, size=size.tiny)
+plotshape(xlong,           title="XLong",       style=shape.labelup,   location=location.belowbar, color=color.new(color.aqua,    0), text="XLONG",    textcolor=color.white, size=size.tiny)
+plotshape(vwap_exhaust_dn, title="VWAP Exhaust DN", style=shape.labelup, location=location.belowbar, color=color.new(color.orange, 0), text="VWAP-EX↑", textcolor=color.white, size=size.tiny)
+
+// ─── ALERTS ───────────────────────────────────────────────────────────────────
+alertcondition(long_sig,        title="Long",           message="LONG signal: VWAP/EMA setup confirmed")
+alertcondition(short_sig,       title="Short",          message="SHORT signal: VWAP/EMA setup confirmed")
+alertcondition(xshort,          title="XShort",         message="OVEREXTENDED SHORT: RSI 85+ at upper BB")
+alertcondition(xlong,           title="XLong",          message="OVEREXTENDED LONG: RSI 15- at lower BB")
+alertcondition(vwap_exhaust_dn, title="VWAP Exhaust DN", message="150% VWAP exhaustion below VWAP — mean reversion likely")
+
+// ─── MAIN DASHBOARD (top-right) ───────────────────────────────────────────────
+var table dash = table.new(position.top_right, 2, 15, border_width=1, bgcolor=color.new(color.black, 60))
+if barstate.islast
+    hdr = color.new(color.gray,   20)
+    g   = color.new(color.green,  40)
+    r   = color.new(color.red,    40)
+    neu = color.new(color.gray,   60)
+    ora = color.new(color.orange, 40)
+    w   = color.white
+    table.cell(dash, 0, 0,  "Condition",  bgcolor=hdr, text_color=w, text_size=size.small)
+    table.cell(dash, 1, 0,  "Status",     bgcolor=hdr, text_color=w, text_size=size.small)
+    type_label = _stype == "crypto" ? "Crypto" : _stype == "forex" ? "Forex" : _stype == "futures" ? "Futures" : _stype == "fund" ? "ETF" : _stype == "stock" ? "Stock" : str.tostring(_stype)
+    table.cell(dash, 0, 1,  "Type",       text_size=size.small, text_color=w)
+    table.cell(dash, 1, 1,  type_label,   bgcolor=neu, text_color=w, text_size=size.small)
+    table.cell(dash, 0, 2,  "Session",    text_size=size.small, text_color=w)
+    table.cell(dash, 1, 2,  session_active ? "OPEN" : "CLOSED", bgcolor=session_active ? g : neu, text_color=w, text_size=size.small)
+    table.cell(dash, 0, 3,  "EMA 9/20",   text_size=size.small, text_color=w)
+    table.cell(dash, 1, 3,  ema_bull ? "Bull" : "Bear", bgcolor=ema_bull ? g : r, text_color=w, text_size=size.small)
+    table.cell(dash, 0, 4,  "VWAP Bias",  text_size=size.small, text_color=w)
+    table.cell(dash, 1, 4,  above_vwap ? "Above" : "Below", bgcolor=above_vwap ? g : r, text_color=w, text_size=size.small)
+    table.cell(dash, 0, 5,  "VWAP Exhaust", text_size=size.small, text_color=w)
+    table.cell(dash, 1, 5,  vwap_exhaust_dn ? "ACTIVE" : "—", bgcolor=vwap_exhaust_dn ? ora : neu, text_color=w, text_size=size.small)
+    table.cell(dash, 0, 6,  "Rel Volume", text_size=size.small, text_color=w)
+    table.cell(dash, 1, 6,  str.tostring(math.round(rel_vol, 1)) + "x", bgcolor=high_vol ? g : r, text_color=w, text_size=size.small)
+    table.cell(dash, 0, 7,  "RSI",        text_size=size.small, text_color=w)
+    table.cell(dash, 1, 7,  str.tostring(math.round(rsi, 1)), bgcolor=rsi >= 85 ? r : rsi <= 15 ? g : neu, text_color=w, text_size=size.small)
+    table.cell(dash, 0, 8,  "MACD",       text_size=size.small, text_color=w)
+    table.cell(dash, 1, 8,  macd_bull ? "Bull" : "Bear", bgcolor=macd_bull ? g : r, text_color=w, text_size=size.small)
+    table.cell(dash, 0, 9,  "OR High",    text_size=size.small, text_color=w)
+    table.cell(dash, 1, 9,  na(or_high) ? "--" : str.tostring(math.round(or_high, 2)), bgcolor=neu, text_color=w, text_size=size.small)
+    table.cell(dash, 0, 10, "OR Low",     text_size=size.small, text_color=w)
+    table.cell(dash, 1, 10, na(or_low)  ? "--" : str.tostring(math.round(or_low,  2)), bgcolor=neu, text_color=w, text_size=size.small)
+    table.cell(dash, 0, 11, "Setup",      text_size=size.small, text_color=w)
+    setup_txt = long_sig ? "LONG" : short_sig ? "SHORT" : xshort ? "XSHORT" : xlong ? "XLONG" : "WAIT"
+    setup_clr = long_sig ? g : short_sig ? r : (xshort or xlong) ? ora : neu
+    table.cell(dash, 1, 11, setup_txt,    bgcolor=setup_clr, text_color=w, text_size=size.small)
+    table.cell(dash, 0, 12, "1H Bias",    text_size=size.small, text_color=w)
+    table.cell(dash, 1, 12, mtf_bull_1h ? "Bullish" : "Bearish", bgcolor=mtf_bull_1h ? g : r, text_color=w, text_size=size.small)
+    table.cell(dash, 0, 13, "4H Bias",    text_size=size.small, text_color=w)
+    table.cell(dash, 1, 13, mtf_bull_4h ? "Bullish" : "Bearish", bgcolor=mtf_bull_4h ? g : r, text_color=w, text_size=size.small)
+    table.cell(dash, 0, 14, "1D Bias",    text_size=size.small, text_color=w)
+    table.cell(dash, 1, 14, mtf_bull_1d ? "Bullish" : "Bearish", bgcolor=mtf_bull_1d ? g : r, text_color=w, text_size=size.small)
+
+// ─── CANDLE PATTERN TABLE (bottom-right) ─────────────────────────────────────
+// Rows 1/2/3 mirror labels 1/2/3 — both read from the same accumulator arrays
+// so the table always shows the 3 most recent PATTERNED bars (never blank).
+var table pat_tbl = table.new(position.bottom_right, 4, 4, border_width=1, bgcolor=color.new(color.black, 60))
+if barstate.islast
+    hdr = color.new(color.gray,  20)
+    g   = color.new(color.green, 40)
+    r   = color.new(color.red,   40)
+    neu = color.new(color.gray,  60)
+    w   = color.white
+    table.cell(pat_tbl, 0, 0, "Candle", bgcolor=hdr, text_color=w, text_size=size.small)
+    table.cell(pat_tbl, 1, 0, "1H",     bgcolor=hdr, text_color=w, text_size=size.small)
+    table.cell(pat_tbl, 2, 0, "4H",     bgcolor=hdr, text_color=w, text_size=size.small)
+    table.cell(pat_tbl, 3, 0, "1D",     bgcolor=hdr, text_color=w, text_size=size.small)
+
+    n1h = array.size(rec1h_ts)
+    n4h = array.size(rec4h_ts)
+    n1d = array.size(rec1d_ts)
+
+    for row = 1 to 3
+        i = row - 1
+        table.cell(pat_tbl, 0, row, str.tostring(row), bgcolor=neu, text_color=w, text_size=size.small)
+
+        lbl1h = n1h > i ? array.get(rec1h_pat, i) : "—"
+        ib1h  = n1h > i ? array.get(rec1h_ib,  i) : false
+        ir1h  = n1h > i ? array.get(rec1h_ir,  i) : false
+        table.cell(pat_tbl, 1, row, lbl1h, bgcolor=ib1h ? g : ir1h ? r : neu, text_color=w, text_size=size.small)
+
+        lbl4h = n4h > i ? array.get(rec4h_pat, i) : "—"
+        ib4h  = n4h > i ? array.get(rec4h_ib,  i) : false
+        ir4h  = n4h > i ? array.get(rec4h_ir,  i) : false
+        table.cell(pat_tbl, 2, row, lbl4h, bgcolor=ib4h ? g : ir4h ? r : neu, text_color=w, text_size=size.small)
+
+        lbl1d = n1d > i ? array.get(rec1d_pat, i) : "—"
+        ib1d  = n1d > i ? array.get(rec1d_ib,  i) : false
+        ir1d  = n1d > i ? array.get(rec1d_ir,  i) : false
+        table.cell(pat_tbl, 3, row, lbl1d, bgcolor=ib1d ? g : ir1d ? r : neu, text_color=w, text_size=size.small)

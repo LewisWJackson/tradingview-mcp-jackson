@@ -1,65 +1,89 @@
 {
-  "watchlist": ["BTCUSDT"],
-  "default_timeframe": "1",
+  "watchlist": ["TSLA", "VOO", "OBE", "FRHLF", "CVE", "BNEFF", "CHRD", "BYDDY", "VTI", "QQQ", "VNQ", "SWPPX"],
+  "default_timeframe": "1D",
 
   "strategy": {
-    "name": "10-Second Momentum Scalper",
+    "name": "Momentum Day Trading — Ross Cameron & Andrew Aziz Framework",
     "sources": [
-      "Price momentum — buy if last close > previous close (green candle)",
-      "RSI filter — only trade when RSI is not at an extreme (30–70 range)"
+      "Ross Cameron (Warrior Trading) — Gap & Go, VWAP momentum strategy",
+      "Andrew Aziz (Bear Bull Traders) — Moving Average Trend strategy"
     ],
     "primary_timeframes": [
-      "1-minute (signal source)",
-      "10-second execution loop"
+      "1-day (trend context)",
+      "5-minute (entry signals)",
+      "1-minute (fine-tuned entry)"
     ]
   },
 
   "indicators": {
-    "rsi_14": "Momentum filter. Only trade when RSI is between 30–70 (avoid extremes).",
-    "price_momentum": "Compare last close vs previous close. Up = long signal. Down = short signal."
+    "ema_9": "Primary short-term trend. Price above = bullish momentum. Enter pullbacks to this level.",
+    "ema_20": "Stronger support/resistance than 9 EMA. Preferred stop-loss reference level.",
+    "ema_50": "Medium-term trend. Acts as support in healthy uptrends.",
+    "ema_200": "Major trend bias filter. Trade LONG only above 200 EMA. Trade SHORT only below 200 EMA.",
+    "vwap": "Equilibrium line. Price above VWAP = buyers in control. Key entry/exit zone for intraday.",
+    "bollinger_bands_20_2": "Volatility envelope. Buy near lower band, target middle or upper band.",
+    "macd_12_26_9": "Momentum confirmation. Enter long when MACD line crosses above signal.",
+    "rsi_14": "Overbought/oversold filter. Momentum trades: RSI 50–80 zone. Avoid above 80 or below 20.",
+    "volume": "Confirms all breakouts. No volume = no trade."
   },
 
   "bias_criteria": {
     "bullish": [
-      "Last 1-min candle closed higher than the one before it",
-      "RSI is between 30 and 70"
+      "Price is above the 200 EMA (Ross Cameron rule — only trade long above 200 EMA)",
+      "Price is above VWAP on the intraday chart",
+      "9 EMA is above 20 EMA",
+      "MACD line is above the signal line",
+      "RSI is between 50 and 80"
     ],
     "bearish": [
-      "Last 1-min candle closed lower than the one before it",
-      "RSI is between 30 and 70"
+      "Price is below the 200 EMA",
+      "Price is below VWAP on the intraday chart",
+      "9 EMA is below 20 EMA",
+      "MACD line is below the signal line",
+      "RSI is between 20 and 50"
     ],
     "neutral": [
-      "RSI is above 70 (overbought — skip)",
-      "RSI is below 30 (oversold — skip)",
-      "Candle close change is less than 0.05% (chop — skip)"
+      "Price is choppping around VWAP",
+      "9 EMA and 20 EMA are tangled or flat",
+      "RSI is between 45 and 55 with no clear direction"
     ]
   },
 
   "entry_rules": {
     "long": [
-      "Last close > previous close by at least 0.05%",
-      "RSI between 30 and 70",
-      "Enter market buy immediately"
+      "Price is above the 200 EMA (required bias filter)",
+      "Price pulled back to the 9 EMA or VWAP and is holding",
+      "MACD is above the signal line (momentum confirmed)",
+      "RSI is between 50 and 70 (room to run, not overbought)",
+      "Volume is above average on the entry candle",
+      "Enter on the next candle after the 9 EMA or VWAP holds as support"
     ],
     "short": [
-      "Last close < previous close by at least 0.05%",
-      "RSI between 30 and 70",
-      "Enter market sell immediately"
+      "Price is below the 200 EMA (required bias filter)",
+      "Price rallied back to the 9 EMA or VWAP and is being rejected",
+      "MACD is below the signal line",
+      "RSI is between 30 and 50",
+      "Volume is above average on the rejection candle",
+      "Enter on the next candle after the 9 EMA or VWAP acts as resistance"
     ]
   },
 
   "exit_rules": [
-    "Exit automatically after 10 seconds (next loop tick closes previous position)",
-    "No manual exit management — pure time-based scalp"
+    "Stop loss: just below the 20 EMA (longs) or just above the 20 EMA (shorts)",
+    "Move stop to break-even once trade is 1R in profit",
+    "Take partial profit (1/3 to 1/2 position) at first resistance or when RSI hits 70+",
+    "Trail remainder with the 9 EMA or 20 EMA",
+    "Hard exit: if price breaks and closes below the 20 EMA against your position"
   ],
 
   "risk_rules": [
-    "Fixed trade size: 1% of portfolio per trade",
-    "Maximum trade size: $3.00",
-    "Maximum 6 trades per 60-second run",
-    "No stop loss — exit is time-based at next tick",
-    "For demo purposes only — minimum BitGet order size may apply"
+    "Minimum R:R of 2:1 before entering any trade",
+    "Maximum risk per trade: 1% of portfolio",
+    "No more than 2 open positions at once",
+    "If 2 consecutive losses occur, stop trading for the day",
+    "No trading in the first 5 minutes of market open (avoid the chop)",
+    "Only trade with above-average volume — no volume, no trade"
   ],
 
-  "notes": "Demo strategy for YouTube video. Runs 6 trades over 60 seconds, one every 10 seconds. Signal is simple price momentum on 1-min candles with RSI sanity check."
+  "notes": "Strategy based on publicly documented frameworks from Ross Cameron (Warrior Trading) and Andrew Aziz (Bear Bull Traders). Core principle: trade with the trend (200 EMA bias), enter on pullbacks to VWAP or 9 EMA, confirm with volume and MACD, manage risk with the 20 EMA as stop reference."
 }

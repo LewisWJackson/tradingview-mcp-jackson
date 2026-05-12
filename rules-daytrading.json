@@ -1,0 +1,108 @@
+{
+  "watchlist": ["TSLA", "VOO", "OBE", "FRHLF", "CVE", "BNEFF", "CHRD", "BYDDY", "VTI", "QQQ", "VNQ", "SWPPX"],
+  "default_timeframe": "5",
+
+  "strategy": {
+    "name": "Intraday Momentum — Ross Cameron & Andrew Aziz Framework",
+    "sources": [
+      "Ross Cameron (Warrior Trading) — Gap & Go, VWAP momentum, 1-min/5-min EMA strategy",
+      "Andrew Aziz (Bear Bull Traders) — ABCD pattern, Opening Range Breakout, VWAP trend strategy"
+    ],
+    "primary_timeframes": [
+      "5-minute (pattern recognition & entries)",
+      "1-minute (precise entry timing)",
+      "Daily (pre-market research & bias)"
+    ],
+    "best_trading_window": "9:30 AM – 11:00 AM ET (first 90 minutes only)",
+    "avoid": "12:00 PM – 2:00 PM ET (dead zone — low volume, choppy)"
+  },
+
+  "indicators": {
+    "ema_9": "Primary dynamic support. Enter pullbacks to this line. Exit if price closes below it.",
+    "ema_20": "Stronger support/resistance. Stop-loss reference for trend trades. Cross above = bullish signal.",
+    "vwap": "THE most important intraday level. Above VWAP = buyers in control, only look long. Below VWAP = sellers in control, only look short.",
+    "volume": "Non-negotiable confirmation. No volume = no trade. Look for relative volume 2x+ average.",
+    "rsi_14": "Extreme readings only. RSI above 90 on 5-min = overextended short setup. RSI below 10 = overextended long reversal.",
+    "bollinger_bands_20_2": "Used for reversal setups. Price at upper band + RSI 90+ = short candidate. Price at lower band + RSI 10- = long reversal."
+  },
+
+  "pre_market_checklist": [
+    "Identify stocks gapping up 4%+ with a news catalyst",
+    "Check pre-market volume — must be above average",
+    "Mark pre-market high and low as key levels",
+    "Note prior day's high and low as support/resistance",
+    "Assess overall market direction (spy/QQQ gap direction)"
+  ],
+
+  "bias_criteria": {
+    "bullish": [
+      "Price is above VWAP (non-negotiable for longs)",
+      "9 EMA is above 20 EMA on the 5-min chart",
+      "Stock gapped up with a catalyst",
+      "Relative volume is 2x or more above average"
+    ],
+    "bearish": [
+      "Price is below VWAP (non-negotiable for shorts)",
+      "9 EMA is below 20 EMA on the 5-min chart",
+      "Stock gapped down or is fading from highs",
+      "Relative volume confirming selling pressure"
+    ],
+    "neutral_avoid": [
+      "Price is chopping around VWAP (avoid — no edge)",
+      "Volume is below average (dead zone — skip)",
+      "Time is between 12:00 PM and 2:00 PM ET (avoid — graveyard shift)"
+    ]
+  },
+
+  "setups": {
+    "gap_and_go": {
+      "description": "Ross Cameron's core setup. Stock gaps up 4%+ at open on news, breaks pre-market high with volume.",
+      "entry": "Buy the break of the pre-market high on the 1-min chart with above-average volume",
+      "stop": "Below the low of the entry candle or pre-market support",
+      "target": "R:R minimum 2:1; scale out at round numbers and prior resistance"
+    },
+    "vwap_pullback": {
+      "description": "Stock is above VWAP, pulls back to VWAP, holds and bounces. 9 EMA acting as support.",
+      "entry": "Buy when price touches VWAP and closes back above it with volume on the 1-min chart",
+      "stop": "Below VWAP",
+      "target": "Prior intraday high or next resistance level"
+    },
+    "abcd_pattern": {
+      "description": "Andrew Aziz's core setup. Stock surges (A to B), pulls back (B to C), resumes (C to D).",
+      "entry": "Buy the break above the B high after price holds the C pullback",
+      "stop": "Below point C (the pullback low)",
+      "target": "Equal move from C as A to B (measured move)"
+    },
+    "opening_range_breakout": {
+      "description": "Use the first 5-minute candle as the opening range. Enter on break of that candle's high or low.",
+      "entry": "Buy break of 5-min opening range high (or short break of low) with volume",
+      "stop": "Below the opening range low (for longs)",
+      "target": "1.5x to 2x the opening range height"
+    },
+    "ema_9_20_cross": {
+      "description": "9 EMA crosses above 20 EMA on 5-min chart while price is above VWAP. Classic Andrew Aziz trigger.",
+      "entry": "Buy when 9 EMA crosses above 20 EMA AND price is above VWAP AND new 5-min high forms",
+      "stop": "Below the 20 EMA",
+      "target": "Trail with 9 EMA until it breaks"
+    }
+  },
+
+  "exit_rules": [
+    "Move stop to break-even as soon as first profit target is hit",
+    "Take 1/2 position off at first resistance (round number, prior high, VWAP)",
+    "Trail remainder with the 9 EMA — exit on close below it",
+    "Hard stop: exit immediately if price closes a 1-min candle below the 20 EMA against your position",
+    "Time stop: close all positions by 11:30 AM ET if not already stopped out"
+  ],
+
+  "risk_rules": [
+    "Maximum risk per trade: 1% of account",
+    "Stop trading after 2 consecutive losses — wait for next session",
+    "Never trade in the first 5 minutes of market open (9:30–9:35 AM) — let price find direction",
+    "Only take trades with minimum 2:1 risk-reward ratio",
+    "No trading between 12:00 PM and 2:00 PM ET",
+    "Above-average relative volume required on every entry — no exceptions"
+  ],
+
+  "notes": "Intraday strategy based on Ross Cameron (Warrior Trading) and Andrew Aziz (Bear Bull Traders) publicly documented frameworks. Key principle: trade in the direction of VWAP during the first 90 minutes of the session only, using 9/20 EMA as dynamic support and volume as confirmation. The 5-min chart is for pattern recognition; the 1-min chart is for precise entry timing."
+}
