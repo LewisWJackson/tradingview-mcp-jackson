@@ -7,13 +7,15 @@ register('status', {
 });
 
 register('launch', {
-  description: 'Launch TradingView with CDP enabled',
+  description: 'Launch TradingView with CDP enabled (no-ops if already running with CDP — pass --force to override)',
   options: {
     port: { type: 'string', short: 'p', description: 'CDP port (default 9222)' },
     'no-kill': { type: 'boolean', description: 'Do not kill existing instances' },
+    force: { type: 'boolean', description: 'Force relaunch even if TradingView already has CDP enabled' },
   },
   handler: (opts) => core.launch({
     port: opts.port ? Number(opts.port) : undefined,
     kill_existing: !opts['no-kill'],
+    force: !!opts.force,
   }),
 });
