@@ -1,0 +1,84 @@
+//@version=5
+indicator("VWAP + EMA(8) + RSI(3) Alerts", overlay=true, max_labels_count=500)
+
+// ── Inputs ──────────────────────────────────────────────────────────────────
+rsiLen     = input.int(3,  "RSI Length",   minval=1)
+emaLen     = input.int(8,  "EMA Length",   minval=1)
+rsiOB      = input.int(70, "RSI Overbought", minval=50, maxval=100)
+rsiOS      = input.int(30, "RSI Oversold",   minval=0,  maxval=50)
+
+// ── Indicators ───────────────────────────────────────────────────────────────
+vwap       = ta.vwap(hlc3)
+ema8       = ta.ema(close, emaLen)
+rsi        = ta.rsi(close, rsiLen)
+
+// ── Signal logic (mirrors scalper-run.js) ───────────────────────────────────
+// Bull bias: price above VWAP and above EMA — buy on oversold RSI pullback
+bullBias   = close > vwap and close > ema8
+bearBias   = close < vwap and close < ema8
+
+buySignal  = bullBias and rsi < rsiOS
+sellSignal = bearBias and rsi > rsiOB
+
+// ── Plot indicators ──────────────────────────────────────────────────────────
+plot(vwap, "VWAP",  color=color.new(color.blue, 0),   linewidth=2)
+plot(ema8, "EMA 8", color=color.new(color.orange, 0), linewidth=1)
+
+// ── Buy / Sell shapes ────────────────────────────────────────────────────────
+plotshape(buySignal,  "BUY",  shape.labelup,   location.belowbar,
+          color.new(color.lime, 0), text="BUY",  textcolor=color.white,
+          size=size.small)
+
+plotshape(sellSignal, "SELL", shape.labeldown, location.abovebar,
+          color.new(color.red, 0),  text="SELL", textcolor=color.white,
+          size=size.small)
+
+// ── Background highlight ─────────────────────────────────────────────────────
+bgcolor(buySignal  ? color.new(color.lime, 88) : na, title="Buy zone")
+bgcolor(sellSignal ? color.new(color.red,  88) : na, title="Sell zone")
+
+// ── Info table ───────────────────────────────────────────────────────────────
+var table infoTable = table.new(position.top_right, 2, 5,
+          border_color=color.gray, border_width=1,
+          bgcolor=color.new(color.black, 70))
+
+if barstate.islast
+    bias = bullBias ? "BULL" : bearBias ? "BEAR" : "FLAT"
+    sig  = buySignal ? "BUY" : sellSignal ? "SELL" : "—"
+    table.cell(infoTable, 0, 0, "Indicator",  text_color=color.gray,  text_size=size.small)
+    table.cell(infoTable, 1, 0, "Value",      text_color=color.gray,  text_size=size.small)
+    table.cell(infoTable, 0, 1, "VWAP",       text_color=color.white, text_size=size.small)
+    table.cell(infoTable, 1, 1, str.tostring(vwap, "#.####"),
+               text_color=color.blue,  text_size=size.small)
+    table.cell(infoTable, 0, 2, "EMA(8)",     text_color=color.white, text_size=size.small)
+    table.cell(infoTable, 1, 2, str.tostring(ema8, "#.####"),
+               text_color=color.orange, text_size=size.small)
+    table.cell(infoTable, 0, 3, "RSI(3)",     text_color=color.white, text_size=size.small)
+    table.cell(infoTable, 1, 3, str.tostring(rsi, "#.##"),
+               text_color=rsi > rsiOB ? color.red : rsi < rsiOS ? color.lime : color.white,
+               text_size=size.small)
+    table.cell(infoTable, 0, 4, "Signal",     text_color=color.white, text_size=size.small)
+    table.cell(infoTable, 1, 4, sig,
+               text_color=sig == "BUY" ? color.lime : sig == "SELL" ? color.red : color.gray,
+               text_size=size.small)
+
+// ── Alert conditions ─────────────────────────────────────────────────────────
+alertcondition(buySignal,
+    title   = "BUY Signal — VWAP+EMA+RSI",
+    message = "BUY | {{ticker}} | Price: {{close}} | RSI(3): " +
+              str.tostring(rsi, "#.##") + " | VWAP: " +
+              str.tostring(vwap, "#.####") + " | EMA8: " +
+              str.tostring(ema8, "#.####"))
+
+alertcondition(sellSignal,
+    title   = "SELL Signal — VWAP+EMA+RSI",
+    message = "SELL | {{ticker}} | Price: {{close}} | RSI(3): " +
+              str.tostring(rsi, "#.##") + " | VWAP: " +
+              str.tostring(vwap, "#.####") + " | EMA8: " +
+              str.tostring(ema8, "#.####"))
+
+alertcondition(buySignal or sellSignal,
+    title   = "ANY Signal — VWAP+EMA+RSI",
+    message = "{{ticker}} SIGNAL: " +
+              (buySignal ? "BUY" : "SELL") +
+              " | Price: {{close}} | RSI: " + str.tostring(rsi, "#.##"))
