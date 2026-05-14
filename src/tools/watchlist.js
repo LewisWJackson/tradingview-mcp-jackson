@@ -190,6 +190,7 @@ export function registerWatchlistTools(server) {
       timeframe: z.string().optional().describe('Timeframe override (e.g., "1H", "4H", "D"). Defaults to current chart.'),
       max_symbols: z.number().optional().describe('Cap symbols scanned (default 50; warning: 500-symbol lists take 40+ min).'),
       per_symbol_timeout_ms: z.number().optional().describe('Per-symbol timeout in ms (default 5000).'),
+      force_when_hidden: z.boolean().optional().describe('Override visibility-hidden refusal. WARNING: results will be stale because Chrome throttles hidden tabs. Default false.'),
     },
     async (args) => {
       try { return jsonResult(await core.screen(args)); }

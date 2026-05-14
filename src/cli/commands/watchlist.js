@@ -83,7 +83,7 @@ register('watchlist', {
       handler: () => core.listAll(),
     }],
     ['screen', {
-      description: 'Filter watchlist by indicator. Usage: tv watchlist screen "List Name" --study="Relative Strength Index" --field=RSI --op="<" --value=30 [--max=20]',
+      description: 'Filter watchlist by indicator. Usage: tv watchlist screen "List Name" --study="Relative Strength Index" --field=RSI --op="<" --value=30 [--max=20] [--force-when-hidden=true]',
       handler: (opts, positionals) => {
         if (!positionals[0]) throw new Error('List name required');
         const value = opts.value !== undefined ? Number(opts.value) : undefined;
@@ -92,6 +92,7 @@ register('watchlist', {
           study: opts.study, field: opts.field, op: opts.op,
           value, timeframe: opts.timeframe,
           max_symbols: opts.max ? Number(opts.max) : undefined,
+          force_when_hidden: opts['force-when-hidden'] === 'true',
         });
       },
     }],

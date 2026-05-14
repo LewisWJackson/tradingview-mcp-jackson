@@ -592,6 +592,13 @@ export async function listAll() {
 
 // --- Pine-aware screener (Phase 4) ---
 
+// Module-level serialization gate. Concurrent screen() calls crash CDP
+// (parallel chart.setSymbol() calls clobber each other and the renderer
+// EPIPEs). All screen() invocations chain through this Promise so only
+// one runs at a time across the whole process.
+let _screenChain = Promise.resolve();
+let _screenInFlight = false;
+
 function evalCondition({ op, value, actual }) {
   // Numeric coercion — TV stores values as strings
   const n = parseFloat(String(actual).replace(/[%,$\s]/g, ''));
@@ -611,9 +618,43 @@ function evalCondition({ op, value, actual }) {
   }
 }
 
-export async function screen({ name, listId, study, field, op, value, timeframe, max_symbols = 50, per_symbol_timeout_ms = 5000 } = {}) {
+export async function screen(args = {}) {
+  // Serialize: only one screen() may execute at a time across the process.
+  // Subsequent callers await the prior chain, then take their turn.
+  const prevChain = _screenChain;
+  let release;
+  _screenChain = new Promise(r => { release = r; });
+  try {
+    if (_screenInFlight) {
+      // Caller will wait their turn. Annotate response so caller knows.
+      await prevChain;
+    }
+    _screenInFlight = true;
+    return await _screen_impl(args);
+  } finally {
+    _screenInFlight = false;
+    release();
+  }
+}
+
+async function _screen_impl({ name, listId, study, field, op, value, timeframe, max_symbols = 50, per_symbol_timeout_ms = 5000, force_when_hidden = false } = {}) {
   if (!study || !field || !op || value === undefined) {
     throw new Error('screen: study + field + op + value required (e.g., study="Relative Strength Index", field="RSI", op="<", value=30)');
+  }
+
+  // Visibility check: when TV window is hidden (user switched apps), the
+  // renderer throttles and dataWindowView returns stale values across symbol
+  // switches — observed 2026-05-14 on 45-symbol screen, all 45 returned
+  // identical RSI. Refuse to run unless caller passes force_when_hidden.
+  const vis = await evaluate(`
+    ({ hidden: document.hidden, state: document.visibilityState })
+  `);
+  if (vis && vis.hidden && !force_when_hidden) {
+    return {
+      success: false,
+      error: 'TV window is hidden (visibilityState=' + vis.state + '). Renderer throttling will return stale indicator values. Bring TradingView to the foreground and retry, or pass force_when_hidden=true to override (risks stale results).',
+      tradingview_visibility: vis,
+    };
   }
   const target = await findListOrThrow({ name, listId });
   const symbols = target.symbols.filter(s => !s.startsWith('###')).slice(0, max_symbols);
@@ -629,6 +670,13 @@ export async function screen({ name, listId, study, field, op, value, timeframe,
 
   const results = { matched: [], unmatched: [], errors: [] };
   const studyMatch = (n) => (n || '').toLowerCase().includes(study.toLowerCase());
+
+  // Track stale values: if 3+ consecutive symbols return the same value,
+  // TV likely went hidden mid-run — bail with a clear error rather than
+  // returning misleading uniform results.
+  let lastValue = null;
+  let stableStreak = 0;
+  const STALE_STREAK_LIMIT = 3;
 
   for (let i = 0; i < symbols.length; i++) {
     const sym = symbols[i];
@@ -704,6 +752,23 @@ export async function screen({ name, listId, study, field, op, value, timeframe,
       }
       const actualRaw = study_values.values[field];
       const result = evalCondition({ op, value, actual: actualRaw });
+      // Stale-streak detection
+      if (lastValue !== null && result.actual === lastValue) {
+        stableStreak++;
+        if (stableStreak >= STALE_STREAK_LIMIT) {
+          // Re-check visibility — most likely TV went hidden
+          const visNow = await evaluate(`({ hidden: document.hidden, state: document.visibilityState })`).catch(() => null);
+          results.errors.push({
+            symbol: sym,
+            error: `Aborted: ${STALE_STREAK_LIMIT} consecutive symbols returned identical ${field}=${result.actual}. ` +
+              (visNow && visNow.hidden ? `TV window went hidden (state=${visNow.state}).` : 'Cause unknown — possibly CDP overload.'),
+          });
+          break;
+        }
+      } else {
+        stableStreak = 0;
+        lastValue = result.actual;
+      }
       if (result.matched) {
         results.matched.push({ symbol: sym, [field]: result.actual, study: study_values.name });
       } else {
