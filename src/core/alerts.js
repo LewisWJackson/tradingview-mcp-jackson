@@ -69,7 +69,37 @@ export async function create({ condition, price, message }) {
     })()
   `);
 
-  return { success: !!created, price, condition, message: message || '(none)', price_set: !!priceSet, source: 'dom_fallback' };
+  // Verify the alert actually landed by polling the internal pricealerts API.
+  // The DOM flow can return success: true while the price never committed; the
+  // authoritative source is TradingView's own alert list.
+  let verified = null;
+  if (created) {
+    const before = Date.now();
+    while (Date.now() - before < 4000) {
+      await new Promise(r => setTimeout(r, 600));
+      try {
+        const listed = await list();
+        const target = Number(price);
+        const match = (listed.alerts || []).find(a => {
+          const ap = Array.isArray(a.condition) ? Number(a.condition[a.condition.length - 1]) : null;
+          return ap != null && Math.abs(ap - target) < 0.5 && (!message || (a.message || '').includes(message.slice(0, 20)));
+        });
+        if (match) { verified = match; break; }
+      } catch (_) {}
+    }
+  }
+
+  return {
+    success: !!verified || (!!created && !!priceSet),
+    price,
+    condition,
+    message: message || '(none)',
+    price_set: !!priceSet,
+    verified: !!verified,
+    verified_alert: verified || null,
+    source: verified ? 'verified_via_api' : 'dom_fallback',
+    hint: !verified ? 'Alert submit fired but did not appear in alert list within 4s — TV dialog DOM may have changed.' : undefined,
+  };
 }
 
 export async function list() {

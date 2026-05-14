@@ -71,4 +71,27 @@ export function registerChartTools(server) {
     try { return jsonResult(await core.symbolSearch({ query, type })); }
     catch (err) { return jsonResult({ success: false, error: err.message }, true); }
   });
+
+  server.tool('chart_save_view',
+    'Save current chart state (symbol, timeframe, type, study list, visible range) as a named view to views/<name>.json.',
+    { name: z.string().describe('View name (alphanumeric + . _ - allowed; rest sanitized)') },
+    async ({ name }) => {
+      try { return jsonResult(await core.saveView({ name })); }
+      catch (err) { return jsonResult({ success: false, error: err.message }, true); }
+    }
+  );
+
+  server.tool('chart_restore_view',
+    'Restore a saved chart view by name. Sets symbol/timeframe/chart type; returns the studies list for the caller to re-add via chart_manage_indicator.',
+    { name: z.string().describe('Saved view name') },
+    async ({ name }) => {
+      try { return jsonResult(await core.restoreView({ name })); }
+      catch (err) { return jsonResult({ success: false, error: err.message }, true); }
+    }
+  );
+
+  server.tool('chart_list_views', 'List all saved chart views with summary metadata', {}, async () => {
+    try { return jsonResult(await core.listViews()); }
+    catch (err) { return jsonResult({ success: false, error: err.message }, true); }
+  });
 }

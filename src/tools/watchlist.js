@@ -23,4 +23,205 @@ export function registerWatchlistTools(server) {
       return jsonResult({ success: false, error: err.message }, true);
     }
   });
+
+  server.tool('watchlist_clear', 'Remove every symbol from the current TradingView watchlist', {}, async () => {
+    try { return jsonResult(await core.clear()); }
+    catch (err) { return jsonResult({ success: false, error: err.message }, true); }
+  });
+
+  server.tool('watchlist_sync_from_rules',
+    'Diff the TradingView watchlist against the watchlist[] array in rules.json and apply add/remove ops so they match.',
+    {
+      rulesPath: z.string().optional().describe('Optional absolute path to rules.json. Defaults to the repo-bundled rules.json.'),
+    },
+    async ({ rulesPath }) => {
+      try { return jsonResult(await core.syncFromRules({ rulesPath })); }
+      catch (err) { return jsonResult({ success: false, error: err.message }, true); }
+    }
+  );
+
+  server.tool('watchlist_merge',
+    'Union of symbols across multiple watchlists (deduplicated). Read-only — returns symbol array. Use watchlist_upload to materialize as a new list.',
+    {
+      lists: z.array(z.union([z.string(), z.number()])).min(1).describe('Array of watchlist names (strings) or ids (numbers).'),
+      strip_exchange: z.boolean().optional().describe('Strip exchange prefix (NASDAQ:AAPL → AAPL) for cross-source dedup. Default false.'),
+    },
+    async ({ lists, strip_exchange }) => {
+      try { return jsonResult(await core.setOp({ op: 'merge', lists, strip_exchange })); }
+      catch (err) { return jsonResult({ success: false, error: err.message }, true); }
+    }
+  );
+
+  server.tool('watchlist_intersect',
+    'Symbols present in ALL given watchlists. Useful for finding overlaps across thematic lists.',
+    {
+      lists: z.array(z.union([z.string(), z.number()])).min(2).describe('Array of watchlist names or ids (minimum 2).'),
+      strip_exchange: z.boolean().optional().describe('Strip exchange prefix for matching across sources.'),
+    },
+    async ({ lists, strip_exchange }) => {
+      try { return jsonResult(await core.setOp({ op: 'intersect', lists, strip_exchange })); }
+      catch (err) { return jsonResult({ success: false, error: err.message }, true); }
+    }
+  );
+
+  server.tool('watchlist_subtract',
+    'Symbols in list A but not in list B. Useful for finding gaps ("what\'s in Bybit perps I\'m not watching on TV?").',
+    {
+      lists: z.array(z.union([z.string(), z.number()])).length(2).describe('Exactly 2 watchlists: [A, B]. Returns A - B.'),
+      strip_exchange: z.boolean().optional().describe('Strip exchange prefix for matching across sources.'),
+    },
+    async ({ lists, strip_exchange }) => {
+      try { return jsonResult(await core.setOp({ op: 'subtract', lists, strip_exchange })); }
+      catch (err) { return jsonResult({ success: false, error: err.message }, true); }
+    }
+  );
+
+  server.tool('watchlist_section_add',
+    'Add a section header to an existing watchlist. Inserts before a specified symbol or at the end.',
+    {
+      name: z.string().optional().describe('Watchlist name.'),
+      list_id: z.number().optional().describe('Watchlist id (takes precedence).'),
+      section_name: z.string().describe('Section title (e.g., "MINERS"). The ### prefix is added automatically.'),
+      before_symbol: z.string().optional().describe('Insert before this symbol. Defaults to end if omitted.'),
+      at_end: z.boolean().optional().describe('Force append at end (overrides before_symbol).'),
+    },
+    async ({ name, list_id, section_name, before_symbol, at_end }) => {
+      try { return jsonResult(await core.sectionAdd({ name, listId: list_id, sectionName: section_name, beforeSymbol: before_symbol, atEnd: at_end })); }
+      catch (err) { return jsonResult({ success: false, error: err.message }, true); }
+    }
+  );
+
+  server.tool('watchlist_section_remove',
+    'Remove a section header from a watchlist (keeps the symbols underneath).',
+    {
+      name: z.string().optional(),
+      list_id: z.number().optional(),
+      section_name: z.string().describe('Section name to remove (without ### prefix).'),
+    },
+    async ({ name, list_id, section_name }) => {
+      try { return jsonResult(await core.sectionRemove({ name, listId: list_id, sectionName: section_name })); }
+      catch (err) { return jsonResult({ success: false, error: err.message }, true); }
+    }
+  );
+
+  server.tool('watchlist_section_rename',
+    'Rename a section header in a watchlist, preserving its position.',
+    {
+      name: z.string().optional(),
+      list_id: z.number().optional(),
+      from_name: z.string().describe('Current section name (without ### prefix).'),
+      to_name: z.string().describe('New section name.'),
+    },
+    async ({ name, list_id, from_name, to_name }) => {
+      try { return jsonResult(await core.sectionRename({ name, listId: list_id, fromName: from_name, toName: to_name })); }
+      catch (err) { return jsonResult({ success: false, error: err.message }, true); }
+    }
+  );
+
+  server.tool('watchlist_export',
+    'Export a named TradingView watchlist to a .txt file in TV upload format (one symbol per line, ###SECTION headers). Defaults to ~/Downloads/watchlists/{slug}-{date}.txt.',
+    {
+      name: z.string().optional().describe('Watchlist name (case-sensitive).'),
+      list_id: z.number().optional().describe('Numeric watchlist id (takes precedence over name).'),
+      out_path: z.string().optional().describe('Explicit output path (otherwise default Downloads/watchlists/ used).'),
+    },
+    async ({ name, list_id, out_path }) => {
+      try { return jsonResult(await core.exportList({ name, listId: list_id, outPath: out_path })); }
+      catch (err) { return jsonResult({ success: false, error: err.message }, true); }
+    }
+  );
+
+  server.tool('watchlist_upload',
+    'Create a new TradingView watchlist from a local .txt file. Preserves ###SECTION headers. File format: one symbol or section header per line.',
+    {
+      file_path: z.string().describe('Absolute path to the .txt file.'),
+      new_name: z.string().optional().describe('Name for the new watchlist (defaults to file basename).'),
+    },
+    async ({ file_path, new_name }) => {
+      try { return jsonResult(await core.uploadList({ filePath: file_path, newName: new_name })); }
+      catch (err) { return jsonResult({ success: false, error: err.message }, true); }
+    }
+  );
+
+  server.tool('watchlist_diff',
+    'Preview the diff between a local .txt file and a TradingView watchlist without applying changes. Shows to_add, to_remove, and reorder_needed.',
+    {
+      file_path: z.string().describe('Absolute path to the local .txt file.'),
+      name: z.string().optional().describe('Watchlist name (case-sensitive).'),
+      list_id: z.number().optional().describe('Numeric watchlist id (takes precedence over name).'),
+    },
+    async ({ file_path, name, list_id }) => {
+      try { return jsonResult(await core.diffList({ filePath: file_path, name, listId: list_id })); }
+      catch (err) { return jsonResult({ success: false, error: err.message }, true); }
+    }
+  );
+
+  server.tool('watchlist_sync',
+    'Idempotently sync a local .txt file into an existing TradingView watchlist. Applies append → remove → reorder. Safe to re-run.',
+    {
+      file_path: z.string().describe('Absolute path to the local .txt file.'),
+      name: z.string().optional().describe('Watchlist name (case-sensitive).'),
+      list_id: z.number().optional().describe('Numeric watchlist id (takes precedence over name).'),
+    },
+    async ({ file_path, name, list_id }) => {
+      try { return jsonResult(await core.syncList({ filePath: file_path, name, listId: list_id })); }
+      catch (err) { return jsonResult({ success: false, error: err.message }, true); }
+    }
+  );
+
+  server.tool('watchlist_list_all',
+    'Enumerate every named watchlist in the user\'s TradingView account with id, name, symbol count, section count, active flag, and modified date.',
+    {},
+    async () => {
+      try { return jsonResult(await core.listAll()); }
+      catch (err) { return jsonResult({ success: false, error: err.message }, true); }
+    }
+  );
+
+  server.tool('watchlist_switch',
+    'Switch the active TradingView watchlist by name (or list id). Uses TV REST API (no UI automation).',
+    {
+      name: z.string().optional().describe('Name of the watchlist to activate (case-sensitive). Either name or list_id required.'),
+      list_id: z.number().optional().describe('Numeric watchlist id (from watchlist_list_all). Takes precedence over name.'),
+    },
+    async ({ name, list_id }) => {
+      try { return jsonResult(await core.switchTo({ name, listId: list_id })); }
+      catch (err) { return jsonResult({ success: false, error: err.message }, true); }
+    }
+  );
+
+  server.tool('watchlist_create',
+    'Create a new named watchlist in TradingView Desktop. Opens the watchlists dropdown, clicks "Create new list", types the name, and presses Enter. Optionally seeds it with an initial symbol array.',
+    {
+      name: z.string().min(1).describe('Name of the new watchlist (e.g., "AI 2026", "Mag 7")'),
+      symbols: z.array(z.string()).optional().describe('Optional list of symbols to add after creation (e.g., ["AAPL", "MSFT", "NVDA"])'),
+    },
+    async ({ name, symbols }) => {
+      try { return jsonResult(await core.createList({ name, symbols })); }
+      catch (err) {
+        try {
+          const { getClient } = await import('../connection.js');
+          const c = await getClient();
+          await c.Input.dispatchKeyEvent({ type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
+          await c.Input.dispatchKeyEvent({ type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
+        } catch (_) {}
+        return jsonResult({ success: false, error: err.message }, true);
+      }
+    }
+  );
+
+  server.tool('watchlist_remove', 'Remove a symbol from the TradingView watchlist (right-click row → Remove)', {
+    symbol: z.string().describe('Symbol to remove. Accepts bare ticker (AAPL) or full form (NASDAQ:AAPL).'),
+  }, async ({ symbol }) => {
+    try { return jsonResult(await core.remove({ symbol })); }
+    catch (err) {
+      try {
+        const { getClient } = await import('../connection.js');
+        const c = await getClient();
+        await c.Input.dispatchKeyEvent({ type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
+        await c.Input.dispatchKeyEvent({ type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
+      } catch (_) {}
+      return jsonResult({ success: false, error: err.message }, true);
+    }
+  });
 }

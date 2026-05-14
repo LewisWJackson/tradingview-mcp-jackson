@@ -3,6 +3,9 @@
  */
 import { evaluate, evaluateAsync } from '../connection.js';
 import { waitForChartReady } from '../wait.js';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
 const CHART_API = 'window.TradingViewApi._activeChartWidgetWV.value()';
 
@@ -222,4 +225,71 @@ export async function symbolSearch({ query, type }) {
   }));
 
   return { success: true, query, source: 'rest_api', results, count: results.length };
+}
+
+// ---- View save/restore (added 2026-05-13 fleet patch) ----
+const _CORE_DIR = path.dirname(fileURLToPath(import.meta.url));
+const VIEWS_DIR = path.resolve(_CORE_DIR, '..', '..', 'views');
+
+function _viewsDir() {
+  if (!fs.existsSync(VIEWS_DIR)) fs.mkdirSync(VIEWS_DIR, { recursive: true });
+  return VIEWS_DIR;
+}
+
+export async function saveView({ name }) {
+  if (!name) throw new Error('name required');
+  const safe = String(name).replace(/[^a-zA-Z0-9._-]/g, '_');
+  const state = await getState();
+  const visibleRange = await evaluate(`
+    (function() {
+      try {
+        var chart = ${CHART_API};
+        var r = chart.getVisibleRange ? chart.getVisibleRange() : null;
+        return r ? { from: r.from, to: r.to } : null;
+      } catch(e) { return null; }
+    })()
+  `);
+  const payload = {
+    saved_at: new Date().toISOString(),
+    name: safe,
+    symbol: state.symbol,
+    resolution: state.resolution,
+    chartType: state.chartType,
+    studies: state.studies || [],
+    visible_range: visibleRange,
+  };
+  const fp = path.join(_viewsDir(), `${safe}.json`);
+  fs.writeFileSync(fp, JSON.stringify(payload, null, 2));
+  return { success: true, name: safe, file: fp, studies_count: payload.studies.length };
+}
+
+export async function restoreView({ name }) {
+  if (!name) throw new Error('name required');
+  const safe = String(name).replace(/[^a-zA-Z0-9._-]/g, '_');
+  const fp = path.join(_viewsDir(), `${safe}.json`);
+  if (!fs.existsSync(fp)) throw new Error(`View "${safe}" not found at ${fp}`);
+  const v = JSON.parse(fs.readFileSync(fp, 'utf8'));
+  // Set symbol → resolution → type, in order. Studies are NOT auto-added (would need chart_manage_indicator per study; safer to leave to caller).
+  if (v.symbol) await setSymbol({ symbol: v.symbol });
+  if (v.resolution) await setTimeframe({ timeframe: v.resolution });
+  if (v.chartType != null) {
+    try { await setType({ chartType: v.chartType }); } catch (_) {}
+  }
+  return { success: true, restored: { symbol: v.symbol, resolution: v.resolution, chartType: v.chartType },
+           studies_to_add_manually: v.studies, file: fp };
+}
+
+export async function listViews() {
+  const dir = _viewsDir();
+  const files = fs.readdirSync(dir).filter(f => f.endsWith('.json'));
+  return {
+    success: true,
+    count: files.length,
+    views: files.map(f => {
+      try {
+        const v = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8'));
+        return { name: v.name, symbol: v.symbol, resolution: v.resolution, saved_at: v.saved_at, studies: (v.studies || []).length };
+      } catch (_) { return { name: f, error: 'parse failed' }; }
+    }),
+  };
 }
