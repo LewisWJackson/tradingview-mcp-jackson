@@ -8,6 +8,7 @@
  * UI flow because TV's `/create/` REST endpoint hasn't been discovered yet.
  */
 import { evaluate, evaluateAsync, getClient } from '../connection.js';
+import { waitForChartReady } from '../wait.js';
 import * as rest from './_rest.js';
 
 export async function get({ listId } = {}) {
@@ -587,6 +588,171 @@ export async function listAll() {
       created: l.created,
     })),
   };
+}
+
+// --- Pine-aware screener (Phase 4) ---
+
+function evalCondition({ op, value, actual }) {
+  // Numeric coercion — TV stores values as strings
+  const n = parseFloat(String(actual).replace(/[%,$\s]/g, ''));
+  if (Number.isNaN(n)) return { matched: false, reason: 'non-numeric value', actual };
+  switch (op) {
+    case '<':  return { matched: n <  value, actual: n };
+    case '<=': return { matched: n <= value, actual: n };
+    case '>':  return { matched: n >  value, actual: n };
+    case '>=': return { matched: n >= value, actual: n };
+    case '==': return { matched: n === value, actual: n };
+    case '!=': return { matched: n !== value, actual: n };
+    case 'between': {
+      const [lo, hi] = Array.isArray(value) ? value : [null, null];
+      return { matched: lo !== null && hi !== null && n >= lo && n <= hi, actual: n };
+    }
+    default: throw new Error(`Unknown op: ${op}`);
+  }
+}
+
+export async function screen({ name, listId, study, field, op, value, timeframe, max_symbols = 50, per_symbol_timeout_ms = 5000 } = {}) {
+  if (!study || !field || !op || value === undefined) {
+    throw new Error('screen: study + field + op + value required (e.g., study="Relative Strength Index", field="RSI", op="<", value=30)');
+  }
+  const target = await findListOrThrow({ name, listId });
+  const symbols = target.symbols.filter(s => !s.startsWith('###')).slice(0, max_symbols);
+  if (symbols.length === 0) return { success: false, error: 'No symbols in list (after stripping section headers)' };
+
+  // Save current chart state to restore at end
+  const originalState = await evaluate(`
+    (function() {
+      var chart = window.TradingViewApi._activeChartWidgetWV.value();
+      return { symbol: chart.symbol(), timeframe: chart.resolution() };
+    })()
+  `);
+
+  const results = { matched: [], unmatched: [], errors: [] };
+  const studyMatch = (n) => (n || '').toLowerCase().includes(study.toLowerCase());
+
+  for (let i = 0; i < symbols.length; i++) {
+    const sym = symbols[i];
+    try {
+      // Set symbol — TV's setSymbol takes (symbol, opts), not a callback API
+      await evaluate(`
+        (function() {
+          window.TradingViewApi._activeChartWidgetWV.value().setSymbol(${JSON.stringify(sym)}, {});
+        })()
+      `);
+      // Poll chart.symbol() until it changes — direct API signal beats DOM scraping
+      {
+        const bare = sym.includes(':') ? sym.split(':').pop() : sym;
+        const deadline = Date.now() + per_symbol_timeout_ms;
+        while (Date.now() < deadline) {
+          const current = await evaluate(`window.TradingViewApi._activeChartWidgetWV.value().symbol()`);
+          if (current && (current === sym || current.split(':').pop() === bare)) break;
+          await new Promise(r => setTimeout(r, 200));
+        }
+      }
+      // Set timeframe if requested
+      if (timeframe) {
+        await evaluate(`
+          (function() {
+            window.TradingViewApi._activeChartWidgetWV.value().setResolution(${JSON.stringify(timeframe)}, {});
+          })()
+        `);
+        const deadline = Date.now() + 2000;
+        while (Date.now() < deadline) {
+          const cur = await evaluate(`window.TradingViewApi._activeChartWidgetWV.value().resolution()`);
+          if (cur === timeframe) break;
+          await new Promise(r => setTimeout(r, 150));
+        }
+      }
+      // Extra settle for indicators to recompute on the new bar series
+      await new Promise(r => setTimeout(r, 600));
+      // Poll for study to appear + have non-null values
+      const deadline = Date.now() + per_symbol_timeout_ms;
+      let study_values = null;
+      while (Date.now() < deadline) {
+        await new Promise(r => setTimeout(r, 250));
+        const probe = await evaluate(`
+          (function() {
+            var chart = window.TradingViewApi._activeChartWidgetWV.value()._chartWidget;
+            var sources = chart.model().model().dataSources();
+            for (var si = 0; si < sources.length; si++) {
+              var s = sources[si];
+              if (!s.metaInfo) continue;
+              try {
+                var meta = s.metaInfo();
+                var name = meta.description || meta.shortDescription || '';
+                if (!name.toLowerCase().includes(${JSON.stringify(study.toLowerCase())})) continue;
+                var dwv = s.dataWindowView();
+                if (!dwv) continue;
+                var items = dwv.items();
+                if (!items) continue;
+                var values = {};
+                for (var i = 0; i < items.length; i++) {
+                  var item = items[i];
+                  if (item._value && item._value !== '∅' && item._title) values[item._title] = item._value;
+                }
+                if (Object.keys(values).length > 0) return { name: name, values: values };
+              } catch(e) {}
+            }
+            return null;
+          })()
+        `);
+        if (probe && probe.values && (probe.values[field] !== undefined)) { study_values = probe; break; }
+      }
+      if (!study_values) {
+        results.errors.push({ symbol: sym, error: `Study "${study}" not found or field "${field}" missing within ${per_symbol_timeout_ms}ms` });
+        continue;
+      }
+      const actualRaw = study_values.values[field];
+      const result = evalCondition({ op, value, actual: actualRaw });
+      if (result.matched) {
+        results.matched.push({ symbol: sym, [field]: result.actual, study: study_values.name });
+      } else {
+        results.unmatched.push({ symbol: sym, [field]: result.actual ?? actualRaw });
+      }
+    } catch (e) {
+      results.errors.push({ symbol: sym, error: e.message });
+    }
+  }
+
+  // Restore original chart
+  try {
+    if (originalState && originalState.symbol) {
+      await evaluate(`
+        (function() {
+          window.TradingViewApi._activeChartWidgetWV.value().setSymbol(${JSON.stringify(originalState.symbol)}, {});
+        })()
+      `);
+      if (originalState.timeframe) {
+        await evaluate(`
+          (function() {
+            window.TradingViewApi._activeChartWidgetWV.value().setResolution(${JSON.stringify(originalState.timeframe)}, {});
+          })()
+        `);
+      }
+    }
+  } catch (_) {}
+
+  return {
+    success: true,
+    list_name: target.name,
+    list_id: target.id,
+    condition: { study, field, op, value },
+    timeframe: timeframe || 'current',
+    scanned: symbols.length,
+    matched_count: results.matched.length,
+    matched: results.matched.sort((a, b) => (a[field] ?? 0) - (b[field] ?? 0)),
+    unmatched_count: results.unmatched.length,
+    error_count: results.errors.length,
+    errors: results.errors.slice(0, 10),
+    restored_symbol: originalState?.symbol,
+  };
+}
+
+export async function deleteList({ name, listId, confirm } = {}) {
+  if (!confirm) throw new Error('deleteList: pass confirm=true to delete (destructive)');
+  const target = await findListOrThrow({ name, listId });
+  await rest.deleteList(target.id);
+  return { success: true, deleted_id: target.id, deleted_name: target.name };
 }
 
 export async function switchTo({ name, listId } = {}) {

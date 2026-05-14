@@ -100,6 +100,15 @@ export async function findById(id) {
   return all.find(l => l.id === Number(id)) || null;
 }
 
+/** Delete a watchlist by id. Endpoint discovered 2026-05-14:
+ *  DELETE /api/v1/symbols_list/custom/{id}/ → 204 No Content. */
+export async function deleteList(id) {
+  const expr = `fetch('${BASE}/${id}/', { method: 'DELETE', credentials: 'include' })`;
+  const res = await fetchJson(expr);
+  if (!res.ok) throw new Error(`deleteList(${id}): HTTP ${res.status}`);
+  return res.body;
+}
+
 /** Set the active watchlist by id. Endpoint discovered via fetch interceptor 2026-05-13:
  *  POST /api/v1/symbols_list/active/{id}/ (no body required). */
 export async function setActive(id) {

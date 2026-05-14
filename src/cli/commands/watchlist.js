@@ -82,6 +82,27 @@ register('watchlist', {
       description: 'Enumerate every watchlist in the account',
       handler: () => core.listAll(),
     }],
+    ['screen', {
+      description: 'Filter watchlist by indicator. Usage: tv watchlist screen "List Name" --study="Relative Strength Index" --field=RSI --op="<" --value=30 [--max=20]',
+      handler: (opts, positionals) => {
+        if (!positionals[0]) throw new Error('List name required');
+        const value = opts.value !== undefined ? Number(opts.value) : undefined;
+        return core.screen({
+          name: positionals[0],
+          study: opts.study, field: opts.field, op: opts.op,
+          value, timeframe: opts.timeframe,
+          max_symbols: opts.max ? Number(opts.max) : undefined,
+        });
+      },
+    }],
+    ['delete', {
+      description: 'Delete a watchlist (destructive). Usage: tv watchlist delete "List Name" --confirm=true',
+      handler: (opts, positionals) => {
+        if (!positionals[0] && !opts['list-id']) throw new Error('Name or --list-id required');
+        if (opts.confirm !== 'true') throw new Error('Pass --confirm=true to delete (safety gate)');
+        return core.deleteList({ name: positionals[0], listId: opts['list-id'] ? Number(opts['list-id']) : undefined, confirm: true });
+      },
+    }],
     ['switch', {
       description: 'Switch the active watchlist by name. Usage: tv watchlist switch "Crypto Stocks"',
       handler: (opts, positionals) => {

@@ -178,6 +178,38 @@ export function registerWatchlistTools(server) {
     }
   );
 
+  server.tool('watchlist_screen',
+    'Filter a TradingView watchlist by indicator condition. Switches chart to each symbol, reads study values, returns matches. Works with custom Pine indicators (TV native screener can\'t). Slow: ~5-10s per symbol. Restores original chart state after.',
+    {
+      name: z.string().optional().describe('Watchlist name (case-sensitive).'),
+      list_id: z.number().optional().describe('Numeric watchlist id (takes precedence).'),
+      study: z.string().describe('Study name or partial match (e.g., "Relative Strength Index", "MACD", "Bollinger").'),
+      field: z.string().describe('Field within the study (e.g., "RSI", "MACD", "Upper", "Histogram"). Case-sensitive.'),
+      op: z.enum(['<', '<=', '>', '>=', '==', '!=', 'between']).describe('Comparison operator.'),
+      value: z.union([z.number(), z.array(z.number()).length(2)]).describe('Threshold (number) or [low, high] for "between".'),
+      timeframe: z.string().optional().describe('Timeframe override (e.g., "1H", "4H", "D"). Defaults to current chart.'),
+      max_symbols: z.number().optional().describe('Cap symbols scanned (default 50; warning: 500-symbol lists take 40+ min).'),
+      per_symbol_timeout_ms: z.number().optional().describe('Per-symbol timeout in ms (default 5000).'),
+    },
+    async (args) => {
+      try { return jsonResult(await core.screen(args)); }
+      catch (err) { return jsonResult({ success: false, error: err.message }, true); }
+    }
+  );
+
+  server.tool('watchlist_delete',
+    'Delete a TradingView watchlist by name or id. **Destructive** — must pass confirm=true. DELETE /api/v1/symbols_list/custom/{id}/ → 204.',
+    {
+      name: z.string().optional().describe('Watchlist name (case-sensitive).'),
+      list_id: z.number().optional().describe('Numeric watchlist id (takes precedence over name).'),
+      confirm: z.boolean().describe('Must be true. Safety gate against accidental destruction.'),
+    },
+    async ({ name, list_id, confirm }) => {
+      try { return jsonResult(await core.deleteList({ name, listId: list_id, confirm })); }
+      catch (err) { return jsonResult({ success: false, error: err.message }, true); }
+    }
+  );
+
   server.tool('watchlist_switch',
     'Switch the active TradingView watchlist by name (or list id). Uses TV REST API (no UI automation).',
     {
