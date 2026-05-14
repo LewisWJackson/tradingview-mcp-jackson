@@ -178,6 +178,36 @@ export function registerWatchlistTools(server) {
     }
   );
 
+  server.tool('alerts_delete_batch',
+    'Batch-delete one or more TradingView price alerts by alert_id. POST /delete_alerts. Replaces the legacy DOM-based alert_delete for known-id deletion.',
+    {
+      alert_ids: z.array(z.number()).min(1).describe('Array of numeric alert_ids (returned from watchlist_bulk_alert or alert_list).'),
+    },
+    async (args) => {
+      try { return jsonResult(await core.deleteAlertsBatch(args)); }
+      catch (err) { return jsonResult({ success: false, error: err.message }, true); }
+    }
+  );
+
+  server.tool('watchlist_bulk_alert',
+    'Create price-cross alerts for every symbol in a watchlist via TV pricealerts REST. Two threshold modes: absolute (same price for all) or delta_pct (per-symbol % from current). Use dry_run=true to preview without creating.',
+    {
+      name: z.string().optional().describe('Watchlist name.'),
+      list_id: z.number().optional().describe('Watchlist id (takes precedence).'),
+      threshold: z.number().optional().describe('Absolute price threshold (same for all symbols). Mutually exclusive with delta_pct.'),
+      delta_pct: z.number().optional().describe('Per-symbol % delta from current price (e.g., -10 for "drops 10%"). Triggers a quote fetch per symbol.'),
+      condition_type: z.enum(['cross', 'greater_than', 'less_than']).optional().describe('Alert condition. Default cross.'),
+      resolution: z.string().optional().describe('Bar resolution for evaluation (default "1" = 1 minute).'),
+      message_template: z.string().optional().describe('Message template with {symbol}, {condition}, {threshold} placeholders.'),
+      max_alerts: z.number().optional().describe('Cap on alerts created (default 50). TV has plan-tier alert quotas.'),
+      dry_run: z.boolean().optional().describe('Preview without creating. Returns computed thresholds + messages.'),
+    },
+    async (args) => {
+      try { return jsonResult(await core.bulkAlert(args)); }
+      catch (err) { return jsonResult({ success: false, error: err.message }, true); }
+    }
+  );
+
   server.tool('watchlist_screen',
     'Filter a TradingView watchlist by indicator condition. Switches chart to each symbol, reads study values, returns matches. Works with custom Pine indicators (TV native screener can\'t). Slow: ~5-10s per symbol. Restores original chart state after.',
     {

@@ -590,6 +590,101 @@ export async function listAll() {
   };
 }
 
+export async function deleteAlertsBatch({ alert_ids } = {}) {
+  if (!Array.isArray(alert_ids) || alert_ids.length === 0) {
+    throw new Error('deleteAlertsBatch: alert_ids array required');
+  }
+  const resp = await rest.deleteAlerts(alert_ids);
+  return { success: resp && resp.s === 'ok', deleted_count: alert_ids.length, alert_ids, response: resp };
+}
+
+// --- Bulk alerts (Phase 3) ---
+
+export async function bulkAlert({
+  name, listId,
+  threshold, delta_pct,
+  condition_type = 'cross',
+  resolution = '1',
+  message_template = '{symbol} {condition} {threshold}',
+  notification = { popup: true, mobile_push: true, email: false },
+  max_alerts = 50,
+  dry_run = false,
+} = {}) {
+  if (typeof threshold !== 'number' && typeof delta_pct !== 'number') {
+    throw new Error('bulkAlert: either `threshold` (absolute) or `delta_pct` (% from current price) required');
+  }
+  const target = await findListOrThrow({ name, listId });
+  const symbols = target.symbols.filter(s => !s.startsWith('###')).slice(0, max_alerts);
+  if (symbols.length === 0) return { success: false, error: 'No symbols in list' };
+
+  const results = { created: [], failed: [] };
+  for (const sym of symbols) {
+    try {
+      // Compute per-symbol threshold
+      let perSymbolThreshold = threshold;
+      if (typeof delta_pct === 'number') {
+        // Get current price via quote_get-equivalent (read last bar close from chart)
+        // Cheaper than switching chart: use TV's symbol_search to get a current quote
+        const quote = await evaluateAsync(`
+          (async () => {
+            // Fetch a quote from TV's symbol info endpoint
+            const r = await fetch('https://symbol-search.tradingview.com/symbol_search/?text=' + encodeURIComponent(${JSON.stringify(sym.includes(':') ? sym.split(':').pop() : sym)}) + '&exchange=' + ${JSON.stringify(sym.includes(':') ? sym.split(':')[0] : '')} + '&hl=1&lang=en&type=&domain=production', { credentials: 'include' });
+            const arr = await r.json();
+            return Array.isArray(arr) && arr[0] ? arr[0] : null;
+          })()
+        `);
+        if (!quote || !quote.last_price) {
+          results.failed.push({ symbol: sym, error: `Could not fetch current price for delta_pct calculation` });
+          continue;
+        }
+        perSymbolThreshold = Number(quote.last_price) * (1 + delta_pct / 100);
+        perSymbolThreshold = Math.round(perSymbolThreshold * 100) / 100; // 2dp
+      }
+      const conditionWord = condition_type === 'cross' ? 'Crossing'
+        : condition_type === 'greater_than' ? '>'
+        : condition_type === 'less_than' ? '<'
+        : condition_type;
+      const msg = message_template
+        .replace('{symbol}', sym.includes(':') ? sym.split(':').pop() : sym)
+        .replace('{condition}', conditionWord)
+        .replace('{threshold}', String(perSymbolThreshold));
+      if (dry_run) {
+        results.created.push({ symbol: sym, threshold: perSymbolThreshold, message: msg, dry_run: true });
+        continue;
+      }
+      const resp = await rest.createAlert({
+        symbol: sym,
+        threshold: perSymbolThreshold,
+        message: msg,
+        resolution,
+        conditionType: condition_type,
+        notification,
+      });
+      if (resp && resp.s === 'ok' && resp.r && resp.r.alert_id) {
+        results.created.push({ symbol: sym, threshold: perSymbolThreshold, message: msg, alert_id: resp.r.alert_id });
+      } else {
+        results.failed.push({ symbol: sym, error: (resp && resp.errmsg) || 'unknown error', response: resp });
+      }
+      // Pace ~200ms between calls to avoid CDP overload
+      await new Promise(r => setTimeout(r, 200));
+    } catch (e) {
+      results.failed.push({ symbol: sym, error: e.message });
+    }
+  }
+  return {
+    success: results.failed.length === 0,
+    list_name: target.name,
+    list_id: target.id,
+    mode: typeof delta_pct === 'number' ? `delta_pct:${delta_pct}%` : `absolute:${threshold}`,
+    condition_type, resolution,
+    created_count: results.created.length,
+    failed_count: results.failed.length,
+    created: results.created,
+    failed: results.failed.slice(0, 10),
+    dry_run,
+  };
+}
+
 // --- Pine-aware screener (Phase 4) ---
 
 // Module-level serialization gate. Concurrent screen() calls crash CDP

@@ -82,6 +82,22 @@ register('watchlist', {
       description: 'Enumerate every watchlist in the account',
       handler: () => core.listAll(),
     }],
+    ['bulk-alert', {
+      description: 'Create alerts per symbol. Usage: tv watchlist bulk-alert "List" --threshold=100 [--condition=cross|greater_than|less_than] [--max=20] [--dry-run=true]',
+      handler: (opts, positionals) => {
+        if (!positionals[0]) throw new Error('List name required');
+        return core.bulkAlert({
+          name: positionals[0],
+          threshold: opts.threshold !== undefined ? Number(opts.threshold) : undefined,
+          delta_pct: opts['delta-pct'] !== undefined ? Number(opts['delta-pct']) : undefined,
+          condition_type: opts.condition,
+          resolution: opts.resolution,
+          message_template: opts.message,
+          max_alerts: opts.max ? Number(opts.max) : undefined,
+          dry_run: opts['dry-run'] === 'true',
+        });
+      },
+    }],
     ['screen', {
       description: 'Filter watchlist by indicator. Usage: tv watchlist screen "List Name" --study="Relative Strength Index" --field=RSI --op="<" --value=30 [--max=20] [--force-when-hidden=true]',
       handler: (opts, positionals) => {

@@ -121,6 +121,85 @@ export async function setActive(id) {
   return res.body;
 }
 
+/** Create a TradingView price alert. Endpoint discovered 2026-05-14 via fetch hook.
+ *  POST https://pricealerts.tradingview.com/create_alert
+ *
+ *  symbol must be a full "EXCHANGE:TICKER" — wrapped server-side as
+ *  '={"adjustment":"splits","currency-id":"USD","symbol":"<sym>"}'.
+ *
+ *  conditionType: "cross" | "greater_than" | "less_than" etc.
+ *  threshold: numeric price to trigger at.
+ */
+export async function createAlert({ symbol, message, threshold, resolution = '1', conditionType = 'cross', notification = {} }) {
+  if (!symbol) throw new Error('createAlert: symbol required');
+  if (typeof threshold !== 'number') throw new Error('createAlert: numeric threshold required');
+  if (!message) throw new Error('createAlert: message required');
+  // Build the serialized symbol field exactly as TV's UI does
+  const symPayload = `={"adjustment":"splits","currency-id":"USD","symbol":"${symbol}"}`;
+  const payload = {
+    symbol: symPayload,
+    resolution,
+    message,
+    sound_file: 'alert/fired',
+    sound_duration: 0,
+    popup: notification.popup !== false,
+    expiration: null,
+    auto_deactivate: true,
+    email: !!notification.email,
+    sms_over_email: false,
+    mobile_push: notification.mobile_push !== false,
+    // CRITICAL: pricealerts API rejects empty string ("") here — must be null
+    // if not using a webhook. Discovered 2026-05-14: web_hook:"" returns
+    // invalid_request, web_hook:null returns ok.
+    web_hook: notification.web_hook || null,
+    name: null,
+    conditions: [{
+      type: conditionType,
+      frequency: 'on_first_fire',
+      series: [
+        { type: 'barset' },
+        { type: 'value', value: threshold },
+      ],
+      resolution,
+    }],
+    active: true,
+    ignore_warnings: true,
+  };
+  // Stash body on window then read it back in the fetch — avoids string
+  // escape hell and matches TV's UI which fires without Content-Type header
+  // (default text/plain body avoids CORS preflight; pricealerts parses JSON anyway).
+  const bodyStr = JSON.stringify({ payload });
+  await evaluateAsync(`(window.__bulkAlertBody = ${JSON.stringify(bodyStr)}, true)`);
+  const expr = `fetch('https://pricealerts.tradingview.com/create_alert', {
+    method: 'POST',
+    credentials: 'include',
+    body: window.__bulkAlertBody
+  })`;
+  const res = await fetchJson(expr);
+  if (!res.ok) throw new Error(`createAlert(${symbol}): HTTP ${res.status} ${typeof res.body === 'string' ? res.body.slice(0,200) : JSON.stringify(res.body).slice(0,200)}`);
+  return res.body;
+}
+
+/** Delete one or more TradingView price alerts. Endpoint discovered via fetch
+ *  hook 2026-05-14: POST /delete_alerts with body {payload:{alert_ids:[...]}}.
+ *  Note: endpoint is PLURAL — `/delete_alert` and `/remove_alert` both 404. */
+export async function deleteAlerts(alertIds) {
+  const ids = Array.isArray(alertIds) ? alertIds : [alertIds];
+  if (ids.length === 0) throw new Error('deleteAlerts: at least one alert_id required');
+  const body = JSON.stringify({ payload: { alert_ids: ids } });
+  await evaluateAsync(`(window.__delAlertBody = ${JSON.stringify(body)}, true)`);
+  const expr = `fetch('https://pricealerts.tradingview.com/delete_alerts', {
+    method: 'POST', credentials: 'include',
+    body: window.__delAlertBody
+  })`;
+  const res = await fetchJson(expr);
+  if (!res.ok) throw new Error(`deleteAlerts(${ids.join(',')}): HTTP ${res.status}`);
+  return res.body;
+}
+
+// Legacy single-alert alias for backwards compat
+export const deleteAlert = (id) => deleteAlerts([id]);
+
 /** Resolve a symbol via TV's search API; returns canonical "EXCHANGE:SYMBOL" or null. */
 export async function resolveSymbol(query) {
   if (!query || typeof query !== 'string') return null;
