@@ -127,3 +127,65 @@ Claude Code ←→ MCP Server (stdio) ←→ CDP (localhost:9222) ←→ Trading
 ```
 
 Pine graphics path: `study._graphics._primitivesCollection.dwglines.get('lines').get(false)._primitivesDataById`
+
+---
+
+## Trading Bot — Multi-Agent Team (RuFlo)
+
+This project uses a 4-agent team for the trading bot workflow. Agent configs live in `agents/`.
+
+### Agents
+
+| Agent | File | Role |
+|---|---|---|
+| `strategy-researcher` | `agents/strategy-researcher.yaml` | Finds + documents new strategies |
+| `backtester-agent` | `agents/backtester-agent.yaml` | Implements + runs backtests |
+| `risk-reviewer` | `agents/risk-reviewer.yaml` | Gates strategies against risk rules |
+| `trade-monitor` | `agents/trade-monitor.yaml` | Watches live bot health |
+
+### Orchestrator
+
+```bash
+python orchestrate.py backtest          # run backtester_v3 on current config
+python orchestrate.py multi             # compare all 5 strategies (multi_backtest.py)
+python orchestrate.py monitor           # health check on bot_v3 (log + DB)
+python orchestrate.py full-pipeline     # backtest → risk review → report
+```
+
+Reports are saved to `reports/` as timestamped JSON files.
+
+### Key Files
+
+| File | Purpose |
+|---|---|
+| `bot_v3.py` | Live trading bot (Bitvavo, BB breakout, ATR trailing stop) |
+| `backtester_v3.py` | Single-strategy backtest (bot_v3 CFG) |
+| `multi_backtest.py` | 5-strategy comparison: Bot v3, SuperTrend, Squeeze, Triple EMA, StochRSI |
+| `orchestrate.py` | Multi-agent pipeline coordinator |
+| `.env` | Secrets + PAPER_TRADE flag (never commit) |
+| `bot_v3.db` | SQLite: positions + trades tables |
+| `bot_v3.log` | Live bot log |
+
+### Bot v3 Strategy Summary
+
+- **Timeframe**: 1H candles via Bitvavo REST
+- **Entry**: Price breaks above BB(24, 2.5) upper band AND above SMA336 AND above EMA200, RSI < 75, volume > 1.03× MA
+- **Exit**: ATR(24) × 7.0 trailing stop (ratchets up, never down)
+- **Sizing**: 68% capital, +65% profit reinvestment, ATR/drawdown scaling
+- **Risk**: 15% DD warning, 23% DD pause, 4-bar cooldown
+- **Backtest results** (3yr ETH/USDC, realistic entry at next-bar open):
+  - Bot v3: **+1.4%** (won vs all 4 alternatives which all lost money)
+  - Best in hostile 2023-2026 range/bear market due to strict 3-condition trend gate
+
+### Bitvavo API Notes
+
+- Valid intervals: `1m 5m 15m 30m 1h 2h 4h 6h 8h 12h 1d` (NO weekly)
+- Weekly candles: fetch 1d, then `df.resample("W").agg({...}).dropna()`
+- Max candle limit: 1440 bars per request
+- Fee: 0.25% per trade
+
+### Windows Compatibility
+
+- UTF-8 stdout: `sys.stdout.reconfigure(encoding="utf-8", errors="replace")` before `logging.basicConfig`
+- PID lock: uses `os.kill(pid, 0)` (no `fcntl` — Windows-safe)
+- Paths: use `pathlib.Path` throughout
