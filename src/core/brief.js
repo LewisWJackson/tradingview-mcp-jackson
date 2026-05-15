@@ -20,6 +20,7 @@ import { getState, setSymbol } from './chart.js';
 import { getStudyValues, getQuote, getPineLines, getPineLabels } from './data.js';
 import { getNews } from './news.js';
 import { batchRun } from './batch.js';
+import { screen as watchlistScreen } from './watchlist.js';
 
 const MACRO_SYMBOLS = ['AMEX:SPY', 'NASDAQ:QQQ', 'AMEX:IWM', 'TVC:VIX', 'TVC:DXY', 'TVC:US10Y'];
 
@@ -96,6 +97,10 @@ export async function traderBrief({
   include_macro = true,
   include_pine_levels = true,
   restore_after = true,
+  watchlist = null,
+  watchlist_max = 50,
+  oversold_threshold = 35,
+  overextended_threshold = 70,
 } = {}) {
   // 1. Capture original state
   const original = await getState();
@@ -142,8 +147,40 @@ export async function traderBrief({
     } catch (e) { macro = { error: e.message }; }
   }
 
-  // 6. Restore original chart
-  if (restore_after && chartChanged && original?.symbol) {
+  // 6. Optional watchlist scans — oversold + overextended on the named list
+  let watchlist_scans = null;
+  if (watchlist) {
+    watchlist_scans = { name: watchlist, oversold: null, overextended: null };
+    try {
+      const oversold = await watchlistScreen({
+        name: watchlist,
+        study: 'Relative Strength Index',
+        field: 'RSI',
+        op: '<',
+        value: oversold_threshold,
+        max_symbols: watchlist_max,
+      });
+      watchlist_scans.oversold = oversold.success
+        ? { threshold: `RSI < ${oversold_threshold}`, matched_count: oversold.matched_count, matched: oversold.matched, scanned: oversold.scanned }
+        : { error: oversold.error };
+    } catch (e) { watchlist_scans.oversold = { error: e.message }; }
+    try {
+      const overext = await watchlistScreen({
+        name: watchlist,
+        study: 'Relative Strength Index',
+        field: 'RSI',
+        op: '>',
+        value: overextended_threshold,
+        max_symbols: watchlist_max,
+      });
+      watchlist_scans.overextended = overext.success
+        ? { threshold: `RSI > ${overextended_threshold}`, matched_count: overext.matched_count, matched: overext.matched, scanned: overext.scanned }
+        : { error: overext.error };
+    } catch (e) { watchlist_scans.overextended = { error: e.message }; }
+  }
+
+  // 7. Restore original chart
+  if (restore_after && (chartChanged || include_macro || watchlist) && original?.symbol) {
     try { await setSymbol({ symbol: original.symbol }); } catch (_) {}
   }
 
@@ -177,6 +214,7 @@ export async function traderBrief({
     } : null,
     news: news?.items?.slice(0, news_count) || [],
     macro,
-    restored: restore_after && chartChanged,
+    watchlist_scans,
+    restored: restore_after && (chartChanged || include_macro || !!watchlist),
   };
 }
