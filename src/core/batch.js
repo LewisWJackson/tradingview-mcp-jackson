@@ -44,7 +44,7 @@ export async function batchRun({ symbols, timeframes, action, delay_ms, ohlcv_co
           const filePath = join(SCREENSHOT_DIR, fname);
           writeFileSync(filePath, Buffer.from(data, 'base64'));
           actionResult = { file_path: filePath };
-        } else if (action === 'get_ohlcv' && apiPath) {
+        } else if (action === 'get_ohlcv') {
           const limit = Math.min(ohlcv_count || 100, 500);
           // Read directly from the bars series — exportData() rejects on partially-loaded charts.
           actionResult = await evaluate(`
@@ -71,11 +71,16 @@ export async function batchRun({ symbols, timeframes, action, delay_ms, ohlcv_co
               } catch (e) { return { error: e.message }; }
             })()
           `);
-        } else if (action === 'quote_get' && apiPath) {
+        } else if (action === 'quote_get') {
+          // Use the hardcoded path directly — apiPath may have been undefined
+          // at batch start if TV wasn't fully loaded yet, but by the time we
+          // reach this loop iteration the chart is settled (waitForChartReady
+          // returned).
+          const apiPathInline = apiPath || 'window.TradingViewApi._activeChartWidgetWV.value()';
           actionResult = await evaluate(`
             (function() {
               try {
-                var api = ${apiPath};
+                var api = ${apiPathInline};
                 var bars = window.TradingViewApi._activeChartWidgetWV.value()._chartWidget.model().mainSeries().bars();
                 var ext = {};
                 try { ext = api.symbolExt() || {}; } catch(e) {}

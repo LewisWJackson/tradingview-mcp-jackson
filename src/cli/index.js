@@ -28,6 +28,7 @@ import "./commands/stream.js";
 import "./commands/morning.js";
 import "./commands/view.js";
 import "./commands/news.js";
+import "./commands/brief.js";
 
 // Run
 import { run } from "./router.js";
