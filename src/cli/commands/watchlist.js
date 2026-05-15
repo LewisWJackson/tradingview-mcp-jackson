@@ -8,6 +8,10 @@ register('watchlist', {
       description: 'Get watchlist symbols (defaults to active list; --list-id=N for specific)',
       handler: (opts) => core.get({ listId: opts['list-id'] ? Number(opts['list-id']) : undefined }),
     }],
+    ['export-all', {
+      description: 'Dump every named watchlist to vault. Usage: tv watchlist export-all [--out=/path]',
+      handler: (opts) => core.exportAll({ outDir: opts.out }),
+    }],
     ['export', {
       description: 'Dump a named list to .txt. Usage: tv watchlist export "Crypto Stocks" [--out=path]',
       handler: (opts, positionals) => {

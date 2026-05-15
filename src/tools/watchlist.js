@@ -118,6 +118,17 @@ export function registerWatchlistTools(server) {
     }
   );
 
+  server.tool('watchlist_export_all',
+    'Dump every named TradingView watchlist to .txt files in one directory + write an index.md. Defaults to ~/virtuoso-vault/04-Trading/Watchlists/<YYYY-MM-DD>/. Use for disaster-recovery backup + audit trail.',
+    {
+      out_dir: z.string().optional().describe('Explicit output directory (otherwise vault default).'),
+    },
+    async ({ out_dir }) => {
+      try { return jsonResult(await core.exportAll({ outDir: out_dir })); }
+      catch (err) { return jsonResult({ success: false, error: err.message }, true); }
+    }
+  );
+
   server.tool('watchlist_export',
     'Export a named TradingView watchlist to a .txt file in TV upload format (one symbol per line, ###SECTION headers). Defaults to ~/Downloads/watchlists/{slug}-{date}.txt.',
     {

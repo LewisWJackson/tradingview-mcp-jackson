@@ -470,6 +470,67 @@ export async function exportList({ name, listId, outPath } = {}) {
   };
 }
 
+export async function exportAll({ outDir } = {}) {
+  // Bulk-dump every named watchlist to .txt in one go. Default destination
+  // is the vault so backups inherit Syncthing replication + Obsidian
+  // browsing. Returns a manifest of files written.
+  const fs = await import('fs');
+  const path = await import('path');
+  const os = await import('os');
+  const date = new Date().toISOString().slice(0, 10);
+  const defaultDir = path.join(os.homedir(), 'virtuoso-vault', '04-Trading', 'Watchlists', date);
+  const targetDir = outDir || defaultDir;
+  fs.mkdirSync(targetDir, { recursive: true });
+
+  const all = await rest.listAll();
+  const manifest = [];
+  for (const list of all) {
+    try {
+      const safeName = slugify(list.name) || `list-${list.id}`;
+      const file = path.join(targetDir, `${safeName}.txt`);
+      fs.writeFileSync(file, list.symbols.join('\n') + '\n');
+      manifest.push({
+        id: list.id,
+        name: list.name,
+        symbol_count: list.symbols.length,
+        section_count: list.symbols.filter(s => s.startsWith('###')).length,
+        active: !!list.active,
+        modified: list.modified,
+        file,
+      });
+    } catch (e) {
+      manifest.push({ id: list.id, name: list.name, error: e.message });
+    }
+  }
+  // Write an index.md alongside for quick browsing in Obsidian
+  const indexLines = [
+    `---`, `title: Watchlist Backup ${date}`, `created: ${date}`, `tags: [auspex, watchlists, backup]`, `---`,
+    ``, `# Watchlist Backup — ${date}`, ``,
+    `> Exported ${manifest.length} watchlists from TradingView Desktop via REST. Source of truth: TV account; this folder is a snapshot for disaster recovery + audit trail. Re-run \`tv watchlist export-all\` to refresh.`, ``,
+    `| List | Symbols | Sections | Modified |`,
+    `|---|---|---|---|`,
+  ];
+  for (const m of manifest) {
+    if (m.error) {
+      indexLines.push(`| ${m.name} | – | – | ❌ ${m.error} |`);
+    } else {
+      const link = path.basename(m.file);
+      indexLines.push(`| [[${date}/${link.replace('.txt','')}\\|${m.name}]]${m.active ? ' ⭐' : ''} | ${m.symbol_count} | ${m.section_count} | ${m.modified?.slice(0,10) || '–'} |`);
+    }
+  }
+  const indexFile = path.join(targetDir, 'index.md');
+  fs.writeFileSync(indexFile, indexLines.join('\n') + '\n');
+
+  return {
+    success: manifest.every(m => !m.error),
+    list_count: all.length,
+    out_dir: targetDir,
+    total_symbols: manifest.reduce((s, m) => s + (m.symbol_count || 0), 0),
+    manifest,
+    index_file: indexFile,
+  };
+}
+
 export async function uploadList({ filePath, newName } = {}) {
   if (!filePath) throw new Error('uploadList: filePath required');
   const fs = await import('fs');
