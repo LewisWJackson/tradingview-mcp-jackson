@@ -1,5 +1,6 @@
 import CDP from 'chrome-remote-interface';
 import { Mutex } from 'async-mutex';
+import { trace } from './tracer.js';
 
 let client = null;
 let targetInfo = null;
@@ -114,6 +115,7 @@ export async function getTargetInfo() {
 }
 
 export async function evaluate(expression, opts = {}) {
+  const span = trace.start('evaluate', expression);
   const c = await getClient();
   const result = await c.Runtime.evaluate({
     expression,
@@ -125,8 +127,10 @@ export async function evaluate(expression, opts = {}) {
     const msg = result.exceptionDetails.exception?.description
       || result.exceptionDetails.text
       || 'Unknown evaluation error';
+    span.error(msg);
     throw new Error(`JS evaluation error: ${msg}`);
   }
+  span.end();
   return result.result?.value;
 }
 
@@ -149,7 +153,18 @@ export async function evaluateAsync(expression) {
  * @returns {Promise<*>} - Same return shape as evaluate().
  */
 export async function evaluateWrite(expression, opts = {}) {
-  return writeMutex.runExclusive(() => evaluate(expression, opts));
+  const span = trace.startWrite(expression);
+  return writeMutex.runExclusive(async () => {
+    span.acquired();
+    try {
+      const r = await evaluate(expression, opts);
+      span.released();
+      return r;
+    } catch (e) {
+      span.error(String(e.message || e));
+      throw e;
+    }
+  });
 }
 
 /**
@@ -167,7 +182,18 @@ export async function evaluateWrite(expression, opts = {}) {
  * @returns {Promise<*>}
  */
 export async function withWriteLock(fn) {
-  return writeMutex.runExclusive(() => fn(evaluate));
+  const span = trace.startSection();
+  return writeMutex.runExclusive(async () => {
+    span.acquired();
+    try {
+      const r = await fn(evaluate);
+      span.released();
+      return r;
+    } catch (e) {
+      span.error(String(e.message || e));
+      throw e;
+    }
+  });
 }
 
 export async function disconnect() {

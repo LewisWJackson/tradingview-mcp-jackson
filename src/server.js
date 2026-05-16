@@ -1,5 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { withToolName } from "./tracer.js";
 import { registerHealthTools } from "./tools/health.js";
 import { registerChartTools } from "./tools/chart.js";
 import { registerPineTools } from "./tools/pine.js";
@@ -70,6 +71,20 @@ CONTEXT MANAGEMENT:
 - Call chart_get_state ONCE at start, reuse entity IDs`,
   },
 );
+
+// Tracer hook: wrap server.tool so every registered handler runs inside
+// the tracer's AsyncLocalStorage context. When MCP_TRACE_FILE is unset
+// this is a no-op (withToolName returns the handler unchanged) — zero
+// overhead. When tracing is on, every evaluate/evaluateWrite inside the
+// handler picks up the originating MCP tool name automatically.
+const _origTool = server.tool.bind(server);
+server.tool = function (name, ...rest) {
+  const handlerIdx = rest.findIndex((x) => typeof x === "function");
+  if (handlerIdx >= 0) {
+    rest[handlerIdx] = withToolName(name, rest[handlerIdx]);
+  }
+  return _origTool(name, ...rest);
+};
 
 // Register all tool groups
 registerHealthTools(server);
