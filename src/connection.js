@@ -1,7 +1,36 @@
 import CDP from 'chrome-remote-interface';
+import { Mutex } from 'async-mutex';
 
 let client = null;
 let targetInfo = null;
+
+// Write-tool serialization mutex.
+//
+// Why: stdio MCP and Streamable HTTP both support concurrent in-flight
+// requests; the MCP SDK dispatches handlers as async tasks. CDP itself
+// supports concurrent commands (response matching by id), so two
+// evaluate() calls reach Chrome on the same connection and Chrome's
+// single JS thread runs them in arrival order. For READ tools that's
+// fine. For WRITE tools (chart_set_symbol, chart_set_timeframe,
+// chart_manage_indicator, draw_shape, etc.) interleaving can leave the
+// page in an inconsistent state — e.g. two rapid chart_set_symbol calls
+// from different clients can race on the symbol-load lifecycle and the
+// "winner" depends on Chrome's microtask scheduling rather than arrival
+// order.
+//
+// Solution: evaluateWrite() runs inside a process-wide async mutex.
+// Concurrent writes serialize; reads stay unblocked. The classification
+// is per-handler (see src/core/<module>.js) — handlers calling
+// state-mutating JS expressions use evaluateWrite(); read-only handlers
+// stay on evaluate().
+//
+// Per-instance scope: one MCP server process = one mutex. If you run
+// multiple MCP processes against the same Chrome (legacy stdio
+// per-consumer pattern), the mutex does NOT cross processes — each MCP
+// has its own. The recommended deployment is one MCP process serving
+// multiple consumers via Streamable HTTP, where the mutex covers all
+// callers.
+const writeMutex = new Mutex();
 const CDP_HOST = 'localhost';
 const CDP_PORT = 9222;
 const MAX_RETRIES = 5;
@@ -103,6 +132,42 @@ export async function evaluate(expression, opts = {}) {
 
 export async function evaluateAsync(expression) {
   return evaluate(expression, { awaitPromise: true });
+}
+
+/**
+ * Run an evaluate() under the process-wide write mutex.
+ *
+ * Use this for any handler whose JS expression MUTATES chart/page state
+ * — chart_set_*, indicator add/remove, draw_*, alert_create/delete,
+ * pane_set_*, tab_*, pine_set_source, pine_smart_compile, replay_*,
+ * batch_run when it contains write subtasks.
+ *
+ * Read-only handlers stay on evaluate() — no contention, no overhead.
+ *
+ * @param {string} expression - JS expression to evaluate on the page.
+ * @param {object} [opts] - Same options as evaluate().
+ * @returns {Promise<*>} - Same return shape as evaluate().
+ */
+export async function evaluateWrite(expression, opts = {}) {
+  return writeMutex.runExclusive(() => evaluate(expression, opts));
+}
+
+/**
+ * Run a multi-step write sequence (multiple evaluate() calls) atomically
+ * under the write mutex. Use this when a single logical operation issues
+ * 2+ JS evaluations that must NOT interleave with another writer's
+ * sequence — e.g. chart_manage_indicator captures the before-snapshot,
+ * runs the add/remove, then captures the after-snapshot.
+ *
+ * The callback receives the unlocked evaluate() so it can run multiple
+ * reads/writes inside the critical section without re-locking.
+ *
+ * @param {function((string, object?) => Promise<*>): Promise<*>} fn
+ *   Async callback that receives evaluate() and returns its result.
+ * @returns {Promise<*>}
+ */
+export async function withWriteLock(fn) {
+  return writeMutex.runExclusive(() => fn(evaluate));
 }
 
 export async function disconnect() {

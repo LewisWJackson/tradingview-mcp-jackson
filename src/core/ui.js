@@ -1,11 +1,15 @@
 /**
  * Core UI automation logic.
  */
-import { evaluate, evaluateAsync, getClient } from '../connection.js';
+import { evaluate, evaluateAsync, evaluateWrite, withWriteLock, getClient } from '../connection.js';
+
+async function evaluateAsyncWrite(expression) {
+  return evaluateWrite(expression, { awaitPromise: true });
+}
 
 export async function click({ by, value }) {
   const escaped = JSON.stringify(value);
-  const result = await evaluate(`
+  const result = await evaluateWrite(`
     (function() {
       var by = ${JSON.stringify(by)};
       var value = ${escaped};
@@ -32,7 +36,7 @@ export async function openPanel({ panel, action }) {
   const isBottomPanel = panel === 'pine-editor' || panel === 'strategy-tester';
   if (isBottomPanel) {
     const widgetName = panel === 'pine-editor' ? 'pine-editor' : 'backtesting';
-    const result = await evaluate(`
+    const result = await evaluateWrite(`
       (function() {
         var bwb = window.TradingView && window.TradingView.bottomWidgetBar;
         if (!bwb) return { error: 'bottomWidgetBar not available' };
@@ -64,7 +68,7 @@ export async function openPanel({ panel, action }) {
       'trading': { dataName: 'trading-button', ariaLabel: 'Trading Panel' },
     };
     const sel = selectorMap[panel];
-    const result = await evaluate(`
+    const result = await evaluateWrite(`
       (function() {
         var dataName = ${JSON.stringify(sel.dataName)};
         var ariaLabel = ${JSON.stringify(sel.ariaLabel)};
@@ -89,7 +93,7 @@ export async function openPanel({ panel, action }) {
 }
 
 export async function fullscreen() {
-  const result = await evaluate(`
+  const result = await evaluateWrite(`
     (function() {
       var btn = document.querySelector('[data-name="header-toolbar-fullscreen"]');
       if (!btn) return { found: false };
@@ -119,7 +123,11 @@ export async function layoutList() {
 
 export async function layoutSwitch({ name }) {
   const escaped = JSON.stringify(name);
-  const result = await evaluateAsync(`
+  // Layout switch + dialog dismissal is multi-step. Lock the whole
+  // sequence so a concurrent layoutSwitch can't race on the unsaved-
+  // changes dialog.
+  return withWriteLock(async (evalInside) => {
+  const result = await evalInside(`
     new Promise(function(resolve) {
       try {
         var target = ${escaped};
@@ -137,12 +145,12 @@ export async function layoutSwitch({ name }) {
         setTimeout(function() { resolve({success: false, error: 'getSavedCharts timed out', source: 'internal_api'}); }, 5000);
       } catch(e) { resolve({success: false, error: e.message, source: 'internal_api'}); }
     })
-  `);
+  `, { awaitPromise: true });
   if (!result?.success) throw new Error(result?.error || 'Unknown error switching layout');
 
   // Handle "unsaved changes" confirmation dialog
   await new Promise(r => setTimeout(r, 500));
-  const dismissed = await evaluate(`
+  const dismissed = await evalInside(`
     (function() {
       var btns = document.querySelectorAll('button');
       for (var i = 0; i < btns.length; i++) {
@@ -158,9 +166,11 @@ export async function layoutSwitch({ name }) {
 
   if (dismissed) await new Promise(r => setTimeout(r, 1000));
   return { success: true, layout: result.name || name, layout_id: result.id, source: result.source, action: 'switched', unsaved_dialog_dismissed: dismissed };
+  });  // end withWriteLock
 }
 
 export async function keyboard({ key, modifiers }) {
+  return withWriteLock(async () => {
   const c = await getClient();
   let mod = 0;
   if (modifiers) {
@@ -182,16 +192,20 @@ export async function keyboard({ key, modifiers }) {
   await c.Input.dispatchKeyEvent({ type: 'keyDown', modifiers: mod, key, code: mapped.code, windowsVirtualKeyCode: mapped.vk });
   await c.Input.dispatchKeyEvent({ type: 'keyUp', key, code: mapped.code });
   return { success: true, key, modifiers: modifiers || [] };
+  });  // end withWriteLock
 }
 
 export async function typeText({ text }) {
+  return withWriteLock(async () => {
   const c = await getClient();
   await c.Input.insertText({ text });
   return { success: true, typed: text.substring(0, 100), length: text.length };
+  });
 }
 
 export async function hover({ by, value }) {
-  const coords = await evaluate(`
+  return withWriteLock(async (evalInside) => {
+  const coords = await evalInside(`
     (function() {
       var by = ${JSON.stringify(by)};
       var value = ${JSON.stringify(value)};
@@ -214,12 +228,14 @@ export async function hover({ by, value }) {
   const c = await getClient();
   await c.Input.dispatchMouseEvent({ type: 'mouseMoved', x: coords.x, y: coords.y });
   return { success: true, hovered: { by, value, tag: coords.tag, x: coords.x, y: coords.y } };
+  });  // end withWriteLock
 }
 
 export async function scroll({ direction, amount }) {
+  return withWriteLock(async (evalInside) => {
   const c = await getClient();
   const px = amount || 300;
-  const center = await evaluate(`
+  const center = await evalInside(`
     (function() {
       var el = document.querySelector('[data-name="pane-canvas"]') || document.querySelector('[class*="chart-container"]') || document.querySelector('canvas');
       if (!el) return { x: window.innerWidth / 2, y: window.innerHeight / 2 };
@@ -232,9 +248,11 @@ export async function scroll({ direction, amount }) {
   else if (direction === 'left') deltaX = -px; else if (direction === 'right') deltaX = px;
   await c.Input.dispatchMouseEvent({ type: 'mouseWheel', x: center.x, y: center.y, deltaX, deltaY });
   return { success: true, direction, amount: px };
+  });  // end withWriteLock
 }
 
 export async function mouseClick({ x, y, button, double_click }) {
+  return withWriteLock(async () => {
   const c = await getClient();
   const btn = button === 'right' ? 'right' : button === 'middle' ? 'middle' : 'left';
   const btnNum = btn === 'right' ? 2 : btn === 'middle' ? 1 : 0;
@@ -247,6 +265,7 @@ export async function mouseClick({ x, y, button, double_click }) {
     await c.Input.dispatchMouseEvent({ type: 'mouseReleased', x, y, button: btn });
   }
   return { success: true, x, y, button: btn, double_click: !!double_click };
+  });  // end withWriteLock
 }
 
 export async function findElement({ query, strategy }) {
@@ -288,6 +307,7 @@ export async function findElement({ query, strategy }) {
 }
 
 export async function uiEvaluate({ expression }) {
-  const result = await evaluate(expression);
+  // Arbitrary user-supplied JS — could be a write. Lock for safety.
+  const result = await evaluateWrite(expression);
   return { success: true, result };
 }

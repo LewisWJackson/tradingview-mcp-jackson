@@ -3,7 +3,11 @@
  * All functions accept plain options objects and return plain JS objects.
  * They throw on error (callers catch and format).
  */
-import { evaluate, evaluateAsync, getClient } from '../connection.js';
+import { evaluate, evaluateAsync, evaluateWrite, withWriteLock, getClient } from '../connection.js';
+
+async function evaluateAsyncWrite(expression) {
+  return evaluateWrite(expression, { awaitPromise: true });
+}
 
 // ── Monaco finder (injected into TV page) ──
 const FIND_MONACO = `
@@ -268,7 +272,7 @@ export async function setSource({ source }) {
   if (!editorReady) throw new Error('Could not open Pine Editor.');
 
   const escaped = JSON.stringify(source);
-  const set = await evaluate(`
+  const set = await evaluateWrite(`
     (function() {
       var m = ${FIND_MONACO};
       if (!m) return false;
@@ -285,7 +289,7 @@ export async function compile() {
   const editorReady = await ensurePineEditorOpen();
   if (!editorReady) throw new Error('Could not open Pine Editor.');
 
-  const clicked = await evaluate(`
+  const clicked = await evaluateWrite(`
     (function() {
       var btns = document.querySelectorAll('button');
       var fallback = null;
@@ -348,13 +352,16 @@ export async function save() {
   const editorReady = await ensurePineEditorOpen();
   if (!editorReady) throw new Error('Could not open Pine Editor.');
 
+  // Multi-step write: Ctrl+S keystrokes + dialog handling. Lock the
+  // whole thing so a concurrent save can't steal the dialog focus.
+  return withWriteLock(async (evalInside) => {
   const c = await getClient();
   await c.Input.dispatchKeyEvent({ type: 'keyDown', modifiers: 2, key: 's', code: 'KeyS', windowsVirtualKeyCode: 83 });
   await c.Input.dispatchKeyEvent({ type: 'keyUp', key: 's', code: 'KeyS' });
   await new Promise(r => setTimeout(r, 800));
 
   // Handle "Save Script" name dialog that appears for new/unsaved scripts
-  const dialogHandled = await evaluate(`
+  const dialogHandled = await evalInside(`
     (function() {
       var saveBtn = null;
       var btns = document.querySelectorAll('button');
@@ -374,6 +381,7 @@ export async function save() {
   if (dialogHandled) await new Promise(r => setTimeout(r, 500));
 
   return { success: true, action: dialogHandled ? 'saved_with_dialog' : 'Ctrl+S_dispatched' };
+  });  // end withWriteLock
 }
 
 export async function getConsole() {
@@ -430,7 +438,11 @@ export async function smartCompile() {
   const editorReady = await ensurePineEditorOpen();
   if (!editorReady) throw new Error('Could not open Pine Editor.');
 
-  const studiesBefore = await evaluate(`
+  // Multi-step write: before snapshot → click compile → wait → after
+  // snapshot + errors. Lock the whole sequence so concurrent compiles
+  // can't race on the studies-count diff.
+  return withWriteLock(async (evalInside) => {
+  const studiesBefore = await evalInside(`
     (function() {
       try {
         var chart = window.TradingViewApi._activeChartWidgetWV.value();
@@ -440,7 +452,7 @@ export async function smartCompile() {
     })()
   `);
 
-  const buttonClicked = await evaluate(`
+  const buttonClicked = await evalInside(`
     (function() {
       var btns = document.querySelectorAll('button');
       var addBtn = null;
@@ -471,7 +483,7 @@ export async function smartCompile() {
 
   await new Promise(r => setTimeout(r, 2500));
 
-  const errors = await evaluate(`
+  const errors = await evalInside(`
     (function() {
       var m = ${FIND_MONACO};
       if (!m) return [];
@@ -484,7 +496,7 @@ export async function smartCompile() {
     })()
   `);
 
-  const studiesAfter = await evaluate(`
+  const studiesAfter = await evalInside(`
     (function() {
       try {
         var chart = window.TradingViewApi._activeChartWidgetWV.value();
@@ -503,6 +515,7 @@ export async function smartCompile() {
     errors: errors || [],
     study_added: studyAdded,
   };
+  });  // end withWriteLock
 }
 
 export async function newScript({ type }) {
@@ -520,7 +533,7 @@ export async function newScript({ type }) {
 
   // Simply set the source to a new template — this is the most reliable approach
   const escaped = JSON.stringify(template);
-  const set = await evaluate(`
+  const set = await evaluateWrite(`
     (function() {
       var m = ${FIND_MONACO};
       if (!m) return false;
@@ -540,7 +553,7 @@ export async function openScript({ name }) {
 
   const escapedName = JSON.stringify(name.toLowerCase());
 
-  const result = await evaluateAsync(`
+  const result = await evaluateAsyncWrite(`
     (function() {
       var target = ${escapedName};
       return fetch('https://pine-facade.tradingview.com/pine-facade/list/?filter=saved', { credentials: 'include' })

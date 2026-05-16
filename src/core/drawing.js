@@ -1,7 +1,7 @@
 /**
  * Core drawing logic.
  */
-import { evaluate, getChartApi } from '../connection.js';
+import { evaluate, evaluateWrite, withWriteLock, getChartApi } from '../connection.js';
 
 export async function drawShape({ shape, point, point2, overrides: overridesRaw, text }) {
   const overrides = overridesRaw ? (typeof overridesRaw === 'string' ? JSON.parse(overridesRaw) : overridesRaw) : {};
@@ -9,29 +9,32 @@ export async function drawShape({ shape, point, point2, overrides: overridesRaw,
   const overridesStr = JSON.stringify(overrides || {});
   const textStr = text ? JSON.stringify(text) : '""';
 
-  const before = await evaluate(`${apiPath}.getAllShapes().map(function(s) { return s.id; })`);
+  // Multi-step write — before/after snapshot must be in the same
+  // critical section so concurrent draws don't corrupt the newId diff.
+  return withWriteLock(async (evalInside) => {
+    const before = await evalInside(`${apiPath}.getAllShapes().map(function(s) { return s.id; })`);
 
-  if (point2) {
-    await evaluate(`
-      ${apiPath}.createMultipointShape(
-        [{ time: ${point.time}, price: ${point.price} }, { time: ${point2.time}, price: ${point2.price} }],
-        { shape: '${shape}', overrides: ${overridesStr}, text: ${textStr} }
-      )
-    `);
-  } else {
-    await evaluate(`
-      ${apiPath}.createShape(
-        { time: ${point.time}, price: ${point.price} },
-        { shape: '${shape}', overrides: ${overridesStr}, text: ${textStr} }
-      )
-    `);
-  }
+    if (point2) {
+      await evalInside(`
+        ${apiPath}.createMultipointShape(
+          [{ time: ${point.time}, price: ${point.price} }, { time: ${point2.time}, price: ${point2.price} }],
+          { shape: '${shape}', overrides: ${overridesStr}, text: ${textStr} }
+        )
+      `);
+    } else {
+      await evalInside(`
+        ${apiPath}.createShape(
+          { time: ${point.time}, price: ${point.price} },
+          { shape: '${shape}', overrides: ${overridesStr}, text: ${textStr} }
+        )
+      `);
+    }
 
-  await new Promise(r => setTimeout(r, 200));
-  const after = await evaluate(`${apiPath}.getAllShapes().map(function(s) { return s.id; })`);
-  const newId = (after || []).find(id => !(before || []).includes(id)) || null;
-  const result = { entity_id: newId };
-  return { success: true, shape, entity_id: result?.entity_id };
+    await new Promise(r => setTimeout(r, 200));
+    const after = await evalInside(`${apiPath}.getAllShapes().map(function(s) { return s.id; })`);
+    const newId = (after || []).find(id => !(before || []).includes(id)) || null;
+    return { success: true, shape, entity_id: newId };
+  });
 }
 
 export async function listDrawings() {
@@ -77,7 +80,7 @@ export async function getProperties({ entity_id }) {
 
 export async function removeOne({ entity_id }) {
   const apiPath = await getChartApi();
-  const result = await evaluate(`
+  const result = await evaluateWrite(`
     (function() {
       var api = ${apiPath};
       var eid = '${entity_id}';
@@ -98,6 +101,6 @@ export async function removeOne({ entity_id }) {
 
 export async function clearAll() {
   const apiPath = await getChartApi();
-  await evaluate(`${apiPath}.removeAllShapes()`);
+  await evaluateWrite(`${apiPath}.removeAllShapes()`);
   return { success: true, action: 'all_shapes_removed' };
 }

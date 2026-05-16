@@ -2,7 +2,7 @@
  * Core watchlist logic.
  * Uses TradingView's internal widget API with DOM fallback.
  */
-import { evaluate, evaluateAsync, getClient } from '../connection.js';
+import { evaluate, evaluateAsync, evaluateWrite, withWriteLock, getClient } from '../connection.js';
 
 export async function get() {
   // Try internal API first — reads from the active watchlist widget
@@ -66,8 +66,11 @@ export async function add({ symbol }) {
   // Use keyboard shortcut to open symbol search in watchlist, type symbol, press Enter
   const c = await getClient();
 
-  // First ensure watchlist panel is open
-  const panelState = await evaluate(`
+  // Multi-step UI sequence: open panel → click add → type → enter →
+  // escape. Lock the whole thing so a concurrent add() doesn't steal
+  // the search input mid-flight.
+  return withWriteLock(async (evalInside) => {
+  const panelState = await evalInside(`
     (function() {
       var btn = document.querySelector('[data-name="base-watchlist-widget-button"]')
         || document.querySelector('[aria-label*="Watchlist"]');
@@ -84,7 +87,7 @@ export async function add({ symbol }) {
   if (panelState?.opened) await new Promise(r => setTimeout(r, 500));
 
   // Click the "Add symbol" button (various selectors)
-  const addClicked = await evaluate(`
+  const addClicked = await evalInside(`
     (function() {
       var selectors = [
         '[data-name="add-symbol-button"]',
@@ -129,4 +132,5 @@ export async function add({ symbol }) {
   await c.Input.dispatchKeyEvent({ type: 'keyUp', key: 'Escape', code: 'Escape' });
 
   return { success: true, symbol, action: 'added' };
+  });  // end withWriteLock
 }

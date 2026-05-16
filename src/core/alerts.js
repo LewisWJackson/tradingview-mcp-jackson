@@ -1,10 +1,15 @@
 /**
  * Core alert logic.
  */
-import { evaluate, evaluateAsync, getClient } from '../connection.js';
+import { evaluate, evaluateWrite, evaluateAsync, withWriteLock, getClient } from '../connection.js';
 
 export async function create({ condition, price, message }) {
-  const opened = await evaluate(`
+  // Multi-step UI sequence — open dialog → set price → set message →
+  // submit. Lock the whole thing so a concurrent create can't interleave
+  // and corrupt the form state. (Note: also holds the lock during the
+  // CDP keystroke dispatch in the fallback path.)
+  return withWriteLock(async (evalInside) => {
+    const opened = await evalInside(`
     (function() {
       var btn = document.querySelector('[aria-label="Create Alert"]')
         || document.querySelector('[data-name="alerts"]');
@@ -21,7 +26,7 @@ export async function create({ condition, price, message }) {
 
   await new Promise(r => setTimeout(r, 1000));
 
-  const priceSet = await evaluate(`
+  const priceSet = await evalInside(`
     (function() {
       var inputs = document.querySelectorAll('[class*="alert"] input[type="text"], [class*="alert"] input[type="number"]');
       for (var i = 0; i < inputs.length; i++) {
@@ -45,7 +50,7 @@ export async function create({ condition, price, message }) {
   `);
 
   if (message) {
-    await evaluate(`
+    await evalInside(`
       (function() {
         var textarea = document.querySelector('[class*="alert"] textarea')
           || document.querySelector('textarea[placeholder*="message"]');
@@ -59,7 +64,7 @@ export async function create({ condition, price, message }) {
   }
 
   await new Promise(r => setTimeout(r, 500));
-  const created = await evaluate(`
+  const created = await evalInside(`
     (function() {
       var btns = document.querySelectorAll('button[data-name="submit"], button');
       for (var i = 0; i < btns.length; i++) {
@@ -70,6 +75,7 @@ export async function create({ condition, price, message }) {
   `);
 
   return { success: !!created, price, condition, message: message || '(none)', price_set: !!priceSet, source: 'dom_fallback' };
+  });  // end withWriteLock
 }
 
 export async function list() {
@@ -105,7 +111,7 @@ export async function list() {
 
 export async function deleteAlerts({ delete_all }) {
   if (delete_all) {
-    const result = await evaluate(`
+    const result = await evaluateWrite(`
       (function() {
         var alertBtn = document.querySelector('[data-name="alerts"]');
         if (alertBtn) alertBtn.click();

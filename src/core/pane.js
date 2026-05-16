@@ -2,7 +2,12 @@
  * Core pane/layout management logic.
  * Controls multi-chart layouts (split panes) in TradingView.
  */
-import { evaluate, evaluateAsync, getClient } from '../connection.js';
+import { evaluate, evaluateAsync, evaluateWrite, withWriteLock, getClient } from '../connection.js';
+
+// Local helper: evaluateAsync under the write mutex.
+async function evaluateAsyncWrite(expression) {
+  return evaluateWrite(expression, { awaitPromise: true });
+}
 
 const CWC = 'window.TradingViewApi._chartWidgetCollection';
 
@@ -96,7 +101,7 @@ export async function setLayout({ layout }) {
     throw new Error(`Unknown layout "${layout}". Available layouts:\n${available}`);
   }
 
-  await evaluateAsync(`${CWC}.setLayout('${resolved}')`);
+  await evaluateAsyncWrite(`${CWC}.setLayout('${resolved}')`);
   await new Promise(r => setTimeout(r, 500));
 
   const state = await list();
@@ -114,7 +119,7 @@ export async function setLayout({ layout }) {
  */
 export async function focus({ index }) {
   const idx = Number(index);
-  const result = await evaluate(`
+  const result = await evaluateWrite(`
     (function() {
       var cwc = ${CWC};
       var all = cwc.getAll();
@@ -138,20 +143,33 @@ export async function setSymbol({ index, symbol }) {
   const idx = Number(index);
   const escaped = symbol.replace(/'/g, "\\'");
 
-  // Focus the target pane first
-  await focus({ index: idx });
-  await new Promise(r => setTimeout(r, 300));
-
-  // Now set symbol on the now-active chart
-  await evaluateAsync(`
-    (function() {
-      var chart = window.TradingViewApi._activeChartWidgetWV.value();
-      return new Promise(function(resolve) {
-        chart.setSymbol('${escaped}', {});
-        setTimeout(resolve, 500);
-      });
-    })()
-  `);
-
-  return { success: true, index: idx, symbol };
+  // Multi-step: focus pane → wait → set symbol on active chart. Lock
+  // the whole thing so a concurrent setSymbol on a different pane index
+  // can't steal focus between our focus() and setSymbol() calls. focus()
+  // itself already locks via evaluateWrite, so we use withWriteLock here
+  // and call the inner CDP eval directly to avoid double-locking.
+  return withWriteLock(async (evalInside) => {
+    // Inline focus logic (avoid recursive lock from focus())
+    await evalInside(`
+      (function() {
+        var cwc = ${CWC};
+        var all = cwc.getAll();
+        if (${idx} >= all.length) throw new Error('Pane index ' + ${idx} + ' out of range (have ' + all.length + ' panes)');
+        var chart = all[${idx}];
+        if (chart._mainDiv) chart._mainDiv.click();
+        return true;
+      })()
+    `);
+    await new Promise(r => setTimeout(r, 300));
+    await evalInside(`
+      (function() {
+        var chart = window.TradingViewApi._activeChartWidgetWV.value();
+        return new Promise(function(resolve) {
+          chart.setSymbol('${escaped}', {});
+          setTimeout(resolve, 500);
+        });
+      })()
+    `, { awaitPromise: true });
+    return { success: true, index: idx, symbol };
+  });
 }
