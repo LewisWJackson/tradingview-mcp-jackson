@@ -1,7 +1,11 @@
 /**
  * Core batch execution logic.
  */
-import { evaluate, evaluateAsync, getClient, getChartApi, getChartCollection } from '../connection.js';
+import { evaluate, evaluateAsync, evaluateWrite, withWriteLock, getClient, getChartApi, getChartCollection } from '../connection.js';
+
+async function evaluateAsyncWrite(expression) {
+  return evaluateWrite(expression, { awaitPromise: true });
+}
 import { waitForChartReady } from '../wait.js';
 import { writeFileSync, mkdirSync } from 'fs';
 import { join, dirname } from 'path';
@@ -23,13 +27,23 @@ export async function batchRun({ symbols, timeframes, action, delay_ms, ohlcv_co
     for (const tf of tfs) {
       const combo = { symbol, timeframe: tf };
       try {
-        if (colPath) await evaluate(`${colPath}.setSymbol('${symbol}')`);
-        else if (apiPath) await evaluate(`${apiPath}.setSymbol('${symbol}')`);
+        // Lock the symbol/tf switch per iteration so a concurrent
+        // batchRun (or any other writer) can't change symbol mid-flight
+        // and corrupt the action data. The action itself runs OUTSIDE
+        // the lock — actions like screenshot or get_ohlcv are reads
+        // once the chart is positioned. (Strategy-results panel scrape
+        // is also a read.) This per-iteration locking lets other
+        // writers interleave between iterations rather than holding
+        // them off for the full batch.
+        await withWriteLock(async (evalInside) => {
+          if (colPath) await evalInside(`${colPath}.setSymbol('${symbol}')`);
+          else if (apiPath) await evalInside(`${apiPath}.setSymbol('${symbol}')`);
 
-        if (tf) {
-          if (colPath) await evaluate(`${colPath}.setResolution('${tf}')`);
-          else if (apiPath) await evaluate(`${apiPath}.setResolution('${tf}')`);
-        }
+          if (tf) {
+            if (colPath) await evalInside(`${colPath}.setResolution('${tf}')`);
+            else if (apiPath) await evalInside(`${apiPath}.setResolution('${tf}')`);
+          }
+        });
 
         await waitForChartReady(symbol);
         await new Promise(r => setTimeout(r, delay));

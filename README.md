@@ -298,6 +298,25 @@ Full command list: `tv --help`
 | `morning_brief` — watchlist empty | Add symbols to the `watchlist` array in `rules.json` |
 | Tools return stale data | TradingView still loading — wait a few seconds |
 | Pine Editor tools fail | Open Pine Editor panel first: `ui_open_panel pine-editor open` |
+| Need to inspect tool-call traffic / latency / mutex contention | Enable the NDJSON packet tracer: set `MCP_TRACE_FILE=/tmp/mcp-trace.log` in the server environment, then `tail -F` the file. See [`docs/TRACING.md`](docs/TRACING.md) for schema, env vars, rotation, and analysis recipes. |
+
+### Packet tracing for diagnostics
+
+This fork ships an optional NDJSON tracer ([`src/tracer.js`](src/tracer.js)) that records every CDP `evaluate` / `evaluateWrite` call — including the originating MCP tool name, JS expression excerpt, duration, and (for writes) mutex queue wait time and critical-section duration. It's **off by default and zero-cost when off**.
+
+Activate by setting `MCP_TRACE_FILE` in the server's environment:
+
+```bash
+MCP_TRACE_FILE=/tmp/mcp-trace.log node src/server.js
+```
+
+Sample one-liner to watch mutex contention live:
+
+```bash
+tail -F /tmp/mcp-trace.log | jq -r 'select(.kind=="evaluateWrite.acquired") | "wait=\(.wait_ms)ms  tool=\(.tool // "?")"'
+```
+
+Full activation guide, NDJSON schema, env-var reference, multi-process safety notes, and jq analysis recipes: **[docs/TRACING.md](docs/TRACING.md)**.
 
 ---
 

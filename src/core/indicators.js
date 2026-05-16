@@ -1,7 +1,7 @@
 /**
  * Core indicator settings logic.
  */
-import { evaluate } from '../connection.js';
+import { evaluateWrite } from '../connection.js';
 
 const CHART_API = 'window.TradingViewApi._activeChartWidgetWV.value()';
 
@@ -15,7 +15,7 @@ export async function setInputs({ entity_id, inputs: inputsRaw }) {
   const escapedId = entity_id.replace(/'/g, "\\'");
   const inputsJson = JSON.stringify(inputs);
 
-  const result = await evaluate(`
+  const result = await evaluateWrite(`
     (function() {
       var chart = ${CHART_API};
       var study = chart.getStudyById('${escapedId}');
@@ -43,7 +43,7 @@ export async function toggleVisibility({ entity_id, visible }) {
   if (typeof visible !== 'boolean') throw new Error('visible must be a boolean (true or false)');
 
   const escapedId = entity_id.replace(/'/g, "\\'");
-  const result = await evaluate(`
+  const result = await evaluateWrite(`
     (function() {
       var chart = ${CHART_API};
       var study = chart.getStudyById('${escapedId}');
