@@ -20,6 +20,10 @@ register('brief', {
     }],
     ['active', {
       description: 'Brief for currently active chart symbol. Usage: tv brief active [--news=5] [--no-macro=true] [--no-pine=true] [--watchlist="Crypto Stocks"] [--oversold=30] [--overextended=75]',
+      // `active` legitimately doesn't read --no-restore (it hardcodes
+      // restore_after:false because there's no original chart to restore to —
+      // we're already on it). This silences the router-level flag-parity lint.
+      allowAsymmetric: true,
       handler: (opts) => core.traderBrief({
         restore_after: false,
         news_count: opts.news ? Number(opts.news) : undefined,

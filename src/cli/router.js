@@ -11,6 +11,76 @@ export function register(name, config) {
   commands.set(name, config);
 }
 
+// Exposed for `tv lint` and CI tests. Walks the registry and reports any
+// `register()` block whose sibling subcommands read different sets of CLI
+// flags from `opts`. This catches the class of bug fixed in
+// fix(brief): the `brief active` handler silently dropped --no-macro etc.
+// that its sibling `brief for` handler honored.
+export function lintSiblingFlagParity() {
+  const findings = [];
+  for (const [name, config] of commands) {
+    if (!config.subcommands || config.subcommands.size < 2) continue;
+
+    const profiled = [];
+    for (const [subName, subConf] of config.subcommands) {
+      if (subConf.allowAsymmetric === true) continue;
+      if (typeof subConf.handler !== 'function') continue;
+      const src = subConf.handler.toString();
+      if (src.includes('lint:allow-asymmetric')) continue;
+      const backends = extractBackendCalls(src);
+      if (backends.size === 0) continue;
+      const sig = [...backends].sort().join(',');
+      profiled.push({ name: subName, sig, keys: extractOptKeys(src) });
+    }
+    if (profiled.length < 2) continue;
+
+    const groups = new Map();
+    for (const p of profiled) {
+      if (!groups.has(p.sig)) groups.set(p.sig, []);
+      groups.get(p.sig).push(p);
+    }
+
+    for (const [sig, group] of groups) {
+      if (group.length < 2) continue;
+      const union = new Set();
+      for (const s of group) for (const k of s.keys) union.add(k);
+      const asymmetric = [];
+      for (const s of group) {
+        const missing = [...union].filter(k => !s.keys.has(k));
+        if (missing.length > 0) asymmetric.push({ subcommand: s.name, missing });
+      }
+      if (asymmetric.length > 0) {
+        findings.push({ command: name, sharedBackend: sig, asymmetric });
+      }
+    }
+  }
+  return findings;
+}
+
+// Heuristic: extract every `opts['<k>']`, `opts["<k>"]`, and `opts.<k>` reference
+// from a handler's source text. Filters parseArgs-reserved keys ('help', 'h', '_').
+function extractOptKeys(src) {
+  const keys = new Set();
+  const re = /opts(?:\[\s*(?:'([^']+)'|"([^"]+)")\s*\]|\.([A-Za-z_][\w-]*))/g;
+  let m;
+  while ((m = re.exec(src)) !== null) {
+    const key = m[1] || m[2] || m[3];
+    if (key && key !== 'help' && key !== 'h' && key !== '_') keys.add(key);
+  }
+  return keys;
+}
+
+// Heuristic: extract every `core.<name>` reference from a handler's source.
+// Two sibling subcommands sharing the same set of core.X calls share a
+// backend and must forward the same flag set.
+function extractBackendCalls(src) {
+  const calls = new Set();
+  const re = /\bcore\.([A-Za-z_][\w]*)/g;
+  let m;
+  while ((m = re.exec(src)) !== null) calls.add(m[1]);
+  return calls;
+}
+
 function printHelp() {
   console.log('Usage: tv <command> [options]\n');
   console.log('Commands:');
