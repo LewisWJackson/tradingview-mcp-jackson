@@ -84,5 +84,16 @@ register('data', {
         return core.getIndicator({ entity_id: positionals[0] });
       },
     }],
+    ['export-csv', {
+      description: 'Export OHLCV bars to a CSV file on disk (avoid context bloat for long histories)',
+      options: {
+        count: { type: 'string', short: 'n', description: 'Number of bars (max 500, default 500)' },
+        out: { type: 'string', short: 'o', description: 'Output CSV path (required)' },
+      },
+      handler: (opts) => {
+        if (!opts.out) throw new Error('--out PATH required. Usage: tv data export-csv -n 500 -o /tmp/x.csv');
+        return core.exportOhlcvCsv({ count: opts.count ? Number(opts.count) : undefined, output_path: opts.out });
+      },
+    }],
   ]),
 });

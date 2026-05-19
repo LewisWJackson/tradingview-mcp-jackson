@@ -2,6 +2,9 @@
  * Core data access logic.
  */
 import { evaluate, evaluateAsync, KNOWN_PATHS } from '../connection.js';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
 const MAX_OHLCV_BARS = 500;
 const MAX_TRADES = 20;
@@ -451,4 +454,30 @@ export async function getPineBoxes({ study_filter, verbose } = {}) {
     return result;
   });
   return { success: true, study_count: studies.length, studies };
+}
+
+// ---- CSV export (added 2026-05-13 fleet patch) ----
+export async function exportOhlcvCsv({ count, output_path }) {
+  // Pull OHLCV via the existing getOhlcv path and write a CSV.
+  if (!output_path) throw new Error('output_path required');
+  const c = Math.min(count || MAX_OHLCV_BARS, MAX_OHLCV_BARS);
+  const data = await getOhlcv({ count: c, summary: false });
+  const bars = Array.isArray(data.bars) ? data.bars
+              : (data.last_5_bars && data.bars == null ? data.last_5_bars : []);
+  if (!bars.length) {
+    return { success: false, error: 'No bars returned from getOhlcv' };
+  }
+  const header = 'timestamp,open,high,low,close,volume\n';
+  const rows = bars.map(b => `${b.time},${b.open},${b.high},${b.low},${b.close},${b.volume}`).join('\n');
+  const dir = path.dirname(output_path);
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(output_path, header + rows + '\n');
+  return {
+    success: true,
+    output_path,
+    rows: bars.length,
+    bytes: fs.statSync(output_path).size,
+    symbol: data.symbol,
+    period: data.period,
+  };
 }

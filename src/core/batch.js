@@ -44,16 +44,62 @@ export async function batchRun({ symbols, timeframes, action, delay_ms, ohlcv_co
           const filePath = join(SCREENSHOT_DIR, fname);
           writeFileSync(filePath, Buffer.from(data, 'base64'));
           actionResult = { file_path: filePath };
-        } else if (action === 'get_ohlcv' && apiPath) {
+        } else if (action === 'get_ohlcv') {
           const limit = Math.min(ohlcv_count || 100, 500);
-          actionResult = await evaluateAsync(`
-            new Promise(function(resolve, reject) {
-              ${apiPath}.exportData({ includeTime: true, includeSeries: true, includeStudies: false })
-                .then(function(result) {
-                  var bars = (result.data || []).slice(-${limit});
-                  resolve({ bar_count: bars.length, last_bar: bars[bars.length - 1] || null });
-                }).catch(reject);
-            })
+          // Read directly from the bars series — exportData() rejects on partially-loaded charts.
+          actionResult = await evaluate(`
+            (function() {
+              try {
+                var bars = window.TradingViewApi._activeChartWidgetWV.value()._chartWidget.model().mainSeries().bars();
+                if (!bars || typeof bars.lastIndex !== 'function') return { error: 'bars not ready' };
+                var end = bars.lastIndex();
+                var start = Math.max(bars.firstIndex(), end - ${limit} + 1);
+                var out = [];
+                for (var i = start; i <= end; i++) {
+                  var v = bars.valueAt(i);
+                  if (v) out.push({ time: v[0], open: v[1], high: v[2], low: v[3], close: v[4], volume: v[5] || 0 });
+                }
+                var last = out[out.length - 1] || null;
+                var first = out[0] || null;
+                var summary = null;
+                if (out.length > 1) {
+                  var hi = -Infinity, lo = Infinity, vsum = 0;
+                  for (var j = 0; j < out.length; j++) { if (out[j].high > hi) hi = out[j].high; if (out[j].low < lo) lo = out[j].low; vsum += out[j].volume; }
+                  summary = { bars: out.length, high: hi, low: lo, first_close: first.close, last_close: last.close, change_pct: ((last.close / first.close - 1) * 100), avg_volume: vsum / out.length };
+                }
+                return { bar_count: out.length, last_bar: last, summary: summary };
+              } catch (e) { return { error: e.message }; }
+            })()
+          `);
+        } else if (action === 'quote_get') {
+          // Use the hardcoded path directly — apiPath may have been undefined
+          // at batch start if TV wasn't fully loaded yet, but by the time we
+          // reach this loop iteration the chart is settled (waitForChartReady
+          // returned).
+          const apiPathInline = apiPath || 'window.TradingViewApi._activeChartWidgetWV.value()';
+          actionResult = await evaluate(`
+            (function() {
+              try {
+                var api = ${apiPathInline};
+                var bars = window.TradingViewApi._activeChartWidgetWV.value()._chartWidget.model().mainSeries().bars();
+                var ext = {};
+                try { ext = api.symbolExt() || {}; } catch(e) {}
+                var sym = ''; try { sym = api.symbol() || ''; } catch(e) {}
+                var q = { symbol: sym };
+                if (bars && typeof bars.lastIndex === 'function') {
+                  var v = bars.valueAt(bars.lastIndex());
+                  if (v) { q.time = v[0]; q.open = v[1]; q.high = v[2]; q.low = v[3]; q.close = v[4]; q.last = v[4]; q.volume = v[5] || 0; }
+                  if (bars.size() > 1) {
+                    var prev = bars.valueAt(bars.lastIndex() - 1);
+                    if (prev && v) { q.change = v[4] - prev[4]; q.change_pct = (v[4] / prev[4] - 1) * 100; }
+                  }
+                }
+                if (ext.description) q.description = ext.description;
+                if (ext.exchange) q.exchange = ext.exchange;
+                if (ext.type) q.type = ext.type;
+                return q;
+              } catch (e) { return { error: e.message }; }
+            })()
           `);
         } else if (action === 'get_strategy_results') {
           await new Promise(r => setTimeout(r, 1000));

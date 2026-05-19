@@ -12,3 +12,12 @@ discovery-log.json
 
 # Install-time symlink created by the one-shot setup
 AGENTS.md
+
+# Backup files from local patches
+*.bak
+*.bak-*
+rules.json.bak*
+rules.json.v*-backup-*
+
+# Runtime data — chart_save_view outputs land here
+views/

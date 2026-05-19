@@ -83,4 +83,16 @@ export function registerDataTools(server) {
     try { return jsonResult(await core.getStudyValues()); }
     catch (err) { return jsonResult({ success: false, error: err.message }, true); }
   });
+
+  server.tool('data_export_csv',
+    'Export OHLCV bars from the current chart to a CSV file on disk. Use this instead of data_get_ohlcv when you need long histories without burning context.',
+    {
+      count: z.coerce.number().optional().describe('Number of bars (max 500, default 500)'),
+      output_path: z.string().describe('Absolute path to write the CSV (e.g., /tmp/MELI_1h.csv)'),
+    },
+    async ({ count, output_path }) => {
+      try { return jsonResult(await core.exportOhlcvCsv({ count, output_path })); }
+      catch (err) { return jsonResult({ success: false, error: err.message }, true); }
+    }
+  );
 }
