@@ -1,65 +1,428 @@
 {
-  "watchlist": ["BTCUSDT"],
-  "default_timeframe": "1",
+  "watchlist": ["AAPL", "NVDA", "SPY", "QQQ", "IWM", "DIA"],
+  "default_timeframe": "60",
+
+  "fundamental_filters": {
+    "_note": "Fallback dates used when Finviz scraping fails. Update quarterly.",
+    "fed_dates": [
+      "2026-06-18",
+      "2026-07-30",
+      "2026-09-17",
+      "2026-10-29",
+      "2026-12-10"
+    ],
+    "earnings": {
+      "AAPL": "2026-07-28",
+      "NVDA": "2026-08-27"
+    }
+  },
+
+
+  "contract_rules": {
+    "type": "CALL or PUT — directional only, no spreads",
+    "expiration": "nearest weekly expiration",
+    "expiration_cutoff": "Friday 11:00 AM ET — before: current week / after: next week"
+  },
+
+  "asset_config": {
+    "AAPL": {
+      "premium_range_optimal": { "min": 45, "max": 95 },
+      "premium_range_limits":  { "min": 40, "max": 100 },
+      "contracts_at_midpoint": 23
+    },
+    "NVDA": {
+      "premium_range_optimal": { "min": 80, "max": 170 },
+      "premium_range_limits":  { "min": 75, "max": 175 },
+      "contracts_at_midpoint": 13
+    },
+    "SPY": {
+      "premium_range_optimal": { "min": 30, "max": 45 },
+      "premium_range_limits":  { "min": 25, "max": 50 },
+      "contracts_at_midpoint": 43
+    },
+    "QQQ": {
+      "premium_range_optimal": { "min": 30, "max": 60 },
+      "premium_range_limits":  { "min": 25, "max": 65 },
+      "contracts_at_midpoint": 23
+    },
+    "IWM": {
+      "premium_range_optimal": { "min": 40, "max": 70 },
+      "premium_range_limits":  { "min": 35, "max": 70 },
+      "contracts_at_midpoint": 26
+    },
+    "DIA": {
+      "premium_range_optimal": { "min": 130, "max": 220 },
+      "premium_range_limits":  { "min": 120, "max": 230 },
+      "contracts_at_midpoint": 22
+    }
+  },
+
+  "session": {
+    "primary_window": "09:30–11:30 ET",
+    "focus": "market open — primary profit window",
+    "avoid": "FED days ±2 business days, Earnings window ±7 days per ticker"
+  },
 
   "strategy": {
-    "name": "10-Second Momentum Scalper",
+    "name": "Options Multi-Strategy — Bollinger + MA System",
+    "version": "2.0",
     "sources": [
-      "Price momentum — buy if last close > previous close (green candle)",
-      "RSI filter — only trade when RSI is not at an extreme (30–70 range)"
+      "Bollinger Bands (D1, H1, M15) — trend, bounces, breakouts",
+      "Moving Averages 20/40/100/200 — trend direction and bounce levels",
+      "Trendlines — breakout triggers for trend-change strategies"
     ],
     "primary_timeframes": [
-      "1-minute (signal source)",
-      "10-second execution loop"
+      "D1 — context and macro trend",
+      "H1 — primary signal timeframe",
+      "M15 — confirmation and opening strategies"
     ]
   },
 
   "indicators": {
-    "rsi_14": "Momentum filter. Only trade when RSI is between 30–70 (avoid extremes).",
-    "price_momentum": "Compare last close vs previous close. Up = long signal. Down = short signal."
+    "bollinger_bands":    "Primary indicator. Used on D1, H1, M15. Middle band = dynamic support/resistance. Band width = volatility filter.",
+    "ma_20":              "Short-term trend. Price above = bullish bias. Acts as first bounce level.",
+    "ma_40":              "Medium-term trend. Separation from MA20 signals trend strength.",
+    "ma_100":             "Intermediate support/resistance level.",
+    "ma_200":             "Long-term trend baseline.",
+    "trendline":          "Manual breakout trigger. Drawn connecting max/min points on H1 and M15."
   },
+
+  "strategies": [
+    {
+      "id": "STRAT-01",
+      "name": "Cambio de Tendencia al alza",
+      "status": "operative",
+      "position": "CALL",
+      "primary_timeframe": "H1",
+      "rules": [
+        {
+          "type": "pre_condition",
+          "timeframe": "H1",
+          "condition": "Tendencia previa bajista en H1",
+          "indicators": ["Bollinger Bands", "MA 20"]
+        },
+        {
+          "type": "trigger",
+          "timeframe": "H1",
+          "condition": "Ruptura de línea de tendencia bajista en H1",
+          "indicators": ["Trendline"]
+        },
+        {
+          "type": "trigger",
+          "timeframe": "H1",
+          "condition": "Cierre sobre la MA20 en H1 con vela de confirmación alcista",
+          "indicators": ["MA 20"]
+        },
+        {
+          "type": "confirmation",
+          "timeframe": "M15",
+          "condition": "La tendencia en M15 debe mostrarse totalmente alcista",
+          "indicators": ["Bollinger Bands"]
+        }
+      ]
+    },
+    {
+      "id": "STRAT-02",
+      "name": "Cambio de Tendencia a la baja",
+      "status": "operative",
+      "position": "PUT",
+      "primary_timeframe": "H1",
+      "rules": [
+        {
+          "type": "pre_condition",
+          "timeframe": "H1",
+          "condition": "Tendencia previa alcista en H1",
+          "indicators": ["Bollinger Bands", "MA 20"]
+        },
+        {
+          "type": "trigger",
+          "timeframe": "H1",
+          "condition": "Ruptura de línea de tendencia alcista en H1",
+          "indicators": ["Trendline"]
+        },
+        {
+          "type": "trigger",
+          "timeframe": "H1",
+          "condition": "Cierre bajo la MA20 en H1 con vela de confirmación bajista",
+          "indicators": ["MA 20"]
+        },
+        {
+          "type": "confirmation",
+          "timeframe": "M15",
+          "condition": "La tendencia en M15 debe mostrarse totalmente bajista",
+          "indicators": ["Bollinger Bands"]
+        }
+      ]
+    },
+    {
+      "id": "STRAT-03",
+      "name": "Rebote en punto medio (Bajista)",
+      "status": "operative",
+      "position": "PUT",
+      "primary_timeframe": "D1",
+      "rules": [
+        {
+          "type": "pre_condition",
+          "timeframe": "D1",
+          "condition": "Tendencia claramente bajista en D1",
+          "indicators": ["Bollinger Bands"]
+        },
+        {
+          "type": "pre_condition",
+          "timeframe": "H1",
+          "condition": "Tendencia claramente alcista en H1 (retroceso hacia punto medio)",
+          "indicators": ["Bollinger Bands"]
+        },
+        {
+          "type": "trigger",
+          "timeframe": "D1",
+          "condition": "Precio se acerca al punto medio Bollinger en D1 (MA20) sin cruzarlo",
+          "indicators": ["Bollinger Bands", "MA 20"]
+        },
+        {
+          "type": "confirmation",
+          "timeframe": "H1",
+          "condition": "Precio respeta el punto medio en H1 sin cruzarlo al alza",
+          "indicators": ["Bollinger Bands"]
+        }
+      ]
+    },
+    {
+      "id": "STRAT-04",
+      "name": "Apertura fuera de Bollinger (PUT)",
+      "status": "operative",
+      "position": "PUT",
+      "primary_timeframe": "M15",
+      "rules": [
+        {
+          "type": "pre_condition",
+          "timeframe": "M15",
+          "condition": "La tendencia en M15 debe ser totalmente lateral",
+          "indicators": ["Bollinger Bands"]
+        },
+        {
+          "type": "pre_condition",
+          "timeframe": "M15",
+          "condition": "Sin volatilidad en Bollinger Bands M15 (bandas estrechas)",
+          "indicators": ["Bollinger Bands"]
+        },
+        {
+          "type": "trigger",
+          "timeframe": "M15",
+          "condition": "Apertura con salto extremadamente alejado de la banda superior (sobrecompra)",
+          "indicators": ["Bollinger Bands"]
+        }
+      ]
+    },
+    {
+      "id": "STRAT-05",
+      "name": "Apertura fuera de Bollinger (CALL)",
+      "status": "operative",
+      "position": "CALL",
+      "primary_timeframe": "M15",
+      "rules": [
+        {
+          "type": "pre_condition",
+          "timeframe": "M15",
+          "condition": "La tendencia en M15 debe ser totalmente lateral",
+          "indicators": ["Bollinger Bands"]
+        },
+        {
+          "type": "pre_condition",
+          "timeframe": "M15",
+          "condition": "Sin volatilidad en Bollinger Bands M15 (bandas estrechas)",
+          "indicators": ["Bollinger Bands"]
+        },
+        {
+          "type": "trigger",
+          "timeframe": "M15",
+          "condition": "Apertura con salto extremadamente alejado de la banda inferior (sobreventa)",
+          "indicators": ["Bollinger Bands"]
+        }
+      ]
+    },
+    {
+      "id": "STRAT-08",
+      "name": "Cambio tendencia 15 min (CALL)",
+      "status": "operative",
+      "position": "CALL",
+      "primary_timeframe": "M15",
+      "rules": [
+        {
+          "type": "pre_condition",
+          "timeframe": "M15",
+          "condition": "Tendencia bajista o lateral en M15",
+          "indicators": ["Bollinger Bands"]
+        },
+        {
+          "type": "trigger",
+          "timeframe": "M15",
+          "condition": "Ruptura de línea de tendencia bajista en M15",
+          "indicators": ["Trendline"]
+        },
+        {
+          "type": "trigger",
+          "timeframe": "M15",
+          "condition": "Apertura sobre el punto medio de Bollinger en M15 con volatilidad inmediata",
+          "indicators": ["Bollinger Bands"]
+        }
+      ]
+    },
+    {
+      "id": "STRAT-09",
+      "name": "Cambio tendencia 15 min (PUT)",
+      "status": "operative",
+      "position": "PUT",
+      "primary_timeframe": "M15",
+      "rules": [
+        {
+          "type": "pre_condition",
+          "timeframe": "M15",
+          "condition": "Tendencia alcista o lateral en M15",
+          "indicators": ["Bollinger Bands"]
+        },
+        {
+          "type": "trigger",
+          "timeframe": "M15",
+          "condition": "Ruptura de línea de tendencia alcista en M15",
+          "indicators": ["Trendline"]
+        },
+        {
+          "type": "trigger",
+          "timeframe": "M15",
+          "condition": "Apertura bajo el punto medio de Bollinger en M15 con volatilidad inmediata",
+          "indicators": ["Bollinger Bands"]
+        }
+      ]
+    },
+    {
+      "id": "STRAT-10",
+      "name": "Ruptura Lateral Mediano Plazo (CALL)",
+      "status": "operative",
+      "position": "CALL",
+      "primary_timeframe": "H1",
+      "rules": [
+        {
+          "type": "pre_condition",
+          "timeframe": "D1",
+          "condition": "Las cuatro MAs (20, 40, 100, 200) laterales o entrelazadas en canal de 10+ días",
+          "indicators": ["MA 20", "MA 40", "MA 100", "MA 200"]
+        },
+        {
+          "type": "trigger",
+          "timeframe": "H1",
+          "condition": "Señal alcista que saque el precio del canal (salto o vela alcista potente)",
+          "indicators": ["Trendline", "Bollinger Bands"]
+        },
+        {
+          "type": "confirmation",
+          "timeframe": "H1",
+          "condition": "Confirmación con vela alcista en H1",
+          "indicators": ["Bollinger Bands"]
+        },
+        {
+          "type": "confirmation",
+          "timeframe": "H1",
+          "condition": "Alta volatilidad en Bollinger Bands en H1",
+          "indicators": ["Bollinger Bands"]
+        }
+      ]
+    },
+    {
+      "id": "STRAT-11",
+      "name": "Ruptura Lateral Mediano Plazo (PUT)",
+      "status": "operative",
+      "position": "PUT",
+      "primary_timeframe": "H1",
+      "rules": [
+        {
+          "type": "pre_condition",
+          "timeframe": "D1",
+          "condition": "Las cuatro MAs (20, 40, 100, 200) laterales o entrelazadas en canal de 10+ días",
+          "indicators": ["MA 20", "MA 40", "MA 100", "MA 200"]
+        },
+        {
+          "type": "trigger",
+          "timeframe": "H1",
+          "condition": "Señal bajista que saque el precio del canal (salto o vela bajista potente)",
+          "indicators": ["Trendline", "Bollinger Bands"]
+        },
+        {
+          "type": "confirmation",
+          "timeframe": "H1",
+          "condition": "Confirmación con vela bajista en H1",
+          "indicators": ["Bollinger Bands"]
+        },
+        {
+          "type": "confirmation",
+          "timeframe": "H1",
+          "condition": "Alta volatilidad en Bollinger Bands en H1",
+          "indicators": ["Bollinger Bands"]
+        }
+      ]
+    }
+  ],
+
+  "global_filters": [
+    {
+      "id": "GLOBAL-GF-001",
+      "name": "Filtro FED",
+      "condition": "No operar en ventana FED ±2 días hábiles"
+    },
+    {
+      "id": "GLOBAL-GF-002",
+      "name": "Filtro Earnings",
+      "condition": "No operar en ventana Earnings ±7 días del activo"
+    }
+  ],
+
+  "exit_rules": {
+    "profit_target_pct": 12,
+    "stop_loss_pct": 25,
+    "order_type": "GTC",
+    "notes": "Both orders placed immediately at entry as GTC bracket"
+  },
+
+  "risk_rules": {
+    "account_size_usd": 3240,
+    "invest_pct_per_trade": 50,
+    "invest_amount_usd": 1620,
+    "strike_selection": "by option premium — must fall within optimal range per ticker",
+    "bid_ask_filter": "manual — skip if spread is abnormal vs ticker average",
+    "max_concurrent_positions": 1
+  },
+
+  "checklist_premarket": [
+    "Bollinger D1: marcar punto medio como techo o piso",
+    "Bollinger H1: analizar si precio está dentro de bandas, PM como rebote",
+    "MAs D1: tendencia, puntos de rebote, separación entre medias",
+    "MAs H1: tendencia corto plazo, máximo y mínimo reciente con H-lines",
+    "Líneas de tendencia: marcar para detectar ruptura en H1/M15",
+    "Bid/Ask: verificar spread normal para el activo",
+    "Premarket: identificar dónde va a abrir el mercado"
+  ],
 
   "bias_criteria": {
     "bullish": [
-      "Last 1-min candle closed higher than the one before it",
-      "RSI is between 30 and 70"
+      "Price is above BB middle band (D1) — BB middle acts as floor",
+      "Price is above MA20 on D1",
+      "MA20 > MA40 > MA100 > MA200 on D1 (MAs in bullish order)",
+      "Price is inside Bollinger Bands on H1 and trending toward upper band",
+      "MA20 and MA40 on H1 are rising and acting as support"
     ],
     "bearish": [
-      "Last 1-min candle closed lower than the one before it",
-      "RSI is between 30 and 70"
+      "Price is below BB middle band (D1) — BB middle acts as ceiling",
+      "Price is below MA20 on D1",
+      "MA20 < MA40 < MA100 < MA200 on D1 (MAs in bearish order)",
+      "Price is inside Bollinger Bands on H1 and trending toward lower band",
+      "MA20 and MA40 on H1 are falling and acting as resistance"
     ],
     "neutral": [
-      "RSI is above 70 (overbought — skip)",
-      "RSI is below 30 (oversold — skip)",
-      "Candle close change is less than 0.05% (chop — skip)"
+      "Price is oscillating around BB middle band on D1",
+      "MAs on D1 are flat or entangled (STRAT-10 / STRAT-11 setup forming)",
+      "Price is chopping inside Bollinger Bands on H1 with no clear direction"
     ]
   },
 
-  "entry_rules": {
-    "long": [
-      "Last close > previous close by at least 0.05%",
-      "RSI between 30 and 70",
-      "Enter market buy immediately"
-    ],
-    "short": [
-      "Last close < previous close by at least 0.05%",
-      "RSI between 30 and 70",
-      "Enter market sell immediately"
-    ]
-  },
-
-  "exit_rules": [
-    "Exit automatically after 10 seconds (next loop tick closes previous position)",
-    "No manual exit management — pure time-based scalp"
-  ],
-
-  "risk_rules": [
-    "Fixed trade size: 1% of portfolio per trade",
-    "Maximum trade size: $3.00",
-    "Maximum 6 trades per 60-second run",
-    "No stop loss — exit is time-based at next tick",
-    "For demo purposes only — minimum BitGet order size may apply"
-  ],
-
-  "notes": "Demo strategy for YouTube video. Runs 6 trades over 60 seconds, one every 10 seconds. Signal is simple price momentum on 1-min candles with RSI sanity check."
+  "notes": "Options strategy — CALL/PUT directional only. 9 operative strategies based on Bollinger Bands 20-2-0 (50% weight) + SMAs 20/40/100/200 (30% weight) across D1/H1/M15. Primary trading window 09:30–11:30 ET. STRAT-06 and STRAT-07 excluded (require TC2000 Worden Stochastics)."
 }

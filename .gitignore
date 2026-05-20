@@ -12,3 +12,20 @@ discovery-log.json
 
 # Install-time symlink created by the one-shot setup
 AGENTS.md
+
+# Personal — no subir al repo público
+.claude/
+data/
+my-strategy/
+
+# Documentos personales dentro de docs/
+docs/*.pdf
+docs/*.jpeg
+docs/*.jpg
+docs/premarket-*.md
+docs/CHECKLIST*.md
+docs/DEPURACION*.md
+docs/RESUMEN*.md
+docs/LISTADO*
+docs/OPCIONES*
+docs/sessions/

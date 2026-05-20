@@ -15,17 +15,20 @@ You are performing technical analysis on a TradingView chart.
 
 ## Step 2: Add Indicators
 
-Use `chart_manage_indicator` to add studies. Common names (must use FULL names):
-- "Relative Strength Index" (not RSI)
-- "Moving Average Exponential" (not EMA)
-- "Moving Average" (for SMA)
-- "MACD"
-- "Bollinger Bands"
-- "Volume"
-- "VWAP"
-- "Average True Range"
+This project uses ONLY these two indicators (options strategy — BB + SMAs system):
+- "Bollinger Bands" → settings: length 20, StdDev 2, offset 0
+- "Simple Moving Average" × 4 → lengths: 20, 40, 100, 200
 
-After adding, use `indicator_set_inputs` to customize settings (e.g., change EMA length to 200).
+Use `chart_manage_indicator` to verify/add them (full names required):
+```
+chart_manage_indicator(action:"add", name:"Bollinger Bands")
+chart_manage_indicator(action:"add", name:"Simple Moving Average")  ← repeat × 4, set lengths via indicator_set_inputs
+```
+
+DO NOT add RSI, EMA, MACD, VWAP, ATR, Volume or any other indicator.
+These are not part of the trading system and will pollute `data_get_study_values` reads.
+
+After adding, use `indicator_set_inputs` to set SMA lengths to 20, 40, 100, 200.
 
 ## Step 3: Navigate to Key Areas
 

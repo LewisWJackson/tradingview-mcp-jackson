@@ -1,55 +1,58 @@
 @echo off
-REM Launch TradingView Desktop on Windows with Chrome DevTools Protocol enabled
-REM Usage: scripts\launch_tv_debug.bat [port]
+setlocal EnableDelayedExpansion
 
-set PORT=%1
-if "%PORT%"=="" set PORT=9222
+:: Check for administrator privileges — elevate via UAC if needed
+net session >nul 2>&1
+if %errorLevel% neq 0 (
+    echo Requesting administrator privileges...
+    powershell -NoProfile -Command "Start-Process cmd -ArgumentList '/c \"%~f0\"' -Verb RunAs"
+    exit /b
+)
 
-REM Kill existing TradingView instances
-taskkill /F /IM TradingView.exe >nul 2>&1
+echo [1/4] Stopping existing TradingView processes...
+powershell -NoProfile -Command "Stop-Process -Name TradingView -Force -ErrorAction SilentlyContinue"
 timeout /t 2 /nobreak >nul
 
-REM Auto-detect TradingView install location
-set "TV_EXE="
+echo [2/4] Locating TradingView (Microsoft Store / MSIX install)...
+for /f "usebackq delims=" %%i in (`powershell -NoProfile -Command "(Get-ChildItem 'C:\Program Files\WindowsApps\TradingView.Desktop_*_x64__n534cwy3pjxzj' -Recurse -Filter TradingView.exe -ErrorAction SilentlyContinue | Select-Object -First 1).FullName"`) do set "TV_PATH=%%i"
 
-REM Check common install locations
-if exist "%LOCALAPPDATA%\TradingView\TradingView.exe" set "TV_EXE=%LOCALAPPDATA%\TradingView\TradingView.exe"
-if exist "%PROGRAMFILES%\TradingView\TradingView.exe" set "TV_EXE=%PROGRAMFILES%\TradingView\TradingView.exe"
-if exist "%PROGRAMFILES(x86)%\TradingView\TradingView.exe" set "TV_EXE=%PROGRAMFILES(x86)%\TradingView\TradingView.exe"
-
-REM Check MSIX / Windows Store installs
-if "%TV_EXE%"=="" (
-    for /f "tokens=*" %%i in ('dir /s /b "%PROGRAMFILES%\WindowsApps\TradingView*\TradingView.exe" 2^>nul') do set "TV_EXE=%%i"
-)
-if "%TV_EXE%"=="" (
-    for /f "tokens=*" %%i in ('where TradingView.exe 2^>nul') do set "TV_EXE=%%i"
-)
-
-if "%TV_EXE%"=="" (
-    echo Error: TradingView not found.
-    echo Checked: %%LOCALAPPDATA%%\TradingView, %%PROGRAMFILES%%\TradingView, WindowsApps
+if "!TV_PATH!"=="" (
     echo.
-    echo If installed elsewhere, run manually:
-    echo   "C:\path\to\TradingView.exe" --remote-debugging-port=%PORT%
+    echo ERROR: TradingView not found in WindowsApps.
+    echo To find it manually open PowerShell as Admin and run:
+    echo   Get-ChildItem 'C:\Program Files\WindowsApps' -Recurse -Filter TradingView.exe
+    echo.
+    pause
     exit /b 1
 )
 
-echo Found TradingView at: %TV_EXE%
-echo Starting with --remote-debugging-port=%PORT%...
-start "" "%TV_EXE%" --remote-debugging-port=%PORT%
+echo Found: !TV_PATH!
+echo [3/4] Launching with --remote-debugging-port=9222 ...
+start "" "!TV_PATH!" --remote-debugging-port=9222
 
-echo Waiting for CDP to become available...
-timeout /t 5 /nobreak >nul
-
-:check
-curl -s http://localhost:%PORT%/json/version >nul 2>&1
-if %errorlevel% neq 0 (
-    echo Still waiting...
+echo [4/4] Waiting for CDP to respond (max 60s)...
+set /a TRIES=0
+:wait_loop
     timeout /t 2 /nobreak >nul
-    goto check
-)
+    set /a TRIES+=1
+    powershell -NoProfile -Command "try { Invoke-RestMethod http://localhost:9222/json/version -ErrorAction Stop | Out-Null; exit 0 } catch { exit 1 }" >nul 2>&1
+    if !errorlevel! equ 0 goto :cdp_ready
+    if !TRIES! geq 30 goto :cdp_timeout
+    echo    Intento !TRIES!/30...
+    goto :wait_loop
 
+:cdp_ready
 echo.
-echo CDP ready at http://localhost:%PORT%
-curl -s http://localhost:%PORT%/json/version
+echo  CDP listo en http://localhost:9222
+echo  Abre Claude Code en C:\Users\juant\tradingview-mcp-jackson y ejecuta tv_health_check
 echo.
+pause
+exit /b 0
+
+:cdp_timeout
+echo.
+echo  ADVERTENCIA: CDP no responde tras 60s. TradingView puede seguir cargando.
+echo  Espera un minuto y ejecuta tv_health_check en Claude Code.
+echo.
+pause
+exit /b 0

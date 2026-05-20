@@ -1,0 +1,126 @@
+[
+  {
+    "id": 1,
+    "nombre": "Cambio de Tendencia al alza",
+    "temporalidad_principal": "H1",
+    "indicadores": ["Bollinger Bands", "Media Móvil 20"],
+    "posicion": "CALL",
+    "reglas": [
+      "Trazar línea de tendencia bajista",
+      "Ruptura de línea y media móvil 20 en H1",
+      "Confirmación alcista en M15"
+    ]
+  },
+  {
+    "id": 2,
+    "nombre": "Cambio de Tendencia a la baja",
+    "temporalidad_principal": "H1",
+    "indicadores": ["Bollinger Bands", "Media Móvil 20"],
+    "posicion": "PUT",
+    "reglas": [
+      "Trazar línea de tendencia alcista",
+      "Ruptura de línea y media móvil 20 en H1",
+      "Confirmación bajista en M15"
+    ]
+  },
+  {
+    "id": 3,
+    "nombre": "Rebote en punto medio (Bajista)",
+    "temporalidad_principal": "D1/H1",
+    "indicadores": ["Media Móvil 20"],
+    "posicion": "PUT",
+    "reglas": [
+      "Tendencia D1 bajista",
+      "Retroceso al punto medio en D1/H1",
+      "Rechazo del nivel y vela de confirmación bajista"
+    ]
+  },
+  {
+    "id": 4,
+    "nombre": "Apertura fuera de Bollinger (PUT)",
+    "temporalidad_principal": "M15",
+    "indicadores": ["Bollinger Bands"],
+    "posicion": "PUT",
+    "contexto": "Mercado lateral previo",
+    "ventana_tiempo": "Primeros 5 minutos"
+  },
+  {
+    "id": 5,
+    "nombre": "Apertura fuera de Bollinger (CALL)",
+    "temporalidad_principal": "M15",
+    "indicadores": ["Bollinger Bands"],
+    "posicion": "CALL",
+    "contexto": "Mercado lateral previo",
+    "ventana_tiempo": "Primeros 5 minutos"
+  },
+  {
+    "id": 6,
+    "nombre": "Efecto Imán (CALL)",
+    "temporalidad_principal": "H1/M15",
+    "indicadores": ["Media Móvil 20", "Worden Stochastics"],
+    "posicion": "CALL",
+    "reglas": [
+      "Fuerte gap bajista alejado de la media",
+      "Vela fuera de banda inferior en M15",
+      "Cruce alcista en estocástico"
+    ]
+  },
+  {
+    "id": 7,
+    "nombre": "Efecto Imán (PUT)",
+    "temporalidad_principal": "H1/M15",
+    "indicadores": ["Media Móvil 20", "Worden Stochastics"],
+    "posicion": "PUT",
+    "reglas": [
+      "Fuerte gap alcista alejado de la media",
+      "Vela fuera de banda superior en M15",
+      "Cruce bajista en estocástico"
+    ]
+  },
+  {
+    "id": 8,
+    "nombre": "Cambio tendencia 15 min (CALL)",
+    "temporalidad_principal": "M15",
+    "indicadores": ["Bollinger Bands", "Trendline"],
+    "posicion": "CALL",
+    "reglas": [
+      "Ruptura de línea de tendencia bajista previa",
+      "Apertura con volatilidad sobre punto medio"
+    ]
+  },
+  {
+    "id": 9,
+    "nombre": "Cambio tendencia 15 min (PUT)",
+    "temporalidad_principal": "M15",
+    "indicadores": ["Bollinger Bands", "Trendline"],
+    "posicion": "PUT",
+    "reglas": [
+      "Ruptura de línea de tendencia alcista previa",
+      "Apertura con volatilidad bajo punto medio"
+    ]
+  },
+  {
+    "id": 10,
+    "nombre": "Ruptura Lateral Mediano Plazo (CALL)",
+    "temporalidad_principal": "H1",
+    "indicadores": ["MA 100/200", "Bollinger Bands"],
+    "posicion": "CALL",
+    "contexto": "Acumulación de 10-30 días",
+    "reglas": [
+      "Salida del canal con vela potente",
+      "Confirmación en H1 con volatilidad"
+    ]
+  },
+  {
+    "id": 11,
+    "nombre": "Ruptura Lateral Mediano Plazo (PUT)",
+    "temporalidad_principal": "H1",
+    "indicadores": ["MA 100/200", "Bollinger Bands"],
+    "posicion": "PUT",
+    "contexto": "Consolidación de 10-30 días",
+    "reglas": [
+      "Ruptura de soporte inferior",
+      "Confirmación en H1 con volatilidad"
+    ]
+  }
+]

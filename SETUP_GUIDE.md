@@ -14,13 +14,17 @@ If the user specifies a different install path, use that instead of `~/tradingvi
 
 ## Step 2: Set Up Rules
 
-Copy the example rules file and open it for the user to fill in:
+> [!WARNING]
+> `rules.example.json` is a **crypto/swing trading example** (EMA, RSI, BTCUSD watchlist). Do NOT use it as a template if you trade options on equities. Build `rules.json` from scratch using the fields described below.
 
-```bash
-cp ~/tradingview-mcp-jackson/rules.example.json ~/tradingview-mcp-jackson/rules.json
-```
+If this is a fresh install with no existing `rules.json`, create one manually. The required fields are:
 
-Tell the user: "Open `rules.json` and fill in your watchlist (the symbols you trade), your bias criteria (what makes something bullish/bearish for you), and your risk rules. This is what the morning brief uses every day."
+- `watchlist` — array of symbols you trade (e.g. `["AAPL", "NVDA", "SPY", "QQQ", "IWM", "DIA"]`)
+- `bias_criteria` — bullish/bearish/neutral conditions based on your indicators
+- `risk_rules` — account size, position sizing, max concurrent positions
+- `asset_config` — per-ticker option premium ranges and contract count
+
+Tell the user: "Open `rules.json` and fill in your watchlist, bias criteria (what makes something bullish/bearish for you), and risk rules. This is what the morning brief uses every day."
 
 ## Step 3: Add to MCP Config
 

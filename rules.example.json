@@ -1,6 +1,10 @@
 {
+  "_WARNING": "THIS IS A GENERIC CRYPTO/SWING EXAMPLE — NOT THE ACTIVE TRADING SETUP. DO NOT USE AS REFERENCE FOR THIS PROJECT. The active rules are in rules.json which uses Bollinger Bands 20-2-0 + SMAs 20/40/100/200 for options trading on US equities (AAPL, NVDA, SPY, QQQ, IWM, DIA).",
+
   "watchlist": ["BTCUSD", "ETHUSD", "SOLUSD"],
   "default_timeframe": "240",
+
+  "_NOTE_INDICATORS": "The bias_criteria below uses EMA + RSI + Ribbon — these are NOT the indicators used in the active options strategy. The active strategy uses Bollinger Bands (50% weight) and SMAs 20/40/100/200 (30% weight) only.",
 
   "bias_criteria": {
     "bullish": [
@@ -27,5 +31,5 @@
     "If I have 2 losing trades in a row, stop for the day"
   ],
 
-  "notes": "Add any other context you want Claude to factor in — e.g. macro events this week, key dates, anything that should affect your bias."
+  "notes": "EXAMPLE FILE ONLY. See rules.json for the active options trading configuration."
 }

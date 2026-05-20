@@ -5,7 +5,7 @@ import * as core from "../core/morning.js";
 export function registerMorningTools(server) {
   server.tool(
     "morning_brief",
-    "Scan your watchlist, read all indicator values, and return structured data for a session brief. Reads rules.json for your bias criteria and watchlist. Claude applies the rules to generate your daily bias.",
+    "Scan your watchlist across D1, H1 and M15 timeframes. Returns BB values, SMA order, bb_width (volatility filter) and strategy_candidates per ticker. Claude applies the 7-step premarket checklist to generate the session brief.",
     {
       rules_path: z
         .string()
@@ -17,6 +17,27 @@ export function registerMorningTools(server) {
     async ({ rules_path } = {}) => {
       try {
         return jsonResult(await core.runBrief({ rules_path }));
+      } catch (err) {
+        return jsonResult({ success: false, error: err.message }, true);
+      }
+    },
+  );
+
+  server.tool(
+    "premarket_save",
+    "Save the full premarket checklist report as a markdown file in docs/sessions/premarket-YYYY-MM-DD.md inside the project repo.",
+    {
+      content: z
+        .string()
+        .describe("Full markdown content of the premarket checklist report."),
+      date: z
+        .string()
+        .optional()
+        .describe("Date string YYYY-MM-DD. Defaults to today."),
+    },
+    async ({ content, date } = {}) => {
+      try {
+        return jsonResult(core.savePremarketReport({ content, date }));
       } catch (err) {
         return jsonResult({ success: false, error: err.message }, true);
       }
