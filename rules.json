@@ -1,65 +1,81 @@
 {
-  "watchlist": ["BTCUSDT"],
-  "default_timeframe": "1",
-
+  "watchlist": ["TVC:DEU40", "TVC:DJI", "TVC:SPX"],
+  "default_timeframe": "D",
   "strategy": {
-    "name": "10-Second Momentum Scalper",
-    "sources": [
-      "Price momentum — buy if last close > previous close (green candle)",
-      "RSI filter — only trade when RSI is not at an extreme (30–70 range)"
-    ],
-    "primary_timeframes": [
-      "1-minute (signal source)",
-      "10-second execution loop"
-    ]
+    "name": "Indices Trend-Following with Price Action Scalping",
+    "source": "default-trend-following + youtuber-mindfully-trading-blend + youtuber-scruffy-trader-blend + youtuber-prorealalgos-break-and-bounce",
+    "pine_script_path": null
   },
-
   "indicators": {
-    "rsi_14": "Momentum filter. Only trade when RSI is between 30–70 (avoid extremes).",
-    "price_momentum": "Compare last close vs previous close. Up = long signal. Down = short signal."
+    "ema_20": {
+      "type": "EMA",
+      "length": 20,
+      "purpose": "short-term trend direction and dynamic support/resistance"
+    },
+    "ema_50": {
+      "type": "EMA",
+      "length": 50,
+      "purpose": "medium-term trend direction and key level"
+    },
+    "rsi": {
+      "type": "RSI",
+      "length": 14,
+      "purpose": "momentum filter — above 50 is bullish, below 50 is bearish"
+    },
+    "atr": {
+      "type": "ATR",
+      "length": 14,
+      "purpose": "stop-loss sizing and daily volatility measure"
+    }
   },
-
   "bias_criteria": {
     "bullish": [
-      "Last 1-min candle closed higher than the one before it",
-      "RSI is between 30 and 70"
+      "20 EMA is above the 50 EMA",
+      "RSI is above 50 and rising",
+      "Price is trading above the 20 EMA"
     ],
     "bearish": [
-      "Last 1-min candle closed lower than the one before it",
-      "RSI is between 30 and 70"
+      "20 EMA is below the 50 EMA",
+      "RSI is below 50 and falling",
+      "Price is trading below the 20 EMA"
     ],
     "neutral": [
-      "RSI is above 70 (overbought — skip)",
-      "RSI is below 30 (oversold — skip)",
-      "Candle close change is less than 0.05% (chop — skip)"
+      "20 EMA and 50 EMA are within 0.1% of each other (flat/choppy)",
+      "RSI is stuck between 45 and 55 with no clear direction"
     ]
   },
-
   "entry_rules": {
     "long": [
-      "Last close > previous close by at least 0.05%",
-      "RSI between 30 and 70",
-      "Enter market buy immediately"
+      "20 EMA is above 50 EMA — trend is up",
+      "RSI is above 50 or has just crossed above 50",
+      "Price has pulled back to near the 20 EMA without closing below it",
+      "Price action confirmation: look for a bullish candle pattern at the 20 EMA (e.g. hammer, engulfing, strong close off lows) — do not enter on a weak or indecisive candle",
+      "For DEU40: check EUR/USD is not in a strong downtrend — DAX tends to struggle when euro is selling off hard",
+      "Enter on the next daily candle after the bullish price action confirmation",
+      "INTRADAY ENTRY (Break & Bounce method — ProRealAlgos): on the day of entry, box yesterday's daily high/low. On the 15-min chart, wait for price to break above yesterday's high. On the 5-min chart, wait for a Hammer, Inverted Hammer, or Bullish Engulfing candle to close after the breakout move. Only take this entry within the first 2.5 hours of market open. Never enter before the reversal candle closes."
     ],
     "short": [
-      "Last close < previous close by at least 0.05%",
-      "RSI between 30 and 70",
-      "Enter market sell immediately"
+      "20 EMA is below 50 EMA — trend is down",
+      "RSI is below 50 or has just crossed below 50",
+      "Price has rallied back to near the 20 EMA without closing above it",
+      "Price action confirmation: look for a bearish candle pattern at the 20 EMA (e.g. shooting star, bearish engulfing, strong close off highs) — do not enter on a weak or indecisive candle",
+      "Enter on the next daily candle after the bearish price action confirmation",
+      "INTRADAY ENTRY (Break & Bounce method — ProRealAlgos): on the day of entry, box yesterday's daily high/low. On the 15-min chart, wait for price to break below yesterday's low. On the 5-min chart, wait for a Shooting Star, Inverted Hammer, or Bearish Engulfing candle to close after the breakout move. Only take this entry within the first 2.5 hours of market open. Never enter before the reversal candle closes."
     ]
   },
-
   "exit_rules": [
-    "Exit automatically after 10 seconds (next loop tick closes previous position)",
-    "No manual exit management — pure time-based scalp"
+    "Exit long when the 20 EMA crosses back below the 50 EMA",
+    "Exit long when RSI drops below 45 on a daily close",
+    "Exit short when the 20 EMA crosses back above the 50 EMA",
+    "Exit short when RSI rises above 55 on a daily close",
+    "Take partial profit (50% of position) at 2x ATR from entry price"
   ],
-
   "risk_rules": [
-    "Fixed trade size: 1% of portfolio per trade",
-    "Maximum trade size: $3.00",
-    "Maximum 6 trades per 60-second run",
-    "No stop loss — exit is time-based at next tick",
-    "For demo purposes only — minimum BitGet order size may apply"
+    "Stop loss: 1.5x ATR below entry for longs, 1.5x ATR above entry for shorts",
+    "Position size: risk no more than 1% of account per trade",
+    "Daily loss limit: if down 2% on the day, stop trading for that session",
+    "Maximum 2 open positions across the watchlist at the same time",
+    "If price gaps more than 1.5x ATR at the open, do not chase — wait for a pullback to the 20 EMA"
   ],
-
-  "notes": "Demo strategy for YouTube video. Runs 6 trades over 60 seconds, one every 10 seconds. Signal is simple price momentum on 1-min candles with RSI sanity check."
+  "notes": "Blends four sources: (1) standard EMA trend-following for daily bias, (2) prop-firm risk discipline from Emily / Mindfully Trading, (3) price action simplicity from The Scruffy Trader, (4) the Break & Bounce intraday entry method from ProRealAlgos (20+ years refined). Daily EMA/RSI setup gives trend direction; Break & Bounce gives precise intraday entry timing when conditions align. Review every 1-2 days on the Daily chart. DAX (DEU40) is most volatile around EU open (08:00 GMT); DJI and SPX peak around US open (14:30 GMT). For DEU40, EUR/USD currency strength is a useful context filter — a falling euro often drags the DAX. Break & Bounce entries only in first 2.5 hours of market open."
 }
