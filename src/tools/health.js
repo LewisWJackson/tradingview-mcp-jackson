@@ -18,11 +18,12 @@ export function registerHealthTools(server) {
     catch (err) { return jsonResult({ success: false, error: err.message }, true); }
   });
 
-  server.tool('tv_launch', 'Launch TradingView Desktop with Chrome DevTools Protocol (remote debugging) enabled. Auto-detects install location on Mac, Windows, and Linux.', {
+  server.tool('tv_launch', 'Launch TradingView Desktop with Chrome DevTools Protocol (remote debugging) enabled. Auto-detects install location on Mac, Windows, and Linux. On Windows AppX (Microsoft Store) installs, will offer to add a LoopbackExempt entry via an elevated UAC prompt so the CDP port is reachable from desktop processes.', {
     port: z.coerce.number().optional().describe('CDP port (default 9222)'),
     kill_existing: z.coerce.boolean().optional().describe('Kill existing TradingView instances first (default true)'),
-  }, async ({ port, kill_existing }) => {
-    try { return jsonResult(await core.launch({ port, kill_existing })); }
+    fix_loopback: z.coerce.boolean().optional().describe('On Windows AppX installs, prompt for UAC and add the package to CheckNetIsolation LoopbackExempt if missing (default true)'),
+  }, async ({ port, kill_existing, fix_loopback }) => {
+    try { return jsonResult(await core.launch({ port, kill_existing, fix_loopback })); }
     catch (err) { return jsonResult({ success: false, error: err.message }, true); }
   });
 }

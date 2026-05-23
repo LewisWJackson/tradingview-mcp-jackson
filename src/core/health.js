@@ -159,9 +159,40 @@ export async function uiState() {
   return { success: true, ...state };
 }
 
-export async function launch({ port, kill_existing } = {}) {
+function isAppxPath(p) {
+  return process.platform === 'win32' && /\\WindowsApps\\/i.test(p);
+}
+
+function getAppxPfn() {
+  try {
+    const out = execSync(
+      `powershell -NoProfile -Command "(Get-AppxPackage -Name '*TradingView*' | Select-Object -First 1).PackageFamilyName"`,
+      { timeout: 5000 }
+    ).toString().trim();
+    return out || null;
+  } catch { return null; }
+}
+
+function isLoopbackExempt(pfn) {
+  try {
+    const out = execSync('CheckNetIsolation LoopbackExempt -s', { timeout: 5000 }).toString().toLowerCase();
+    return out.includes(pfn.toLowerCase());
+  } catch { return false; }
+}
+
+function applyLoopbackExempt(pfn) {
+  // Triggers a UAC prompt. Returns true if the exemption is present after the attempt.
+  try {
+    const psCmd = `Start-Process cmd.exe -ArgumentList '/c','CheckNetIsolation LoopbackExempt -a -n=${pfn}' -Verb RunAs -Wait -WindowStyle Hidden`;
+    execSync(`powershell -NoProfile -Command "${psCmd.replace(/"/g, '\\"')}"`, { timeout: 60000, stdio: 'ignore' });
+  } catch { /* user may have denied UAC */ }
+  return isLoopbackExempt(pfn);
+}
+
+export async function launch({ port, kill_existing, fix_loopback } = {}) {
   const cdpPort = port || 9222;
   const killFirst = kill_existing !== false;
+  const autoFixLoopback = fix_loopback !== false;
   const platform = process.platform;
 
   const pathMap = {
@@ -197,6 +228,17 @@ export async function launch({ port, kill_existing } = {}) {
     } catch { /* ignore */ }
   }
 
+  if (!tvPath && platform === 'win32') {
+    try {
+      const psCmd = `powershell -NoProfile -Command "(Get-AppxPackage -Name '*TradingView*' | Select-Object -First 1).InstallLocation"`;
+      const installLoc = execSync(psCmd, { timeout: 5000 }).toString().trim();
+      if (installLoc) {
+        const candidate = `${installLoc}\\TradingView.exe`;
+        if (existsSync(candidate)) tvPath = candidate;
+      }
+    } catch { /* ignore */ }
+  }
+
   if (!tvPath && platform === 'darwin') {
     try {
       const found = execSync('mdfind "kMDItemFSName == TradingView.app" | head -1', { timeout: 5000 }).toString().trim();
@@ -209,6 +251,19 @@ export async function launch({ port, kill_existing } = {}) {
 
   if (!tvPath) {
     throw new Error(`TradingView not found on ${platform}. Searched: ${candidates.join(', ')}. Launch manually with: /path/to/TradingView --remote-debugging-port=${cdpPort}`);
+  }
+
+  const appx = { detected: false, pfn: null, loopback_exempt: null, exempt_applied: false };
+  if (isAppxPath(tvPath)) {
+    appx.detected = true;
+    appx.pfn = getAppxPfn();
+    if (appx.pfn) {
+      appx.loopback_exempt = isLoopbackExempt(appx.pfn);
+      if (!appx.loopback_exempt && autoFixLoopback) {
+        appx.loopback_exempt = applyLoopbackExempt(appx.pfn);
+        appx.exempt_applied = appx.loopback_exempt;
+      }
+    }
   }
 
   if (killFirst) {
@@ -239,13 +294,19 @@ export async function launch({ port, kill_existing } = {}) {
           success: true, platform, binary: tvPath, pid: child.pid,
           cdp_port: cdpPort, cdp_url: `http://localhost:${cdpPort}`,
           browser: info.Browser, user_agent: info['User-Agent'],
+          ...(appx.detected ? { appx } : {}),
         };
       }
     } catch { /* retry */ }
   }
 
+  let warning = 'TradingView launched but CDP not responding yet. It may still be loading. Try tv_health_check in a few seconds.';
+  if (appx.detected && appx.pfn && !appx.loopback_exempt) {
+    warning = `TradingView is installed as a Windows Store (AppX) package and is not on the LoopbackExempt list, so its CDP port is unreachable from desktop processes. Run this command in an elevated terminal and relaunch: CheckNetIsolation LoopbackExempt -a -n=${appx.pfn}`;
+  }
   return {
     success: true, platform, binary: tvPath, pid: child.pid, cdp_port: cdpPort, cdp_ready: false,
-    warning: 'TradingView launched but CDP not responding yet. It may still be loading. Try tv_health_check in a few seconds.',
+    ...(appx.detected ? { appx } : {}),
+    warning,
   };
 }
