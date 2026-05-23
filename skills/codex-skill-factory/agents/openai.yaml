@@ -1,0 +1,4 @@
+interface:
+  display_name: "Codex Skill Factory"
+  short_description: "Validate, scan, and package Codex skills safely"
+  default_prompt: "Use $codex-skill-factory to validate, security scan, and package a Codex skill safely."
