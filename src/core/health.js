@@ -197,6 +197,18 @@ export async function launch({ port, kill_existing } = {}) {
     } catch { /* ignore */ }
   }
 
+  // Windows Store (MSIX) fallback — query AppxPackage install location via PowerShell
+  if (!tvPath && platform === 'win32') {
+    try {
+      const psCmd = `(Get-AppxPackage | Where-Object { $_.Name -like '*TradingView*' } | Select-Object -First 1 -ExpandProperty InstallLocation)`;
+      const installDir = execSync(`powershell -NoProfile -Command "${psCmd}"`, { timeout: 5000 }).toString().trim();
+      if (installDir) {
+        const candidate = `${installDir}\\TradingView.exe`;
+        if (existsSync(candidate)) tvPath = candidate;
+      }
+    } catch { /* ignore */ }
+  }
+
   if (!tvPath && platform === 'darwin') {
     try {
       const found = execSync('mdfind "kMDItemFSName == TradingView.app" | head -1', { timeout: 5000 }).toString().trim();
