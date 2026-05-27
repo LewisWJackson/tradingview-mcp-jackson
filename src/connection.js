@@ -105,6 +105,32 @@ export async function evaluateAsync(expression) {
   return evaluate(expression, { awaitPromise: true });
 }
 
+export async function connectToTarget(targetId) {
+  // Close existing connection if any
+  if (client) {
+    try { await client.close(); } catch {}
+    client = null;
+    targetInfo = null;
+  }
+
+  // Look up target info from the target list
+  const resp = await fetch(`http://${CDP_HOST}:${CDP_PORT}/json/list`);
+  const targets = await resp.json();
+  const target = targets.find(t => t.id === targetId);
+  if (!target) {
+    throw new Error(`Target ${targetId} not found in CDP target list`);
+  }
+
+  targetInfo = target;
+  client = await CDP({ host: CDP_HOST, port: CDP_PORT, target: targetId });
+
+  await client.Runtime.enable();
+  await client.Page.enable();
+  await client.DOM.enable();
+
+  return client;
+}
+
 export async function disconnect() {
   if (client) {
     try { await client.close(); } catch {}

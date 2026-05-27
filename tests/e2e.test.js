@@ -1428,6 +1428,85 @@ val = array.get(a, 5)`;
 
   // ─── 13. CONTEXT SIZE VALIDATION ──────────────────────────────────────
 
+  // ─── TAB MANAGEMENT (4 tools) ──────────────────────────────────────────
+
+  describe('Tab Management', () => {
+    let tabCountBefore;
+    let tab;
+
+    it('tab_list — list open chart tabs', async () => {
+      tab = await import('../src/core/tab.js');
+      const result = await tab.list();
+      assert.ok(result.success, 'tab_list succeeded');
+      assert.ok(result.tab_count >= 1, 'At least one chart tab open');
+      assert.ok(Array.isArray(result.tabs), 'tabs is an array');
+      tabCountBefore = result.tab_count;
+    });
+
+    it('tab_new — open new tab with layout', async () => {
+      const result = await tab.newTab({ type: 'layout', name: 'Analysis' });
+      assert.ok(result.success, 'tab_new succeeded');
+      assert.strictEqual(result.type, 'layout');
+      assert.strictEqual(result.name, 'Analysis');
+      assert.ok(result.tab_id, 'New tab has an ID');
+      assert.strictEqual(result.tab_count, tabCountBefore + 1, 'Tab count increased by 1');
+    });
+
+    it('tab_close — close the new tab', async () => {
+      const result = await tab.closeTab();
+      assert.ok(result.success, 'tab_close succeeded');
+      assert.strictEqual(result.tabs_after, result.tabs_before - 1, 'Tab count decreased by 1');
+      assert.strictEqual(result.tabs_after, tabCountBefore, 'Tab count restored to original');
+    });
+
+    it('tab_switch — switch to tab and verify CDP reconnects', async () => {
+      const tabs = await tab.list();
+      assert.ok(tabs.tab_count >= 1, 'Have tabs to switch to');
+
+      const result = await tab.switchTab({ index: 0 });
+      assert.ok(result.success, 'tab_switch succeeded');
+      assert.strictEqual(result.index, 0);
+      assert.ok(result.tab_id, 'Switched tab has an ID');
+      assert.strictEqual(result.tab_id, tabs.tabs[0].id, 'Connected to correct target');
+    });
+
+    it('tab_switch — rejects out-of-range index', async () => {
+      await assert.rejects(
+        () => tab.switchTab({ index: 999 }),
+        /out of range/
+      );
+    });
+  });
+
+  // ─── CONNECTTOTARGET (connection.js) ──────────────────────────────────
+
+  describe('connectToTarget', () => {
+    let connectToTarget;
+
+    it('connects to a valid target ID', async () => {
+      ({ connectToTarget } = await import('../src/connection.js'));
+      const targets = await CDP.List({ host: 'localhost', port: 9222 });
+      const chart = targets.find(t => t.type === 'page' && /tradingview\.com\/chart/i.test(t.url));
+      assert.ok(chart, 'Found a chart target');
+
+      const newClient = await connectToTarget(chart.id);
+      assert.ok(newClient, 'Got a client back');
+
+      const { result } = await newClient.Runtime.evaluate({
+        expression: '1 + 1',
+        returnByValue: true,
+      });
+      assert.strictEqual(result.value, 2, 'Client can evaluate expressions');
+    });
+
+    it('throws for non-existent target ID', async () => {
+      await assert.rejects(
+        () => connectToTarget('non-existent-target-id-12345'),
+        /not found/
+      );
+    });
+  });
+
   describe('Context Size Validation', () => {
 
     it('quote_get output < 500 bytes', async () => {
