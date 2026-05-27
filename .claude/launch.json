@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "MCP Server (stdio)",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["src/server.js"],
+      "port": 9222
+    },
+    {
+      "name": "Scalper Bot (Bitget XRP/USDT)",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["scalper-run.js"],
+      "port": 0
+    }
+  ]
+}
