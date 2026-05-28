@@ -1,7 +1,7 @@
 /**
  * Core indicator settings logic.
  */
-import { evaluate } from '../connection.js';
+import { evaluate, safeString } from '../connection.js';
 
 const CHART_API = 'window.TradingViewApi._activeChartWidgetWV.value()';
 
@@ -12,14 +12,14 @@ export async function setInputs({ entity_id, inputs: inputsRaw }) {
     throw new Error('inputs must be a non-empty object, e.g. { length: 50 }');
   }
 
-  const escapedId = entity_id.replace(/'/g, "\\'");
+  const safeEntityId = safeString(entity_id);
   const inputsJson = JSON.stringify(inputs);
 
   const result = await evaluate(`
     (function() {
       var chart = ${CHART_API};
-      var study = chart.getStudyById('${escapedId}');
-      if (!study) return { error: 'Study not found: ${escapedId}' };
+      var study = chart.getStudyById(${safeEntityId});
+      if (!study) return { error: 'Study not found: ' + ${safeEntityId} };
       var currentInputs = study.getInputValues();
       var overrides = ${inputsJson};
       var updatedKeys = {};
@@ -42,12 +42,12 @@ export async function toggleVisibility({ entity_id, visible }) {
   if (!entity_id) throw new Error('entity_id is required. Use chart_get_state to find study IDs.');
   if (typeof visible !== 'boolean') throw new Error('visible must be a boolean (true or false)');
 
-  const escapedId = entity_id.replace(/'/g, "\\'");
+  const safeEntityId = safeString(entity_id);
   const result = await evaluate(`
     (function() {
       var chart = ${CHART_API};
-      var study = chart.getStudyById('${escapedId}');
-      if (!study) return { error: 'Study not found: ${escapedId}' };
+      var study = chart.getStudyById(${safeEntityId});
+      if (!study) return { error: 'Study not found: ' + ${safeEntityId} };
       study.setVisible(${visible});
       var actualVisible = study.isVisible();
       return { visible: actualVisible };
