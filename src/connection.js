@@ -28,6 +28,24 @@ const KNOWN_PATHS = {
 
 export { KNOWN_PATHS };
 
+/**
+ * Sanitize a string for safe interpolation into JavaScript code evaluated via CDP.
+ * Uses JSON.stringify to produce a properly escaped JS string literal (with quotes).
+ * Prevents injection via quotes, backticks, template literals, and control chars.
+ */
+export function safeString(str) {
+  return JSON.stringify(String(str));
+}
+
+/**
+ * Validate that a value is a finite number before embedding it in evaluated JS.
+ */
+export function requireFinite(value, name) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) throw new Error(`${name} must be a finite number, got: ${value}`);
+  return n;
+}
+
 export async function getClient() {
   if (client) {
     try {

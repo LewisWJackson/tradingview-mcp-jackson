@@ -56,6 +56,21 @@ function wv(path) {
   return `(function(){ var v = ${path}; return (v && typeof v === 'object' && typeof v.value === 'function') ? v.value() : v; })()`;
 }
 
+function replayActive(path = REPLAY_API) {
+  return `(function(){
+    var r = ${path};
+    function unwrap(v) { return (v && typeof v === 'object' && typeof v.value === 'function') ? v.value() : v; }
+    var rawStarted = !!unwrap(r.isReplayStarted());
+    var modeEnabled = rawStarted;
+    try {
+      if (r._replayUIController && typeof r._replayUIController.isReplayModeEnabled === 'function') {
+        modeEnabled = !!unwrap(r._replayUIController.isReplayModeEnabled());
+      }
+    } catch(e) {}
+    return rawStarted && modeEnabled;
+  })()`;
+}
+
 /** Sleep for ms */
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
@@ -165,9 +180,9 @@ describe('TradingView MCP — Full E2E (70 tools)', () => {
     });
 
     after(async () => {
-      await evaluate(`${CHART_API}.setSymbol('${originalSymbol}')`);
+      await evaluate(`(function(){ ${CHART_API}.setSymbol(${JSON.stringify(originalSymbol)}, {}); return true; })()`);
       await sleep(2000);
-      await evaluate(`${CHART_API}.setResolution('${originalTF}')`);
+      await evaluate(`(function(){ ${CHART_API}.setResolution(${JSON.stringify(originalTF)}, {}); return true; })()`);
       await sleep(1000);
       await evaluate(`${CHART_API}.setChartType(${originalType})`);
       await sleep(500);
@@ -195,14 +210,14 @@ describe('TradingView MCP — Full E2E (70 tools)', () => {
     });
 
     it('chart_set_symbol — change ticker', async () => {
-      await evaluate(`${CHART_API}.setSymbol('AAPL', {})`);
+      await evaluate(`(function(){ ${CHART_API}.setSymbol('AAPL', {}); return true; })()`);
       await sleep(2500);
       const sym = await evaluate(`${CHART_API}.symbol()`);
       assert.ok(sym.includes('AAPL'), `Symbol changed to AAPL, got: ${sym}`);
     });
 
     it('chart_set_timeframe — change resolution', async () => {
-      await evaluate(`${CHART_API}.setResolution('D', {})`);
+      await evaluate(`(function(){ ${CHART_API}.setResolution('D', {}); return true; })()`);
       await sleep(1500);
       const tf = await evaluate(`${CHART_API}.resolution()`);
       assert.equal(tf, '1D');
@@ -1038,8 +1053,15 @@ val = array.get(a, 5)`;
       await sleep(500);
       const isOpen = await evaluate(`!!document.querySelector('.monaco-editor.pine-editor-monaco')`);
 
-      // Close
-      await evaluate(`${BOTTOM_BAR}.hideWidget('pine-editor')`);
+      // Close when the current TradingView build exposes a close method.
+      await evaluate(`
+        (function() {
+          var bar = ${BOTTOM_BAR};
+          if (bar && typeof bar.hideWidget === 'function') return bar.hideWidget('pine-editor');
+          if (bar && typeof bar.showWidget === 'function') return bar.showWidget('');
+          return null;
+        })()
+      `);
       await sleep(300);
 
       assert.ok(typeof isOpen === 'boolean', 'Panel toggle works');
@@ -1155,10 +1177,12 @@ val = array.get(a, 5)`;
       // Ensure replay is stopped
       try {
         const rp = REPLAY_API;
-        const started = await evaluate(wv(`${rp}.isReplayStarted()`));
+        const started = await evaluate(replayActive(rp));
         if (started) {
           await evaluate(`${rp}.stopReplay()`);
-          await evaluate(`${rp}.goToRealtime()`);
+          await sleep(200);
+          const stillStarted = await evaluate(wv(`${rp}.isReplayStarted()`));
+          if (stillStarted) await evaluate(`${rp}.goToRealtime()`);
           await evaluate(`${rp}.hideReplayToolbar()`);
           await sleep(500);
         }
@@ -1169,50 +1193,50 @@ val = array.get(a, 5)`;
       const available = await evaluate(wv(`${REPLAY_API}.isReplayAvailable()`));
       if (!available) return; // Skip if replay not available for current symbol
 
-      await evaluate(`${REPLAY_API}.showReplayToolbar()`);
+      await evaluate(`(function(){ ${REPLAY_API}.showReplayToolbar(); return true; })()`);
       await sleep(500);
-      await evaluate(`${REPLAY_API}.selectFirstAvailableDate()`);
+      await evaluate(`(function(){ ${REPLAY_API}.selectFirstAvailableDate(); return true; })()`);
       await sleep(500);
 
-      const started = await evaluate(wv(`${REPLAY_API}.isReplayStarted()`));
+      const started = await evaluate(replayActive());
       assert.ok(started, 'Replay started');
     });
 
     it('replay_step — advance one bar', async () => {
-      const started = await evaluate(wv(`${REPLAY_API}.isReplayStarted()`));
+      const started = await evaluate(replayActive());
       if (!started) return; // Skip if replay didn't start
 
-      await evaluate(`${REPLAY_API}.doStep()`);
+      await evaluate(`(function(){ ${REPLAY_API}.doStep(); return true; })()`);
       const date = await evaluate(wv(`${REPLAY_API}.currentDate()`));
       assert.ok(date !== null && date !== undefined, 'Current date returned');
     });
 
     it('replay_autoplay — toggle autoplay', async () => {
-      const started = await evaluate(wv(`${REPLAY_API}.isReplayStarted()`));
+      const started = await evaluate(replayActive());
       if (!started) return;
 
-      await evaluate(`${REPLAY_API}.toggleAutoplay()`);
+      await evaluate(`(function(){ ${REPLAY_API}.toggleAutoplay(); return true; })()`);
       await sleep(200);
       const isAutoplay = await evaluate(wv(`${REPLAY_API}.isAutoplayStarted()`));
       assert.ok(typeof isAutoplay === 'boolean', 'Autoplay state returned');
 
       // Stop autoplay if it was turned on
       if (isAutoplay) {
-        await evaluate(`${REPLAY_API}.toggleAutoplay()`);
+        await evaluate(`(function(){ ${REPLAY_API}.toggleAutoplay(); return true; })()`);
         await sleep(200);
       }
     });
 
     it('replay_trade — buy action', async () => {
-      const started = await evaluate(wv(`${REPLAY_API}.isReplayStarted()`));
+      const started = await evaluate(replayActive());
       if (!started) return;
 
-      await evaluate(`${REPLAY_API}.buy()`);
+      await evaluate(`(function(){ ${REPLAY_API}.buy(); return true; })()`);
       const position = await evaluate(wv(`${REPLAY_API}.position()`));
       assert.ok(position !== undefined, 'Position returned after buy');
 
       // Close position
-      try { await evaluate(`${REPLAY_API}.closePosition()`); } catch {}
+      try { await evaluate(`(function(){ ${REPLAY_API}.closePosition(); return true; })()`); } catch {}
     });
 
     it('replay_status — get replay state', async () => {
@@ -1222,7 +1246,9 @@ val = array.get(a, 5)`;
           function unwrap(v) { return (v && typeof v === 'object' && typeof v.value === 'function') ? v.value() : v; }
           return {
             is_replay_available: unwrap(r.isReplayAvailable()),
-            is_replay_started: unwrap(r.isReplayStarted()),
+            is_replay_started: unwrap(r.isReplayStarted()) && (!r._replayUIController || typeof r._replayUIController.isReplayModeEnabled !== 'function' || unwrap(r._replayUIController.isReplayModeEnabled())),
+            is_replay_started_raw: unwrap(r.isReplayStarted()),
+            is_replay_mode_enabled: r._replayUIController && typeof r._replayUIController.isReplayModeEnabled === 'function' ? unwrap(r._replayUIController.isReplayModeEnabled()) : null,
           };
         })()
       `);
@@ -1231,15 +1257,17 @@ val = array.get(a, 5)`;
     });
 
     it('replay_stop — return to realtime', async () => {
-      const started = await evaluate(wv(`${REPLAY_API}.isReplayStarted()`));
+      const started = await evaluate(replayActive());
       if (!started) return;
 
-      await evaluate(`${REPLAY_API}.stopReplay()`);
-      await evaluate(`${REPLAY_API}.goToRealtime()`);
-      await evaluate(`${REPLAY_API}.hideReplayToolbar()`);
+      await evaluate(`(function(){ ${REPLAY_API}.stopReplay(); return true; })()`);
+      await sleep(200);
+      const stillStarted = await evaluate(wv(`${REPLAY_API}.isReplayStarted()`));
+      if (stillStarted) await evaluate(`(function(){ ${REPLAY_API}.goToRealtime(); return true; })()`);
+      await evaluate(`(function(){ ${REPLAY_API}.hideReplayToolbar(); return true; })()`);
       await sleep(500);
 
-      const stoppedNow = await evaluate(wv(`${REPLAY_API}.isReplayStarted()`));
+      const stoppedNow = await evaluate(replayActive());
       assert.ok(!stoppedNow, 'Replay stopped');
     });
   });

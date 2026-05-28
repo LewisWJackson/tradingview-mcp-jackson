@@ -1,7 +1,7 @@
 /**
  * Core data access logic.
  */
-import { evaluate, evaluateAsync, KNOWN_PATHS } from '../connection.js';
+import { evaluate, evaluateAsync, KNOWN_PATHS, safeString, requireFinite } from '../connection.js';
 
 const MAX_OHLCV_BARS = 500;
 const MAX_TRADES = 20;
@@ -15,7 +15,7 @@ function buildGraphicsJS(collectionName, mapKey, filter) {
       var model = chart.model();
       var sources = model.model().dataSources();
       var results = [];
-      var filter = '${filter}';
+      var filter = ${safeString(filter || '')};
       for (var si = 0; si < sources.length; si++) {
         var s = sources[si];
         if (!s.metaInfo) continue;
@@ -60,7 +60,8 @@ function buildGraphicsJS(collectionName, mapKey, filter) {
 }
 
 export async function getOhlcv({ count, summary } = {}) {
-  const limit = Math.min(count || 100, MAX_OHLCV_BARS);
+  const requestedCount = count === undefined ? 100 : requireFinite(count, 'count');
+  const limit = Math.min(requestedCount, MAX_OHLCV_BARS);
   let data;
   try {
     data = await evaluate(`
@@ -107,11 +108,12 @@ export async function getOhlcv({ count, summary } = {}) {
 }
 
 export async function getIndicator({ entity_id }) {
+  const safeEntityId = safeString(entity_id);
   const data = await evaluate(`
     (function() {
       var api = ${CHART_API};
-      var study = api.getStudyById('${entity_id}');
-      if (!study) return { error: 'Study not found: ${entity_id}' };
+      var study = api.getStudyById(${safeEntityId});
+      if (!study) return { error: 'Study not found: ' + ${safeEntityId} };
       var result = { name: null, inputs: null, visible: null };
       try { result.visible = study.isVisible(); } catch(e) {}
       try { result.inputs = study.getInputValues(); } catch(e) { result.inputs_error = e.message; }
@@ -165,7 +167,8 @@ export async function getStrategyResults() {
 }
 
 export async function getTrades({ max_trades } = {}) {
-  const limit = Math.min(max_trades || 20, MAX_TRADES);
+  const requestedTrades = max_trades === undefined ? 20 : requireFinite(max_trades, 'max_trades');
+  const limit = Math.min(requestedTrades, MAX_TRADES);
   const trades = await evaluate(`
     (function() {
       try {
@@ -243,10 +246,11 @@ export async function getEquity() {
 }
 
 export async function getQuote({ symbol } = {}) {
+  const safeSymbol = safeString(symbol || '');
   const data = await evaluate(`
     (function() {
       var api = ${CHART_API};
-      var sym = '${symbol || ''}';
+      var sym = ${safeSymbol};
       if (!sym) { try { sym = api.symbol(); } catch(e) {} }
       if (!sym) { try { sym = api.symbolExt().symbol; } catch(e) {} }
       var ext = {};
