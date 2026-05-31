@@ -207,8 +207,25 @@ export async function launch({ port, kill_existing } = {}) {
     } catch { /* ignore */ }
   }
 
+  // MSIX/AppX install (Windows website installer puts the app under
+  // %PROGRAMFILES%\WindowsApps, which isn't on PATH and isn't enumerable
+  // via fs.readdirSync without admin rights — use Get-AppxPackage instead).
+  if (!tvPath && platform === 'win32') {
+    try {
+      const out = execSync(
+        'powershell -NoProfile -Command "(Get-AppxPackage TradingView.Desktop).InstallLocation"',
+        { timeout: 5000 }
+      ).toString().trim();
+      if (out) {
+        const candidate = `${out}\\TradingView.exe`;
+        if (existsSync(candidate)) tvPath = candidate;
+      }
+    } catch { /* powershell or AppX cmdlet unavailable */ }
+  }
+
   if (!tvPath) {
-    throw new Error(`TradingView not found on ${platform}. Searched: ${candidates.join(', ')}. Launch manually with: /path/to/TradingView --remote-debugging-port=${cdpPort}`);
+    const extra = platform === 'win32' ? ' Also checked AppX package TradingView.Desktop via Get-AppxPackage.' : '';
+    throw new Error(`TradingView not found on ${platform}. Searched: ${candidates.join(', ')}.${extra} Launch manually with: /path/to/TradingView --remote-debugging-port=${cdpPort}`);
   }
 
   if (killFirst) {
