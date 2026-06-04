@@ -4,3 +4,7 @@ scripts/current.pine
 temp_*
 *.log
 discovery-log.json
+
+# Secrets — never track exchange/broker credentials in this repo.
+# (The deleted scalper bot read BITGET_* keys from a local .env.)
+.env
