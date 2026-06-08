@@ -1,5 +1,6 @@
 node_modules/
 screenshots/
+paper-data/
 scripts/current.pine
 temp_*
 *.log

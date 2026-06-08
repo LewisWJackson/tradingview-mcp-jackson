@@ -1,0 +1,13 @@
+# Copy this file to your cloudflared config location and replace placeholders.
+# Windows default: C:\Users\<YOU>\.cloudflared\config.yml
+#
+# Only publish the read-only dashboard service.
+# Never publish TradingView CDP at localhost:9222.
+
+tunnel: <TUNNEL-UUID>
+credentials-file: 'C:\Users\<YOU>\.cloudflared\<TUNNEL-UUID>.json'
+
+ingress:
+  - hostname: dashboard.example.com
+    service: http://127.0.0.1:8787
+  - service: http_status:404

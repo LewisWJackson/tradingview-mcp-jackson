@@ -1,0 +1,149 @@
+{
+  "strategy": {
+    "name": "MTF Trend Pullback + ATR Risk System",
+    "mode": "research_only",
+    "allowed_uses": [
+      "chart_reading",
+      "screening",
+      "alerts_after_confirmation",
+      "watchlist_after_confirmation",
+      "review"
+    ],
+    "disallowed_uses": [
+      "auto_trading",
+      "deterministic_buy_sell_advice",
+      "profit_guarantees"
+    ]
+  },
+  "watchlist_source": "TradingView current watchlist",
+  "default_timeframes": {
+    "bias": "D",
+    "structure": "60",
+    "trigger": "15"
+  },
+  "status_outputs": [
+    "NO_TRADE",
+    "WATCH_PULLBACK",
+    "BUY_TRIGGER_CONSERVATIVE",
+    "BUY_TRIGGER_AGGRESSIVE",
+    "TAKE_PROFIT_1",
+    "TAKE_PROFIT_2",
+    "TAKE_PROFIT_3",
+    "TRAIL_EXIT",
+    "SELL_INVALIDATED"
+  ],
+  "indicators": {
+    "EMA20": "trend and pullback reference",
+    "EMA50": "trend confirmation and invalidation reference",
+    "EMA200": "major trend and market regime filter",
+    "RSI14": "momentum reset and trigger confirmation",
+    "ATR14": "risk and trailing stop reference",
+    "Volume_MA20": "volume confirmation and distribution filter",
+    "MACD": "optional confirmation only"
+  },
+  "filters": {
+    "prefer": [
+      "high_liquidity_symbols",
+      "clean_price_action",
+      "stable_spreads",
+      "symbols_stronger_than_benchmark_over_20_daily_bars"
+    ],
+    "exclude": [
+      "low_liquidity_symbols",
+      "abnormal_price_gaps",
+      "recent_continuous_vertical_moves",
+      "thin_or_erratic_volume"
+    ]
+  },
+  "bias_criteria": {
+    "long_allowed_only_if_all_true": [
+      "Daily close > daily EMA200",
+      "Daily EMA50 > daily EMA200",
+      "Daily EMA20 > daily EMA50",
+      "Daily EMA50 slope is up over the latest 10 daily bars",
+      "Symbol 20-day performance is stronger than the selected benchmark index",
+      "Market benchmark has not clearly broken below daily EMA200"
+    ]
+  },
+  "setup_criteria": {
+    "watch_pullback_if_all_true_after_long_bias": [
+      "Price is near EMA20 or between EMA20 and EMA50",
+      "RSI14 is in the 40-55 reset zone",
+      "Pullback is not a high-volume selloff",
+      "Close has not effectively broken EMA50"
+    ]
+  },
+  "entry_trigger": {
+    "BUY_TRIGGER_CONSERVATIVE": [
+      "Trigger timeframe close is back above EMA20",
+      "RSI14 crosses up through 50",
+      "Current trigger candle closes above prior trigger candle high",
+      "Trigger candle volume > Volume MA20"
+    ],
+    "BUY_TRIGGER_AGGRESSIVE": [
+      "Price holds the EMA20-EMA50 pullback zone without breaking the prior pullback low",
+      "15m or 1H closes above short-term descending structure",
+      "RSI14 is back above 50"
+    ]
+  },
+  "invalidation": {
+    "SELL_INVALIDATED_if_any_true": [
+      "Close breaks the current pullback low",
+      "Close breaks EMA50",
+      "RSI14 breaks below 40 while price cannot reclaim EMA20",
+      "Market benchmark closes below EMA200 for two consecutive daily bars"
+    ]
+  },
+  "risk_rules": [
+    "Single-trade risk is capped at 0.5%-1.0% of account equity",
+    "Initial stop = min(current pullback low - 0.5 ATR, entry price - 2 ATR)",
+    "If entry-to-stop distance is too wide, reduce position size automatically in planning",
+    "Maximum three same-direction positions in the same sector",
+    "Stop opening new positions after a 2% daily loss",
+    "Stop opening new positions after a 4% weekly loss",
+    "Pause and review the strategy after an 8%-12% account drawdown"
+  ],
+  "take_profit": [
+    "At +1R, move stop close to breakeven",
+    "At +2R, take profit on one third",
+    "At +3R, take profit on another third",
+    "Trail remaining position with EMA20 or 3 ATR",
+    "Exit all if close breaks EMA50"
+  ],
+  "alert_rules": [
+    "WATCH_PULLBACK",
+    "BUY_TRIGGER_CONSERVATIVE",
+    "BUY_TRIGGER_AGGRESSIVE",
+    "SELL_INVALIDATED",
+    "TAKE_PROFIT_1",
+    "TAKE_PROFIT_2",
+    "TRAIL_EXIT"
+  ],
+  "confirmation_required_before": [
+    "creating_alerts",
+    "changing_alerts",
+    "deleting_alerts",
+    "adding_watchlist_symbols",
+    "removing_watchlist_symbols"
+  ],
+  "review_template": [
+    "symbol",
+    "timeframe",
+    "signal_type",
+    "entry_price",
+    "stop_price",
+    "R_value",
+    "target_1",
+    "target_2",
+    "trend_condition",
+    "RSI14",
+    "ATR14",
+    "volume_condition",
+    "market_regime",
+    "screenshot",
+    "reason_for_entry",
+    "reason_for_exit",
+    "final_R_multiple"
+  ],
+  "notes": "Research, screening, alerting, watchlist management, and review only. Do not place trades. Do not present strategy output as a profit guarantee."
+}

@@ -1,0 +1,99 @@
+{
+  "strategy_name": "MTF Trend Pullback + ATR Risk System",
+  "mode": "paper_trading_only",
+  "benchmark": "SP:SPX",
+  "candidate_source": "universe",
+  "universe_path": "config/universe.default.json",
+  "preselect_top_n": 10,
+  "preselect_max_symbols": 50,
+  "preselect_min_score": 35,
+  "preselect_weekend_min_score": 0,
+  "preselect_cache_minutes": 45,
+  "preselect_min_cached_symbols": 20,
+  "preselect_rotate_universe": true,
+  "preselect_rotation_minutes": 60,
+  "preselect_diversify": true,
+  "preselect_allocation": {
+    "stock": 3,
+    "etf": 1,
+    "crypto": 3,
+    "forex": 2,
+    "commodity": 1
+  },
+  "preselect_weekend_allocation": {
+    "crypto": 10
+  },
+  "preselect_weekend_allocation_strict": true,
+  "benchmark_by_asset_class": {
+    "stock": "SP:SPX",
+    "etf": "SP:SPX",
+    "crypto": "BITSTAMP:BTCUSD",
+    "forex": "TVC:DXY",
+    "commodity": "TVC:GOLD"
+  },
+  "fallback_benchmark_by_asset_class": {
+    "crypto": "BITSTAMP:ETHUSD",
+    "commodity": "TVC:SILVER"
+  },
+  "preselect_symbol_timeout_ms": 30000,
+  "preselect_benchmark_timeout_ms": 45000,
+  "scan_bar_timeout_ms": 20000,
+  "scan_symbol_timeout_ms": 70000,
+  "preselect_min_stock_avg_volume20": 1000000,
+  "preselect_min_stock_price": 5,
+  "preselect_min_atr_pct": 0.5,
+  "preselect_max_atr_pct": 12,
+  "starting_equity": 100000,
+  "risk_per_trade_pct": 0.005,
+  "max_risk_per_trade_pct": 0.01,
+  "daily_loss_stop_pct": 0.02,
+  "weekly_loss_stop_pct": 0.04,
+  "pause_drawdown_pct": 0.1,
+  "max_same_direction_open_positions": 3,
+  "max_symbols_per_run": 10,
+  "default_symbols_if_watchlist_unavailable": [
+    "NASDAQ:AAPL",
+    "NASDAQ:TSLA",
+    "NASDAQ:NFLX",
+    "BITSTAMP:BTCUSD",
+    "BITSTAMP:ETHUSD"
+  ],
+  "exclude_symbols": [
+    "SP:SPX",
+    "TVC:NDX",
+    "TVC:DJI",
+    "CBOE:VIX",
+    "TVC:DXY"
+  ],
+  "exclude_prefixes": [],
+  "entry_statuses": [
+    "BUY_TRIGGER_CONSERVATIVE",
+    "BUY_TRIGGER_AGGRESSIVE",
+    "SHORT_TRIGGER_CONSERVATIVE",
+    "SHORT_TRIGGER_AGGRESSIVE"
+  ],
+  "watch_statuses": [
+    "WATCH_PULLBACK",
+    "SHORT_WATCH_PULLBACK"
+  ],
+  "long_exit_statuses": [
+    "SELL_INVALIDATED",
+    "TRAIL_EXIT"
+  ],
+  "short_exit_statuses": [
+    "BUY_INVALIDATED",
+    "TRAIL_EXIT"
+  ],
+  "exit_statuses": [
+    "SELL_INVALIDATED",
+    "BUY_INVALIDATED",
+    "TRAIL_EXIT"
+  ],
+  "report_timezone": "Asia/Singapore",
+  "notes": [
+    "Virtual/paper trading only.",
+    "No brokerage connection.",
+    "No real orders.",
+    "No profit guarantee."
+  ]
+}

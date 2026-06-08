@@ -4,7 +4,7 @@
  */
 import { getClient, evaluate } from '../connection.js';
 
-const CDP_HOST = 'localhost';
+const CDP_HOST = process.env.TRADINGVIEW_CDP_HOST || '127.0.0.1';
 const CDP_PORT = 9222;
 
 /**
