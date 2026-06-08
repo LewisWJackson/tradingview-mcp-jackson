@@ -1,0 +1,152 @@
+//@version=6
+indicator("MTF Trend Pullback + ATR Risk System", overlay=true, max_labels_count=200)
+
+benchmarkSymbol = input.symbol("SP:SPX", "Benchmark / market regime symbol")
+biasTf = input.timeframe("D", "Bias timeframe")
+structureTf = input.timeframe("60", "Structure timeframe")
+triggerTf = input.timeframe("15", "Trigger timeframe")
+pullbackLookback = input.int(20, "Pullback low lookback", minval=3)
+trendBreakLookback = input.int(8, "Short structure breakout lookback", minval=3)
+breakTolerancePct = input.float(0.2, "EMA50 break tolerance %", minval=0.0, step=0.1)
+highVolumeMultiplier = input.float(1.2, "High-volume selloff multiplier", minval=1.0, step=0.1)
+manualEntryPrice = input.float(0.0, "Manual entry price for TP tracking", minval=0.0)
+manualStopPrice = input.float(0.0, "Manual stop price for TP tracking", minval=0.0)
+
+ema20Chart = ta.ema(close, 20)
+ema50Chart = ta.ema(close, 50)
+ema200Chart = ta.ema(close, 200)
+atr14Chart = ta.atr(14)
+
+[dClose, dEma20, dEma50, dEma200, dEma50Up10, dRoc20] = request.security(
+     syminfo.tickerid,
+     biasTf,
+     [close, ta.ema(close, 20), ta.ema(close, 50), ta.ema(close, 200), ta.ema(close, 50) > ta.ema(close, 50)[10], ta.roc(close, 20)]
+)
+
+[benchClose, benchEma200, benchRoc20, benchClosePrev, benchEma200Prev] = request.security(
+     benchmarkSymbol,
+     biasTf,
+     [close, ta.ema(close, 200), ta.roc(close, 20), close[1], ta.ema(close, 200)[1]]
+)
+benchBroken2 = benchClose < benchEma200 and benchClosePrev < benchEma200Prev
+
+[sClose, sHigh, sLow, sEma20, sEma50, sRsi14, sAtr14, sVol, sVolMa20, sPullbackLow, sBreakout] = request.security(
+     syminfo.tickerid,
+     structureTf,
+     [
+         close,
+         high,
+         low,
+         ta.ema(close, 20),
+         ta.ema(close, 50),
+         ta.rsi(close, 14),
+         ta.atr(14),
+         volume,
+         ta.sma(volume, 20),
+         ta.lowest(low, pullbackLookback),
+         close > ta.highest(high, trendBreakLookback)[1]
+     ]
+)
+
+[tClose, tHigh, tLow, tEma20, tEma50, tRsi14, tAtr14, tVol, tVolMa20, tRsiCross50, tBreaksPriorHigh, tBreaksStructure] = request.security(
+     syminfo.tickerid,
+     triggerTf,
+     [
+         close,
+         high,
+         low,
+         ta.ema(close, 20),
+         ta.ema(close, 50),
+         ta.rsi(close, 14),
+         ta.atr(14),
+         volume,
+         ta.sma(volume, 20),
+         ta.crossover(ta.rsi(close, 14), 50),
+         close > high[1],
+         close > ta.highest(high, trendBreakLookback)[1]
+     ]
+)
+
+longBias = dClose > dEma200 and dEma50 > dEma200 and dEma20 > dEma50 and dEma50Up10 and dRoc20 > benchRoc20 and not benchBroken2
+nearOrBetweenEma20Ema50 = sClose <= sEma20 * 1.01 and sClose >= sEma50 * (1.0 - breakTolerancePct / 100.0)
+rsiReset = sRsi14 >= 40 and sRsi14 <= 55
+highVolumeSelloff = sClose < sClose[1] and sVol > sVolMa20 * highVolumeMultiplier and sClose < sEma20
+ema50Held = sClose >= sEma50 * (1.0 - breakTolerancePct / 100.0)
+watchPullback = longBias and nearOrBetweenEma20Ema50 and rsiReset and not highVolumeSelloff and ema50Held
+
+buyConservative = watchPullback and tClose > tEma20 and tRsiCross50 and tBreaksPriorHigh and tVol > tVolMa20
+buyAggressive = longBias and nearOrBetweenEma20Ema50 and tClose > sPullbackLow and (tBreaksStructure or sBreakout) and tRsi14 > 50
+
+invalidPullbackLow = sClose < sPullbackLow
+invalidEma50 = sClose < sEma50 * (1.0 - breakTolerancePct / 100.0)
+invalidRsi = sRsi14 < 40 and sClose < sEma20
+sellInvalidated = invalidPullbackLow or invalidEma50 or invalidRsi or benchBroken2
+
+plannedEntry = tClose
+plannedStop = math.min(sPullbackLow - 0.5 * sAtr14, plannedEntry - 2.0 * tAtr14)
+plannedR = plannedEntry - plannedStop
+target1 = plannedEntry + plannedR
+target2 = plannedEntry + plannedR * 2.0
+target3 = plannedEntry + plannedR * 3.0
+
+activeEntry = manualEntryPrice > 0 ? manualEntryPrice : plannedEntry
+activeStop = manualStopPrice > 0 ? manualStopPrice : plannedStop
+activeR = activeEntry - activeStop
+takeProfit1 = activeR > 0 and close >= activeEntry + activeR
+takeProfit2 = activeR > 0 and close >= activeEntry + activeR * 2.0
+takeProfit3 = activeR > 0 and close >= activeEntry + activeR * 3.0
+trailExit = close < ema20Chart or close < activeEntry - 3.0 * atr14Chart
+
+status = sellInvalidated ? "SELL_INVALIDATED" :
+     takeProfit3 ? "TAKE_PROFIT_3" :
+     takeProfit2 ? "TAKE_PROFIT_2" :
+     takeProfit1 ? "TAKE_PROFIT_1" :
+     buyConservative ? "BUY_TRIGGER_CONSERVATIVE" :
+     buyAggressive ? "BUY_TRIGGER_AGGRESSIVE" :
+     watchPullback ? "WATCH_PULLBACK" :
+     "NO_TRADE"
+
+statusColor = status == "SELL_INVALIDATED" ? color.red :
+     str.contains(status, "BUY_TRIGGER") ? color.lime :
+     str.contains(status, "TAKE_PROFIT") ? color.aqua :
+     status == "WATCH_PULLBACK" ? color.yellow :
+     color.gray
+
+plot(ema20Chart, "EMA20", color=color.new(color.yellow, 0))
+plot(ema50Chart, "EMA50", color=color.new(color.orange, 0))
+plot(ema200Chart, "EMA200", color=color.new(color.blue, 0))
+
+var table dash = table.new(position.top_right, 2, 12, border_width=1)
+if barstate.islast
+    table.cell(dash, 0, 0, "MTF Status", text_color=color.white, bgcolor=color.black)
+    table.cell(dash, 1, 0, status, text_color=color.black, bgcolor=statusColor)
+    table.cell(dash, 0, 1, "Daily bias", text_color=color.white, bgcolor=color.black)
+    table.cell(dash, 1, 1, longBias ? "LONG_ALLOWED" : "NO_TRADE", text_color=color.white, bgcolor=longBias ? color.new(color.green, 30) : color.new(color.gray, 30))
+    table.cell(dash, 0, 2, "RSI14 1H / 15m", text_color=color.white, bgcolor=color.black)
+    table.cell(dash, 1, 2, str.tostring(sRsi14, "#.0") + " / " + str.tostring(tRsi14, "#.0"), text_color=color.white)
+    table.cell(dash, 0, 3, "ATR14 1H / 15m", text_color=color.white, bgcolor=color.black)
+    table.cell(dash, 1, 3, str.tostring(sAtr14, "#.00") + " / " + str.tostring(tAtr14, "#.00"), text_color=color.white)
+    table.cell(dash, 0, 4, "Volume condition", text_color=color.white, bgcolor=color.black)
+    table.cell(dash, 1, 4, tVol > tVolMa20 ? "VOL > MA20" : "VOL <= MA20", text_color=color.white)
+    table.cell(dash, 0, 5, "Benchmark regime", text_color=color.white, bgcolor=color.black)
+    table.cell(dash, 1, 5, benchBroken2 ? "BELOW EMA200 x2" : "OK", text_color=color.white)
+    table.cell(dash, 0, 6, "Rel strength 20D", text_color=color.white, bgcolor=color.black)
+    table.cell(dash, 1, 6, dRoc20 > benchRoc20 ? "OUTPERFORM" : "UNDERPERFORM", text_color=color.white)
+    table.cell(dash, 0, 7, "Planned entry", text_color=color.white, bgcolor=color.black)
+    table.cell(dash, 1, 7, str.tostring(plannedEntry, "#.00"), text_color=color.white)
+    table.cell(dash, 0, 8, "Planned stop", text_color=color.white, bgcolor=color.black)
+    table.cell(dash, 1, 8, str.tostring(plannedStop, "#.00"), text_color=color.white)
+    table.cell(dash, 0, 9, "Target 1 / 2", text_color=color.white, bgcolor=color.black)
+    table.cell(dash, 1, 9, str.tostring(target1, "#.00") + " / " + str.tostring(target2, "#.00"), text_color=color.white)
+    table.cell(dash, 0, 10, "Mode", text_color=color.white, bgcolor=color.black)
+    table.cell(dash, 1, 10, "RESEARCH_ONLY", text_color=color.white)
+    table.cell(dash, 0, 11, "No auto orders", text_color=color.white, bgcolor=color.black)
+    table.cell(dash, 1, 11, "CONFIRM ALERTS", text_color=color.white)
+
+alertcondition(watchPullback, "WATCH_PULLBACK", "WATCH_PULLBACK | MTF Trend Pullback + ATR Risk System")
+alertcondition(buyConservative, "BUY_TRIGGER_CONSERVATIVE", "BUY_TRIGGER_CONSERVATIVE | MTF Trend Pullback + ATR Risk System")
+alertcondition(buyAggressive, "BUY_TRIGGER_AGGRESSIVE", "BUY_TRIGGER_AGGRESSIVE | MTF Trend Pullback + ATR Risk System")
+alertcondition(sellInvalidated, "SELL_INVALIDATED", "SELL_INVALIDATED | MTF Trend Pullback + ATR Risk System")
+alertcondition(takeProfit1, "TAKE_PROFIT_1", "TAKE_PROFIT_1 | MTF Trend Pullback + ATR Risk System")
+alertcondition(takeProfit2, "TAKE_PROFIT_2", "TAKE_PROFIT_2 | MTF Trend Pullback + ATR Risk System")
+alertcondition(trailExit, "TRAIL_EXIT", "TRAIL_EXIT | MTF Trend Pullback + ATR Risk System")
