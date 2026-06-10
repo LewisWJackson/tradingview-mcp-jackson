@@ -1,0 +1,202 @@
+{
+  "_comment": "Dragon Slayer Trading System — rules.json v2.0 | Robert Schmitt",
+  "_last_updated": "2026-04-03",
+
+  "watchlist": ["MNQM26", "MESM26", "M2KM26"],
+  "default_timeframe": "5",
+
+  "indicators": {
+    "_comment": "Exact indicator titles as they appear in TradingView. Used by data_get_study_values and data_get_pine_tables to read live values.",
+    "phase_engine":     "Market Phase Engine V3 [All-In-One]",
+    "sma_magnet":       "MNQ 20/50 SMA Magnet Trader v1",
+    "j_bravo":          "J Bravo Ultimate + Cross-Index + POC + Regime Shift",
+    "sfx_algo":         "SFX Algo Pro [Free]",
+    "sniper":           "Sniper Entry/Exit with SL&TP by KhanSaab V.02",
+    "stop_clusters":    "Stop Loss Clustering (Breakouts) [Kioseff Trading]"
+  },
+
+  "hmm_regime_filter": {
+    "_comment": "HMM auto_trader.py regime gates. These apply BEFORE any TradingView signal is acted on.",
+    "BULL_RUN":       { "allowed": ["LONG"],        "note": "Trend continuation longs only. No shorts." },
+    "MEAN_REVERSION": { "allowed": ["LONG", "SHORT"], "note": "Fade extremes only. Bull Zone = long, Bear Zone = short. Must wait for reaction confirmation." },
+    "CRASH":          { "allowed": [],              "note": "HARD STOP. No entries. Protect capital. System sits flat." }
+  },
+
+  "liquidity_map_levels": {
+    "_comment": "Pulled live from localhost:8000. These update daily. Cross-check with Boss Market Phase Engine inputs.",
+    "mhp_label":         "MHP / Gamma Pivot",
+    "bull_zone_label":   "Bull Zone (Low/Mid/High) — Black-Scholes dealer support floor",
+    "bear_zone_label":   "Bear Zone (Low/Mid/High) — Black-Scholes dealer resistance ceiling",
+    "catalyst_bands":    "Cat +1 / +2 / -1 / -2 — Expansion trigger levels",
+    "bias_states": {
+      "Bullish Above Pivot":  "Long bias. Look for longs at Bull Zone or 20 EMA reclaim.",
+      "Bearish Below Pivot":  "Short bias. Look for shorts at Bear Zone or 20 EMA rejection.",
+      "Balanced At Pivot":    "No trade until MHP breaks with volume. Wait for direction.",
+      "Expansion Day":        "Catalyst active. Trend continuation is primary. Do not fade the first push.",
+      "Mean Reversion":       "Fade extremes only. Long at Bull Zone, Short at Bear Zone. Tight stops."
+    }
+  },
+
+  "phase_engine_playbooks": {
+    "_comment": "Boss Market Phase Engine V3 outputs. These define WHAT KIND of trade is valid right now.",
+    "Trend": {
+      "boss_signal":  ["TREND LONG", "TREND SHORT"],
+      "playbook":     "Favor continuation only. Enter on 20 EMA reclaim (bull) or 20 EMA rejection (bear). Ride toward Bear Zone (short) or Bull Zone target.",
+      "valid_setups": ["J Bravo VRE", "20 EMA Reclaim", "VWAP Reclaim", "IB Breakout continuation"],
+      "avoid":        "Fades, reversals, counter-trend entries."
+    },
+    "Completion": {
+      "boss_signal":  ["NO TRADE / TAKE PROFITS"],
+      "playbook":     "DO NOT CHASE. Price is stretched 2+ ATR from 20 EMA. Take profits on runners. Wait for reset.",
+      "valid_setups": ["TP on existing runners only"],
+      "avoid":        "New entries in direction of exhaustion. This is a stop-hunt zone."
+    },
+    "Reaction": {
+      "boss_signal":  ["FADE LONG / REACTION LONG", "FADE SHORT / REACTION SHORT"],
+      "playbook":     "Trade bounce or rejection carefully with tight stop. Confirm with Sniper bull/bear score and SFX Algo signal. Must have at least 2:1 R:R.",
+      "valid_setups": ["50 SMA Bounce", "Bull Zone / Bear Zone reaction", "Volume spike reversal candle"],
+      "avoid":        "Chasing after first reaction candle. Wait for retest of reaction level."
+    },
+    "Transition": {
+      "boss_signal":  ["WAIT"],
+      "playbook":     "Stand down. Price is between 20 and 50 EMA — the danger zone. Wait for break above 20 or below 50 with volume.",
+      "valid_setups": ["None — observe only"],
+      "avoid":        "Any new entries until phase resolves."
+    },
+    "Balance": {
+      "boss_signal":  ["FADE SHORT (above MHP)", "FADE LONG (below MHP)", "WAIT (at MHP)"],
+      "playbook":     "Compressed range. Fade the extremes of the balance zone with tiny stops. Primary target is MHP. Expect breakout eventually — do not get trapped.",
+      "valid_setups": ["Bull Zone fade long", "Bear Zone fade short"],
+      "avoid":        "Breakout entries until confirmed with volume and cross-index agreement."
+    }
+  },
+
+  "bias_criteria": {
+    "_comment": "Morning brief evaluates MNQM26 against all these criteria and assigns BULLISH / BEARISH / NEUTRAL.",
+
+    "bullish": [
+      "Boss Phase Engine: Phase = Trend with Bull Trend bias OR Reaction with Bull Reaction bias",
+      "HMM Regime = BULL_RUN (checked via auto_trader.py / signal_swap port 5001)",
+      "Liquidity map bias = Bullish Above Pivot OR Mean Reversion with price at Bull Zone",
+      "Cross-index: 2 of 3 (MNQ + MES + M2K) above VWAP AND above 20 EMA — J Bravo bullish alignment",
+      "SMA Magnet: Structure = BULL (SMA20 > SMA50, both slopes up)",
+      "SMA Magnet: Signal = 20↑ reclaim OR 50 bounce (not 'Bull loses 20 -> 50' magnet signal)",
+      "SFX Algo Pro: BUY or BUY+ signal visible on current 5-min bar with 3+ star rating",
+      "Sniper KhanSaab: Bull Score > 57% (4 of 7 factors bullish)",
+      "Price above VWAP on 5-min chart",
+      "RSI above 50 with room to run (RSI < 65 preferred)",
+      "EMA 9 above EMA 21 (Sniper ribbon = bull)",
+      "ADX above 22 confirming trend strength (not chop)",
+      "Volume above 20-period average on signal bar"
+    ],
+
+    "bearish": [
+      "Boss Phase Engine: Phase = Trend with Bear Trend bias OR Reaction with Bear Reaction bias",
+      "HMM Regime = BULL_RUN (short in BULL_RUN is blocked) OR MEAN_REVERSION (shorts allowed at Bear Zone only)",
+      "Liquidity map bias = Bearish Below Pivot OR Mean Reversion with price at Bear Zone",
+      "Cross-index: 2 of 3 (MNQ + MES + M2K) below VWAP AND below 20 EMA — J Bravo bearish alignment",
+      "SMA Magnet: Structure = BEAR (SMA20 < SMA50, both slopes down)",
+      "SMA Magnet: Signal = 20↓ rejection OR 50 reject (not 'Bear loses 20 -> 50' magnet signal)",
+      "SFX Algo Pro: SELL or SELL+ signal visible on current 5-min bar with 3+ star rating",
+      "Sniper KhanSaab: Bear Score > 57% (4 of 7 factors bearish)",
+      "Price below VWAP on 5-min chart",
+      "RSI below 50 with room to drop (RSI > 35 preferred)",
+      "EMA 9 below EMA 21 (Sniper ribbon = bear)",
+      "ADX above 22 confirming trend strength (not chop)",
+      "Volume above 20-period average on signal bar"
+    ],
+
+    "neutral": [
+      "Boss Phase Engine: Phase = Transition OR Balance",
+      "HMM Regime = CRASH (full stop — no trades regardless of any other signal)",
+      "Liquidity map: Price at MHP within 0.35 ATR — wait for direction",
+      "Cross-index: Split alignment (1 bull / 1 bear / 1 neutral) — no agreement",
+      "SMA Magnet: Structure = NEUTRAL (20 and 50 not separated or slopes conflicting)",
+      "SMA Magnet: Active magnet signal = '→50' (price in transit to 50 — do not enter mid-move)",
+      "Sniper: Bull Score and Bear Score within 14% of each other (too close to call)",
+      "Boss Phase Engine: Phase = Completion (exhaustion — no new entries in any direction)",
+      "ADX below 20 (chop — J Bravo chop filter triggered)",
+      "Session range > 95% of expected map range (range exhausted for the day)"
+    ]
+  },
+
+  "entry_checklist": {
+    "_comment": "ALL of these must be confirmed before auto_trader.py or manual entry. This is your pre-trade gate.",
+    "required": [
+      "1. HMM regime allows the trade direction (CRASH = hard skip always)",
+      "2. Boss Phase Engine phase matches trade type (Trend for continuation, Reaction for fades, NOT Completion or Transition)",
+      "3. Liquidity map bias agrees with trade direction (or is Mean Reversion at zone)",
+      "4. Cross-index: at least 2 of 3 indices aligned (J Bravo score >= 2 bull OR >= 2 bear)",
+      "5. SMA Magnet structure matches direction AND no active '→50' magnet signal (avoid mid-transit trades)",
+      "6. At least ONE entry signal: SFX BUY+/SELL+ OR Sniper trigger OR J Bravo entry OR 20 EMA reclaim/reject",
+      "7. Volume > 20-bar average on signal bar (volume confirmation)",
+      "8. Stop loss placement is logical: above/below nearest EMA, zone boundary, or IB level",
+      "9. R:R ratio is at least 1.5:1 to nearest target (MHP, zone mid, or prior swing)"
+    ],
+    "bonus_confirmations": [
+      "Stop Loss Clustering shows a stop cluster in your direction (trapped traders fuel the move)",
+      "Orderflow: price accepted through Value Area High or Low (IVB breakout setup)",
+      "M2K (Russell) leading in your direction = genuine risk appetite behind the move",
+      "Initial Balance established and price breaking IB high (long) or IB low (short) with volume",
+      "SFX Algo star rating 4 or 5 stars (highest probability signal)"
+    ]
+  },
+
+  "exit_rules": {
+    "take_profit_targets": [
+      "TP1: 1x ATR from entry (Sniper T1 / SFX TP1) — take 50% of position",
+      "TP2: 2x ATR from entry OR nearest SMA magnet level (Sniper T2 / SFX TP2) — take 25%",
+      "TP3: MHP (gamma pivot) OR Bear Zone mid / Bull Zone mid — trail stop on remaining 25%",
+      "Full exit: Boss Phase Engine transitions to Completion phase — take all profits immediately"
+    ],
+    "stop_loss_rules": [
+      "Hard stop: 12 points max on MNQ (Dragon Slayer Protocol hardcoded rule — never violate)",
+      "Preferred stop: just beyond nearest EMA (20 or 50) or zone boundary",
+      "ATR stop: 1.5x ATR from entry (Sniper / J Bravo default)",
+      "Trail: once TP1 hit, move stop to breakeven. Once TP2 hit, trail at 20 EMA.",
+      "Time stop: if trade shows no progress in 5 bars (Pay Me Fast rule from J Bravo) — exit flat"
+    ],
+    "forced_exits": [
+      "HMM regime shifts to CRASH — exit all positions immediately regardless of P&L",
+      "Boss Phase Engine enters Completion while in a trade — take profits NOW, do not wait",
+      "Cross-index alignment drops to 0 or 1 (all three indices disagree) — exit or tighten stop hard",
+      "SMA Magnet '→50' signal fires while in a trade — this is a warning the move may be reversing"
+    ]
+  },
+
+  "risk_rules": [
+    "RULE 1 — CRASH KILL SWITCH: HMM = CRASH means zero trades. No exceptions. No override.",
+    "RULE 2 — MAX STOP: 12 points per trade on MNQ. Never move stop further away from entry.",
+    "RULE 3 — MINIMUM R:R: Do not enter if R:R to nearest target is less than 1.5:1.",
+    "RULE 4 — TWO LOSSES STOP: If 2 consecutive losses in the same RTH session, stop trading for the day.",
+    "RULE 5 — NO FIRST 15 MINUTES: No entries in the first 15 minutes of RTH (9:30–9:45 AM ET). Let the opening range form.",
+    "RULE 6 — NO CHASING: If Boss Phase Engine = Completion, do NOT enter in the direction of exhaustion. Wait for reset.",
+    "RULE 7 — COMPLETION IS CASH: Boss signal 'NO TRADE / TAKE PROFITS' means take your existing TP, not a new entry.",
+    "RULE 8 — TRANSITION = SIT: Boss Phase Engine = Transition or SMA Magnet showing '→50' means do not enter. You are in the danger zone between the two SMAs.",
+    "RULE 9 — CROSS-INDEX REQUIRED: If only 1 of 3 indices confirms direction, the trade is not valid.",
+    "RULE 10 — MAX 2 OPEN POSITIONS: Never hold more than 2 MNQ/MES positions simultaneously.",
+    "RULE 11 — NO LATE SESSION REVERSAL BETS: After 3:00 PM ET, only take continuation setups. No counter-trend fades.",
+    "RULE 12 — SESSION RANGE EXHAUSTED: If Boss Engine shows Range Used > 95%, all new entries are blocked for the day.",
+    "RULE 13 — RESPECT THE CATALYST BANDS: Price inside Cat +1/+2 or Cat -1/-2 bands is expansion territory. Do not fade inside catalyst bands — wait for the band to be accepted or rejected first."
+  ],
+
+  "morning_brief_template": {
+    "_comment": "Structure the morning_brief to output this format so it feeds cleanly into the Dragon Slayer Protocol.",
+    "output_sections": [
+      "HMM_REGIME: [BULL_RUN / MEAN_REVERSION / CRASH] — from auto_trader signal_swap port 5001",
+      "LIQUIDITY_MAP: MHP=[value], Bull Zone=[low-mid-high], Bear Zone=[low-mid-high], Day Type=[type], Bias=[state]",
+      "BOSS_PHASE: Phase=[name], Bias=[bias], Boss Signal=[signal], Playbook=[text]",
+      "CROSS_INDEX: MNQ=[above/below VWAP], MES=[above/below VWAP], M2K=[above/below VWAP], Alignment=[score/3]",
+      "SMA_MAGNET: Structure=[BULL/BEAR/NEUTRAL], Dist20=[x ATR], Dist50=[x ATR], Signal=[current signal]",
+      "SFX_ALGO: Direction=[BULL/BEAR], Last Signal=[BUY+/BUY/SELL/SELL+], Rating=[stars]",
+      "SNIPER: Bull Score=[%], Bear Score=[%], Bias=[STRONG BULL/MILD BULL/MILD BEAR/STRONG BEAR]",
+      "UNIFIED_BIAS: [BULLISH / BEARISH / NEUTRAL / NO TRADE] — synthesis of all above",
+      "TRADE_PLAN: Long trigger=[level], Short trigger=[level], Primary target=[level], Stop=[level]",
+      "RISK_FLAGS: Any active risk rules triggered (CRASH kill switch, range exhausted, chop, etc.)"
+    ]
+  },
+
+  "session_notes_template": "Update this field each morning with: macro events this week, key earnings dates, FOMC/CPI dates, contract roll status (MNQM26 expires June 19 — roll June 5), any overnight levels that matter, and anything from yesterday's session brief worth carrying forward.",
+
+  "notes": "This is the Dragon Slayer Trading System — MNQ/MES futures, built around the HMM regime engine, Black-Scholes liquidity map (MHP), J Bravo cross-index alignment, and Boss Market Phase Engine. The hierarchy is: HMM regime → Boss Phase → Liquidity Map → Cross-Index → Entry signal. All five layers must agree or the trade does not happen. The market gives you setups. Your job is to wait for the ones where all five layers point the same direction. When in doubt, DO NOT TRADE. Patience is the edge. 🐉"
+}

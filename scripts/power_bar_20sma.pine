@@ -1,0 +1,268 @@
+//@version=5
+indicator("Power Bar Off 20 SMA", overlay=true,
+          max_lines_count=200, max_labels_count=100, max_boxes_count=50)
+
+// ══════════════════════════════════════════════════════════════════════════════
+// INPUTS
+// ══════════════════════════════════════════════════════════════════════════════
+
+g_sma   = "20 SMA"
+sma_len      = input.int  (20,    "Length",                    minval=1, maxval=200,         group=g_sma)
+slope_bars   = input.int  (5,     "Slope Lookback (bars)",     minval=1, maxval=20,           group=g_sma,
+              tooltip="Compare current SMA to N bars ago to determine slope direction.")
+slope_thresh = input.float(0.05,  "Flat Slope Threshold (%)",  minval=0.0, step=0.01,         group=g_sma,
+              tooltip="If |SMA % change over lookback| < this, slope is considered flat.")
+
+g_pb    = "Power Bar Detection"
+body_atr_min = input.float(0.6,   "Min Body Size (× ATR)",     minval=0.1, maxval=5.0, step=0.1, group=g_pb,
+              tooltip="Body must be at least this multiple of ATR — filters out small candles.")
+body_pct_min = input.float(60.0,  "Min Body % of Range",       minval=20.0, maxval=99.0,      group=g_pb,
+              tooltip="Body must occupy at least this % of the total candle range (high − low).")
+wick_max     = input.float(0.25,  "Max Opposing Wick/Body",    minval=0.0, maxval=1.0, step=0.05, group=g_pb,
+              tooltip="The wick on the OPPOSITE side of the move cannot exceed this × body. " +
+                      "0.25 = wick ≤ 25% of body. Keeps the 'little to no wick' rule from the PDF.")
+prox_atr     = input.float(1.0,   "SMA Proximity (× ATR)",     minval=0.1, maxval=5.0, step=0.1, group=g_pb,
+              tooltip="Candle low (long) or high (short) must be within this ATR distance of the 20 SMA.")
+sr_bars      = input.int  (10,    "S/R Lookback (bars)",       minval=3, maxval=50,            group=g_pb,
+              tooltip="Power bar close must exceed the highest high / lowest low of the prior N bars " +
+                      "(clearing immediate resistance / support).")
+
+g_trade = "Trade Levels"
+atr_len      = input.int  (14,    "ATR Period",                minval=1,                        group=g_trade)
+rr           = input.float(2.0,   "Target R:R",               minval=0.5, maxval=10.0, step=0.5, group=g_trade,
+              tooltip="Risk:Reward for take-profit. 2.0 = target 2× the distance of your stop.")
+ext_bars     = input.int  (20,    "Extend Lines (bars)",       minval=1, maxval=300,             group=g_trade)
+
+g_disp  = "Display"
+show_sma     = input.bool (true,  "Show 20 SMA Line",          group=g_disp)
+show_bg      = input.bool (true,  "Show Trend Background",     group=g_disp)
+show_labels  = input.bool (true,  "Show Trade Labels",         group=g_disp)
+c_bull       = input.color(color.new(color.lime, 10), "Bull Power Bar Highlight", group=g_disp)
+c_bear       = input.color(color.new(color.red,  10), "Bear Power Bar Highlight", group=g_disp)
+
+// ══════════════════════════════════════════════════════════════════════════════
+// 20 SMA + SLOPE DIRECTION
+// ══════════════════════════════════════════════════════════════════════════════
+
+sma20      = ta.sma(close, sma_len)
+
+// Slope: compare today's SMA to N bars ago; use % change to be price-scale neutral
+sma_ago    = sma20[slope_bars]
+sma_pct    = sma_ago != 0 ? (sma20 - sma_ago) / sma_ago * 100.0 : 0.0
+
+slope_up   = sma_pct >  slope_thresh     // clearly rising
+slope_dn   = sma_pct < -slope_thresh     // clearly falling
+slope_flat = not slope_up and not slope_dn  // within flat band → either direction ok
+
+sma_col    = slope_up ? color.green : slope_dn ? color.red : color.gray
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ATR + CANDLE ANATOMY
+// ══════════════════════════════════════════════════════════════════════════════
+
+atr14      = ta.atr(atr_len)
+
+body_hi    = math.max(open, close)
+body_lo    = math.min(open, close)
+body       = body_hi - body_lo            // body size
+rng        = high - low                   // full candle range
+wick_up    = high - body_hi               // upper wick length
+wick_dn    = body_lo - low               // lower wick length
+
+is_bull    = close > open
+is_bear    = open  > close
+
+// ══════════════════════════════════════════════════════════════════════════════
+// POWER BAR CRITERIA  (must all pass simultaneously)
+// ══════════════════════════════════════════════════════════════════════════════
+
+// 1. Body is large in absolute terms (relative to ATR)
+big_body       = body >= body_atr_min * atr14
+
+// 2. Body dominates the candle range — "large-bodied candle"
+dom_body       = rng > 0 ? (body / rng) >= (body_pct_min / 100.0) : false
+
+// 3. Opposing wick is small — "little to no wick on the opposite side"
+//    Bull = move is UP  → opposing side is the BOTTOM → check lower wick
+//    Bear = move is DOWN → opposing side is the TOP   → check upper wick
+small_wick_bull = body > 0 ? wick_dn / body <= wick_max : false
+small_wick_bear = body > 0 ? wick_up / body <= wick_max : false
+
+// 4. Candle originated at / near the 20 SMA — "must originate at or near the 20 SMA"
+//    Bull: the low was within prox_atr × ATR of SMA AND the candle closed above SMA
+//    Bear: the high was within prox_atr × ATR of SMA AND the candle closed below SMA
+prox          = prox_atr * atr14
+at_sma_bull   = low  <= sma20 + prox and close > sma20
+at_sma_bear   = high >= sma20 - prox and close < sma20
+
+// 5. Clears immediate resistance (long) / support (short)
+//    "must clear immediate resistance / support"
+//    Compare close to the highest high / lowest low of the N bars BEFORE this candle
+prior_hi      = ta.highest(high, sr_bars)[1]
+prior_lo      = ta.lowest (low,  sr_bars)[1]
+clears_res    = close > prior_hi
+clears_sup    = close < prior_lo
+
+// 6. Aligned with 20 SMA slope — no counter-trend trades
+//    "I only take power bar trades WITH the 20 SMA direction…never counter-trend"
+ok_long       = slope_up or slope_flat    // long only when SMA up or flat
+ok_short      = slope_dn or slope_flat    // short only when SMA down or flat
+
+// ── Final signals (all 6 criteria must pass) ──────────────────────────────────
+bull_pb = is_bull and big_body and dom_body and small_wick_bull and at_sma_bull and clears_res and ok_long
+bear_pb = is_bear and big_body and dom_body and small_wick_bear and at_sma_bear and clears_sup and ok_short
+
+// ══════════════════════════════════════════════════════════════════════════════
+// TRADE LEVELS
+//   Entry  — next candle's open (bar after the power bar closes)
+//   Stop   — power bar body boundary only (open or close, not the wick)
+//   Target — entry ± R:R × risk
+// ══════════════════════════════════════════════════════════════════════════════
+
+tick = syminfo.mintick
+
+// Body boundaries of the previous bar (the power bar); evaluated on the entry bar
+pb_body_lo = math.min(open[1], close[1])   // body bottom of the power bar
+pb_body_hi = math.max(open[1], close[1])   // body top of the power bar
+
+// Long: entry at this bar's open, stop just below power bar body low
+e_l  = bull_pb[1] ? open              : na
+sl_l = bull_pb[1] ? pb_body_lo - tick : na
+tp_l = bull_pb[1] ? e_l + rr * (e_l - sl_l) : na
+
+// Short: entry at this bar's open, stop just above power bar body high
+e_s  = bear_pb[1] ? open              : na
+sl_s = bear_pb[1] ? pb_body_hi + tick : na
+tp_s = bear_pb[1] ? e_s - rr * (sl_s - e_s) : na
+
+// ══════════════════════════════════════════════════════════════════════════════
+// VISUAL OUTPUT
+// ══════════════════════════════════════════════════════════════════════════════
+
+// ─── 20 SMA (color changes with slope) ────────────────────────────────────────
+plot(show_sma ? sma20 : na, "20 SMA", color=sma_col, linewidth=2)    // → plot_0
+
+// ─── Subtle trend background ──────────────────────────────────────────────────
+bgcolor(show_bg ? (slope_up ? color.new(color.green, 93) :
+                  slope_dn  ? color.new(color.red,   93) :
+                              color.new(color.gray,  96)) : na,
+        title="Trend Background")
+
+// ─── Highlight the power bar candle ───────────────────────────────────────────
+barcolor(bull_pb ? c_bull : bear_pb ? c_bear : na, title="Power Bar")
+
+// ─── Long trade zone (drawn on entry bar — the bar after the power bar) ──────
+if bull_pb[1]
+    // Shaded box from stop to target
+    box.new(bar_index, tp_l, bar_index + ext_bars, sl_l,
+            border_color=color.new(color.green, 40),
+            bgcolor     =color.new(color.green, 88))
+
+    // Dashed entry / stop lines, solid target line
+    line.new(bar_index, e_l,  bar_index + ext_bars, e_l,
+             color=color.new(color.blue,  0), style=line.style_dashed, width=1)
+    line.new(bar_index, sl_l, bar_index + ext_bars, sl_l,
+             color=color.new(color.red,   0), style=line.style_dashed, width=1)
+    line.new(bar_index, tp_l, bar_index + ext_bars, tp_l,
+             color=color.new(color.green, 0), style=line.style_solid,  width=2)
+
+    if show_labels
+        slope_tag = slope_up[1] ? "TREND ▲ UP" : "TREND ─ FLAT"
+        r_ticks   = str.tostring(math.round((e_l - sl_l) / tick))
+
+        // Signal badge pinned to the power bar candle (one bar back)
+        label.new(bar_index - 1, low[1] - atr14[1] * 0.7,
+                  "▲ LONG POWER BAR\n" + slope_tag + "\nRisk: " + r_ticks + " ticks",
+                  color=color.new(color.green, 0), textcolor=color.white,
+                  style=label.style_label_up, size=size.normal)
+
+        // Price labels at right edge of extended lines
+        label.new(bar_index + ext_bars, e_l,
+                  " ENTRY  " + str.tostring(e_l,  format.mintick),
+                  color=color.blue,  textcolor=color.white,
+                  style=label.style_label_left, size=size.small)
+        label.new(bar_index + ext_bars, sl_l,
+                  " STOP   " + str.tostring(sl_l, format.mintick),
+                  color=color.red,   textcolor=color.white,
+                  style=label.style_label_left, size=size.small)
+        label.new(bar_index + ext_bars, tp_l,
+                  " TARGET " + str.tostring(tp_l, format.mintick) +
+                  "  (" + str.tostring(rr, "#.#") + "R)",
+                  color=color.green, textcolor=color.white,
+                  style=label.style_label_left, size=size.small)
+
+// ─── Short trade zone (drawn on entry bar — the bar after the power bar) ─────
+if bear_pb[1]
+    box.new(bar_index, sl_s, bar_index + ext_bars, tp_s,
+            border_color=color.new(color.red, 40),
+            bgcolor     =color.new(color.red, 88))
+
+    line.new(bar_index, e_s,  bar_index + ext_bars, e_s,
+             color=color.new(color.blue,  0), style=line.style_dashed, width=1)
+    line.new(bar_index, sl_s, bar_index + ext_bars, sl_s,
+             color=color.new(color.red,   0), style=line.style_dashed, width=1)
+    line.new(bar_index, tp_s, bar_index + ext_bars, tp_s,
+             color=color.new(color.green, 0), style=line.style_solid,  width=2)
+
+    if show_labels
+        slope_tag = slope_dn[1] ? "TREND ▼ DOWN" : "TREND ─ FLAT"
+        r_ticks   = str.tostring(math.round((sl_s - e_s) / tick))
+
+        // Signal badge pinned to the power bar candle (one bar back)
+        label.new(bar_index - 1, high[1] + atr14[1] * 0.7,
+                  "▼ SHORT POWER BAR\n" + slope_tag + "\nRisk: " + r_ticks + " ticks",
+                  color=color.new(color.red, 0), textcolor=color.white,
+                  style=label.style_label_down, size=size.normal)
+
+        label.new(bar_index + ext_bars, e_s,
+                  " ENTRY  " + str.tostring(e_s,  format.mintick),
+                  color=color.blue,  textcolor=color.white,
+                  style=label.style_label_left, size=size.small)
+        label.new(bar_index + ext_bars, sl_s,
+                  " STOP   " + str.tostring(sl_s, format.mintick),
+                  color=color.red,   textcolor=color.white,
+                  style=label.style_label_left, size=size.small)
+        label.new(bar_index + ext_bars, tp_s,
+                  " TARGET " + str.tostring(tp_s, format.mintick) +
+                  "  (" + str.tostring(rr, "#.#") + "R)",
+                  color=color.green, textcolor=color.white,
+                  style=label.style_label_left, size=size.small)
+
+// ══════════════════════════════════════════════════════════════════════════════
+// HIDDEN PLOTS — expose trade levels as {{plot_N}} for alert payloads
+// ══════════════════════════════════════════════════════════════════════════════
+
+plot(e_l,  "Entry Long",   display=display.none)   // plot_1
+plot(sl_l, "Stop Long",    display=display.none)   // plot_2
+plot(tp_l, "Target Long",  display=display.none)   // plot_3
+plot(e_s,  "Entry Short",  display=display.none)   // plot_4
+plot(sl_s, "Stop Short",   display=display.none)   // plot_5
+plot(tp_s, "Target Short", display=display.none)   // plot_6
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ALERTS  (JSON payload ready for webhook / automation)
+// ══════════════════════════════════════════════════════════════════════════════
+
+alertcondition(bull_pb[1],
+    title  = "Bullish Power Bar Off 20 SMA",
+    message= '{"secret":"YOUR_WEBHOOK_SECRET",' +
+             '"signal":"BULL_POWER_BAR",' +
+             '"symbol":"{{ticker}}",' +
+             '"exchange":"{{exchange}}",' +
+             '"timeframe":"{{interval}}",' +
+             '"entry":{{plot_1}},' +
+             '"stop":{{plot_2}},' +
+             '"target":{{plot_3}},' +
+             '"bar_time":"{{timenow}}"}')
+
+alertcondition(bear_pb[1],
+    title  = "Bearish Power Bar Off 20 SMA",
+    message= '{"secret":"YOUR_WEBHOOK_SECRET",' +
+             '"signal":"BEAR_POWER_BAR",' +
+             '"symbol":"{{ticker}}",' +
+             '"exchange":"{{exchange}}",' +
+             '"timeframe":"{{interval}}",' +
+             '"entry":{{plot_4}},' +
+             '"stop":{{plot_5}},' +
+             '"target":{{plot_6}},' +
+             '"bar_time":"{{timenow}}"}')

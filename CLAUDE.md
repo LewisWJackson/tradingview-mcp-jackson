@@ -1,6 +1,47 @@
 # TradingView MCP — Claude Instructions
 
+
 68 tools for reading and controlling a live TradingView Desktop chart via CDP (port 9222).
+
+## Repo Operating Rules
+
+This repository is infrastructure for chart inspection, TradingView automation, and Pine/indicator workflows. Optimize for safety, clarity, and incremental improvements.
+
+### Core Rules
+- Do not change live chart behavior, automation flow, or tool semantics unless explicitly requested.
+- Preserve existing risk-sensitive behavior in any tool that could influence trading decisions or operator actions.
+- Any change touching chart control, replay actions, alerts, Pine compilation, or data extraction must be called out explicitly.
+- Prefer small diffs over broad refactors.
+- Do not remove logging, screenshots, or diagnostic output without replacing them with equal or better observability.
+- Keep runtime dependencies minimal unless justified.
+
+### Architecture Expectations
+- Separate TradingView transport / CDP concerns from higher-level tool logic.
+- Separate read-only inspection tools from state-changing control tools.
+- Keep Pine workflows, chart control workflows, and data extraction workflows clearly delineated.
+- Preserve session-awareness: entity IDs are session-specific and should not be treated as durable state.
+
+### Coding Expectations
+- Read the relevant files before proposing changes.
+- Name changes conservatively.
+- Avoid speculative abstractions.
+- Add comments only where they reduce future operator confusion.
+- Prefer preserving existing tool names and response shapes unless a breaking change is explicitly intended.
+
+### Validation Expectations
+- For any non-trivial change, specify:
+  - affected files
+  - expected behavior change
+  - test/verification steps
+  - rollback path
+- For any MCP or TradingView interaction change, explain whether it affects read-only behavior, state-changing behavior, or both.
+
+### Known Preferences
+- Respond tersely.
+- Use checklists only when operationally useful.
+- Assume this repo is actively used and mistakes are costly.
+- When possible, suggest the smallest safe change first.
+
 
 ## Decision Tree — Which Tool When
 
@@ -127,3 +168,28 @@ Claude Code ←→ MCP Server (stdio) ←→ CDP (localhost:9222) ←→ Trading
 ```
 
 Pine graphics path: `study._graphics._primitivesCollection.dwglines.get('lines').get(false)._primitivesDataById`
+
+## Morning Operator Workflow
+
+### Objective
+Prepare the system and operator for the upcoming session with a concise, reliable readiness summary.
+
+### Steps
+1. Confirm environment and required files are present
+2. Confirm context refresh is current
+3. Confirm contract / symbol roll awareness
+4. Confirm session bias is available
+5. Confirm liquidity map is current
+6. Confirm logs / health checks are clean
+7. Confirm operator summary prints expected status lines
+
+### Required operator outputs
+- trading-day status
+- roll-awareness line
+- session readiness
+- context availability
+- any blocking issue
+
+### GO / NO-GO principle
+GO only when critical files, context, and readiness checks pass.
+NO-GO when active files are missing, context is stale/missing, symbol resolution is wrong, or readiness output is incomplete.
