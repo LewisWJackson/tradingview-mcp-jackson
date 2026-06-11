@@ -3,11 +3,25 @@
  */
 import { evaluate, evaluateAsync, getClient } from '../connection.js';
 
+// The TV Desktop alert dialog carries no stable data-name or "alert" class — its
+// container is `dialog-<hash>` and the locale changes every button's text (Korean:
+// 얼러트 만들기 / 생성). The one stable anchor across versions/locales is the submit
+// button (`button[type="submit"][class*="submitBtn"]`); we locate the dialog as its
+// nearest dialog ancestor and scope every field query to that, so nothing depends on
+// the unstable hash or on English labels.
+const DIALOG_FROM_SUBMIT = `
+  (function() {
+    var sub = document.querySelector('button[type="submit"][class*="submitBtn"]');
+    return sub ? sub.closest('[class*="dialog"]') : null;
+  })`;
+
 export async function create({ condition, price, message }) {
+  // 1. Open the alert dialog. Header button id is stable; aria-label is localized
+  //    (Korean "얼러트 만들기"), so match it loosely. Alt+A stays as last resort.
   const opened = await evaluate(`
     (function() {
-      var btn = document.querySelector('[aria-label="Create Alert"]')
-        || document.querySelector('[data-name="alerts"]');
+      var btn = document.getElementById('header-toolbar-alerts')
+        || document.querySelector('[aria-label*="얼러트"], [aria-label*="Alert"], [aria-label*="alert"]');
       if (btn) { btn.click(); return true; }
       return false;
     })()
@@ -19,57 +33,82 @@ export async function create({ condition, price, message }) {
     await client.Input.dispatchKeyEvent({ type: 'keyUp', key: 'a', code: 'KeyA' });
   }
 
-  await new Promise(r => setTimeout(r, 1000));
-
-  const priceSet = await evaluate(`
-    (function() {
-      var inputs = document.querySelectorAll('[class*="alert"] input[type="text"], [class*="alert"] input[type="number"]');
-      for (var i = 0; i < inputs.length; i++) {
-        var label = inputs[i].closest('[class*="row"]')?.querySelector('[class*="label"]');
-        if (label && /value|price/i.test(label.textContent)) {
-          var nativeSet = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
-          nativeSet.call(inputs[i], '${price}');
-          inputs[i].dispatchEvent(new Event('input', { bubbles: true }));
-          inputs[i].dispatchEvent(new Event('change', { bubbles: true }));
-          return true;
-        }
-      }
-      if (inputs.length > 0) {
-        var nativeSet = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
-        nativeSet.call(inputs[0], '${price}');
-        inputs[0].dispatchEvent(new Event('input', { bubbles: true }));
-        return true;
-      }
-      return false;
-    })()
-  `);
-
-  if (message) {
-    await evaluate(`
-      (function() {
-        var textarea = document.querySelector('[class*="alert"] textarea')
-          || document.querySelector('textarea[placeholder*="message"]');
-        if (textarea) {
-          var nativeSet = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set;
-          nativeSet.call(textarea, ${JSON.stringify(message)});
-          textarea.dispatchEvent(new Event('input', { bubbles: true }));
-        }
-      })()
-    `);
+  // Poll for the dialog instead of a fixed sleep — it can take a beat to mount.
+  let dialogReady = false;
+  for (let i = 0; i < 20; i++) {
+    await new Promise(r => setTimeout(r, 150));
+    dialogReady = await evaluate(`!!${DIALOG_FROM_SUBMIT}()`);
+    if (dialogReady) break;
+  }
+  if (!dialogReady) {
+    return { success: false, price, condition, message: message || '(none)', price_set: false, error: 'alert dialog did not open', source: 'dom' };
   }
 
-  await new Promise(r => setTimeout(r, 500));
+  // 2. Set the price. The value field is the dialog's text input (TV pre-fills it
+  //    with the current price). It is a controlled numeric widget: a native value
+  //    setter updates the DOM but NOT TV's model (the alert submits with the stale
+  //    pre-filled price — verified against list_alerts). The model only commits on
+  //    real keystrokes followed by a blur. So focus+select the field, type the
+  //    digits through CDP (real key events), then Tab to commit before submitting.
+  const client = await getClient();
+  const focused = await evaluate(`
+    (function() {
+      var dlg = ${DIALOG_FROM_SUBMIT}();
+      if (!dlg) return false;
+      var input = dlg.querySelector('input[type="text"]');
+      if (!input) return false;
+      input.focus();
+      input.select();
+      return document.activeElement === input;
+    })()
+  `);
+  if (focused) {
+    await client.Input.insertText({ text: String(price) });
+    await client.Input.dispatchKeyEvent({ type: 'keyDown', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9 });
+    await client.Input.dispatchKeyEvent({ type: 'keyUp', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9 });
+    await new Promise(r => setTimeout(r, 200));
+  }
+  // Verify against the committed value (the input reformats to the model value after
+  // the blur), not the raw DOM write that the old code trusted.
+  const priceSet = await evaluate(`
+    (function() {
+      var dlg = ${DIALOG_FROM_SUBMIT}();
+      if (!dlg) return false;
+      var input = dlg.querySelector('input[type="text"]');
+      if (!input) return false;
+      return String(input.value).replace(/[^0-9.]/g, '') === String(${price}).replace(/[^0-9.]/g, '');
+    })()
+  `);
+
+  // 3. Custom message: intentionally NOT set. TV renders the message field as a
+  //    collapsed section; expanding it to type a custom message reflows the dialog
+  //    and CLEARS the committed price, so the alert then submits with an empty price
+  //    and is silently dropped server-side. Until that reflow is solved (e.g. set the
+  //    message BEFORE the price, or re-commit the price after expanding), we leave the
+  //    message alone — TV auto-fills a sensible "<symbol> <condition> <price>" default,
+  //    which is reliable. `message` is still accepted for API compatibility.
+  const messageSet = false;
+
+  // 4. Submit via the stable submit button (text is localized — don't match on it).
+  await new Promise(r => setTimeout(r, 400));
   const created = await evaluate(`
     (function() {
-      var btns = document.querySelectorAll('button[data-name="submit"], button');
-      for (var i = 0; i < btns.length; i++) {
-        if (/^create$/i.test(btns[i].textContent.trim())) { btns[i].click(); return true; }
-      }
+      var btn = document.querySelector('button[type="submit"][class*="submitBtn"]');
+      if (btn && !btn.disabled) { btn.click(); return true; }
       return false;
     })()
   `);
 
-  return { success: !!created, price, condition, message: message || '(none)', price_set: !!priceSet, source: 'dom_fallback' };
+  return {
+    success: !!created && !!priceSet,
+    price,
+    condition,
+    message: message || '(none)',
+    price_set: !!priceSet,
+    message_set: !!messageSet,
+    submitted: !!created,
+    source: 'dom',
+  };
 }
 
 export async function list() {
