@@ -130,3 +130,66 @@ export async function add({ symbol }) {
 
   return { success: true, symbol, action: 'added' };
 }
+
+export async function remove({ symbol }) {
+  const c = await getClient();
+
+  // 1. Ensure the watchlist panel is open
+  const panelState = await evaluate(`
+    (function() {
+      var btn = document.querySelector('[data-name="base-watchlist-widget-button"]')
+        || document.querySelector('[aria-label*="Watchlist"]');
+      if (!btn) return { error: 'Watchlist button not found' };
+      var isActive = btn.getAttribute('aria-pressed') === 'true'
+        || btn.classList.toString().indexOf('Active') !== -1
+        || btn.classList.toString().indexOf('active') !== -1;
+      if (!isActive) { btn.click(); return { opened: true }; }
+      return { opened: false };
+    })()
+  `);
+
+  if (panelState?.error) throw new Error(panelState.error);
+  if (panelState?.opened) await new Promise(r => setTimeout(r, 500));
+
+  // 2. Locate the row for the given symbol and click its delete button
+  const removeStatus = await evaluate(`
+    (function() {
+      var container = document.querySelector('[class*="layout__area--right"]');
+      if (!container) return { found: false, error: 'Watchlist panel not found' };
+
+      var symbolEls = container.querySelectorAll('[data-symbol-full]');
+      var targetRow = null;
+      var targetSym = "${symbol}";
+
+      for (var i = 0; i < symbolEls.length; i++) {
+        var sym = symbolEls[i].getAttribute('data-symbol-full');
+        if (sym === targetSym || sym.endsWith(":" + targetSym)) {
+          targetRow = symbolEls[i].closest('[class*="row"]') || symbolEls[i].parentElement;
+          break;
+        }
+      }
+
+      if (!targetRow) return { found: false, error: 'Symbol not found in watchlist' };
+
+      // Find the remove/delete button inside the row
+      var removeBtn = targetRow.querySelector('[data-name="remove-symbol-button"]')
+        || targetRow.querySelector('[class*="remove"]')
+        || targetRow.querySelector('[class*="close"]')
+        || targetRow.querySelector('button[aria-label*="Remove"]');
+
+      if (removeBtn) {
+        removeBtn.click();
+        return { found: true };
+      }
+
+      return { found: false, error: 'Remove button not found inside row' };
+    })()
+  `);
+
+  if (removeStatus.error) {
+    throw new Error(removeStatus.error);
+  }
+
+  return { success: true, symbol, action: 'removed' };
+}
+

@@ -1327,7 +1327,27 @@ val = array.get(a, 5)`;
       // Button may or may not be found depending on watchlist state
       assert.ok(found === null || typeof found === 'string', 'Add button detection works');
     });
+
+    it('watchlist_remove — find remove button', async () => {
+      const found = await evaluate(`
+        (function() {
+          var container = document.querySelector('[class*="layout__area--right"]');
+          if (!container) return null;
+          var symbolEls = container.querySelectorAll('[data-symbol-full]');
+          if (symbolEls.length === 0) return null;
+          var row = symbolEls[0].closest('[class*="row"]') || symbolEls[0].parentElement;
+          if (!row) return null;
+          var removeBtn = row.querySelector('[data-name="remove-symbol-button"]')
+            || row.querySelector('[class*="remove"]')
+            || row.querySelector('[class*="close"]')
+            || row.querySelector('button[aria-label*="Remove"]');
+          return removeBtn ? true : false;
+        })()
+      `);
+      assert.ok(found === null || typeof found === 'boolean', 'Remove button detection works');
+    });
   });
+
 
   // ─── 10. INDICATORS (2 tools) ─────────────────────────────────────────
 

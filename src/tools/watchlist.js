@@ -23,4 +23,12 @@ export function registerWatchlistTools(server) {
       return jsonResult({ success: false, error: err.message }, true);
     }
   });
+
+  server.tool('watchlist_remove', 'Remove a symbol from the TradingView watchlist', {
+    symbol: z.string().describe('Symbol to remove (e.g., AAPL, BTCUSD, ES1!, NYMEX:CL1!)'),
+  }, async ({ symbol }) => {
+    try { return jsonResult(await core.remove({ symbol })); }
+    catch (err) { return jsonResult({ success: false, error: err.message }, true); }
+  });
 }
+
