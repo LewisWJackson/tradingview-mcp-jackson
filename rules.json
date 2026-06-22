@@ -1,65 +1,329 @@
 {
-  "watchlist": ["BTCUSDT"],
-  "default_timeframe": "1",
+  "version": "2.0",
+  "last_updated": "2026-04-21",
+  "pine_script": "strategies/multi_market_strategy.pine",
 
-  "strategy": {
-    "name": "10-Second Momentum Scalper",
-    "sources": [
-      "Price momentum — buy if last close > previous close (green candle)",
-      "RSI filter — only trade when RSI is not at an extreme (30–70 range)"
-    ],
-    "primary_timeframes": [
-      "1-minute (signal source)",
-      "10-second execution loop"
-    ]
+  "markets": {
+
+    "US_EQUITY": {
+      "description": "US Equities — S&P500/NASDAQ stocks, ETFs (SPY, QQQ, AAPL, NVDA, TSLA)",
+      "session": "Mon–Fri 09:30–16:00 ET (avoid first 15 min)",
+      "watchlist": ["SPY", "QQQ", "AAPL", "NVDA", "MSFT", "TSLA", "AMZN"],
+      "default_timeframe": "D",
+      "strategy": {
+        "name": "EMA Trend Stack + MACD Swing",
+        "edge": "Institutional EMA levels (9/21/50/200) create self-fulfilling support/resistance. MACD cross in trend direction filters noise. Win rate ~58–62% in trending markets.",
+        "timeframes": ["D (primary signal)", "4H (entry timing)"]
+      },
+      "indicators": {
+        "EMA_9":   "Fast trend — direction bias",
+        "EMA_21":  "Entry/exit trigger via crossover",
+        "EMA_50":  "Trend qualifier — price must be above for longs",
+        "EMA_200": "Bull/bear regime filter — no longs below",
+        "RSI_14":  "Regime filter — longs only RSI 52–72, shorts 28–48",
+        "MACD_12_26_9": "Momentum confirmation — hist must match direction",
+        "Volume_SMA20": "Entry filter — volume > 20-period SMA on signal bar"
+      },
+      "bias_criteria": {
+        "bullish":  ["EMA 9 > 21 > 50", "Price above EMA 200", "RSI > 52", "MACD histogram > 0"],
+        "bearish":  ["EMA 9 < 21 < 50", "Price below EMA 200", "RSI < 48", "MACD histogram < 0"],
+        "neutral":  ["EMAs tangled / overlapping", "Price pinned at EMA 200", "RSI 48–52"]
+      },
+      "entry_rules": {
+        "long": [
+          "EMA 9 crosses above EMA 21",
+          "Price above EMA 50 and EMA 200",
+          "RSI(14) between 52 and 72",
+          "MACD histogram turning positive (crossover or already positive)",
+          "Entry bar volume > 20-period SMA",
+          "Enter on next bar open (daily) or at close of signal bar (4H)"
+        ],
+        "short": [
+          "EMA 9 crosses below EMA 21",
+          "Price below EMA 50 and EMA 200",
+          "RSI(14) between 28 and 48",
+          "MACD histogram turning negative",
+          "Entry bar volume > 20-period SMA",
+          "Enter on next bar open"
+        ]
+      },
+      "exit_rules": {
+        "stop_loss":    "2.0 × ATR(14) below entry (long) / above entry (short)",
+        "take_profit":  "3.0 × ATR(14) — minimum 1.5:1 R:R required",
+        "trail_exit":   "Close position if EMA 9 crosses back through EMA 21 in adverse direction",
+        "time_exit":    "Exit any open swing trade after 10 bars if not in profit"
+      },
+      "risk_rules": [
+        "Max 2% portfolio risk per trade",
+        "Max 3 open positions simultaneously",
+        "No trading in first 15 min or last 15 min of session",
+        "Earnings blackout: no new entries within 3 days of earnings",
+        "Avoid low-liquidity stocks (ADV < $5M)"
+      ]
+    },
+
+    "TADAWUL": {
+      "description": "Saudi Stock Exchange — TASI index and liquid Saudi stocks",
+      "session": "Sun–Thu 10:00–15:00 AST (Arabia Standard Time, UTC+3)",
+      "watchlist": ["TASI", "2222.SR", "1120.SR", "2010.SR", "4200.SR", "7010.SR"],
+      "default_timeframe": "D",
+      "strategy": {
+        "name": "Fibonacci EMA Trend + Volume Surge",
+        "edge": "Tadawul has strong institutional participation (sovereign wealth, retail). Fibonacci EMA periods (13/34/89) align with dominant swing durations. Volume surges on open confirm institutional intent. Win rate ~60–65% on daily with trend filter.",
+        "timeframes": ["D (primary)", "1H (entry on Sunday open)"]
+      },
+      "indicators": {
+        "EMA_13":  "Fast trend direction",
+        "EMA_34":  "Mid-term trend — crossover trigger",
+        "EMA_89":  "Slow trend qualifier",
+        "EMA_200": "Bull/bear regime boundary",
+        "RSI_14":  "Regime filter — longs 52–72, shorts 28–48",
+        "MACD_12_26_9": "Momentum confirmation",
+        "Volume_SMA20": "Volume surge filter — require 1.2× SMA on signal"
+      },
+      "bias_criteria": {
+        "bullish":  ["EMA 13 > 34 > 89", "Price above EMA 200", "RSI > 52", "MACD hist > 0"],
+        "bearish":  ["EMA 13 < 34 < 89", "Price below EMA 200", "RSI < 48", "MACD hist < 0"],
+        "neutral":  ["EMAs converging", "MACD flat near zero"],
+        "special":  [
+          "Sunday open gap: if price gaps up > 1.5% above EMA 34 with volume surge → long",
+          "Avoid Thursday close entries — weekend gap risk"
+        ]
+      },
+      "entry_rules": {
+        "long": [
+          "EMA 13 crosses above EMA 34",
+          "Price above EMA 89 and EMA 200",
+          "RSI(14) between 52 and 72",
+          "MACD histogram positive",
+          "Volume > 1.2 × 20-period SMA",
+          "Prefer Sunday entries — momentum from global weekend news"
+        ],
+        "short": [
+          "EMA 13 crosses below EMA 34",
+          "Price below EMA 89 and EMA 200",
+          "RSI(14) between 28 and 48",
+          "MACD histogram negative",
+          "Volume > 1.2 × 20-period SMA"
+        ]
+      },
+      "exit_rules": {
+        "stop_loss":   "2.0 × ATR(14) below entry",
+        "take_profit": "3.0 × ATR(14)",
+        "trail_exit":  "EMA 13 crosses back through EMA 34",
+        "time_exit":   "Exit by Thursday market close — avoid weekend gap"
+      },
+      "risk_rules": [
+        "Max 2% portfolio risk per trade",
+        "No entries on Wednesday or Thursday afternoon (weekend gap risk)",
+        "TASI index as regime filter — only long individual stocks when TASI > EMA 50",
+        "Avoid illiquid stocks (daily turnover < SAR 5M)"
+      ]
+    },
+
+    "CRYPTO_BTC": {
+      "description": "Bitcoin / USD — 24/7 perpetual futures or spot",
+      "watchlist": ["BTCUSDT", "BTCUSD", "BTC.P"],
+      "default_timeframe": "D",
+      "strategy": {
+        "name": "Fibonacci EMA Trend + Supertrend Confirmation",
+        "edge": "BTC has well-documented 4-year halving cycles. Daily Fibonacci EMAs (8/21/55/200) have historically high confluence. 200 EMA is the single most watched level in crypto. MACD on daily historically provides 60–65% accurate trend signals. Focus on longs above 200 EMA, avoid shorts in secular bull.",
+        "timeframes": ["D (primary trend)", "4H (entry timing)"]
+      },
+      "indicators": {
+        "EMA_8":   "Fast trend",
+        "EMA_21":  "Swing entry trigger",
+        "EMA_55":  "Medium trend qualifier",
+        "EMA_200": "Macro bull/bear regime — price above = bull only",
+        "RSI_14":  "Avoid entry when RSI > 80 (overextended) or < 20",
+        "MACD_12_26_9": "Momentum confirmation",
+        "Volume_SMA20": "Volume confirmation on breakouts",
+        "ATR_14":  "Dynamic stop placement"
+      },
+      "bias_criteria": {
+        "bullish":  ["EMA 8 > 21 > 55", "Price above EMA 200", "RSI 50–80", "MACD hist > 0"],
+        "bearish":  ["EMA 8 < 21 < 55", "Price below EMA 200", "RSI 20–50", "MACD hist < 0"],
+        "neutral":  ["Price within 3% of EMA 200", "EMAs flat/tangled"],
+        "special":  [
+          "Bull market dip-buy: price pulls to EMA 21 in uptrend + RSI 45–55 = high-probability long",
+          "Post-halving 6–18 months: bias long only, no shorts"
+        ]
+      },
+      "entry_rules": {
+        "long": [
+          "EMA 8 crosses above EMA 21",
+          "Price above EMA 55 and EMA 200",
+          "RSI(14) between 50 and 80",
+          "MACD histogram positive or crossing up",
+          "Volume confirmation preferred but not required on daily",
+          "Optional: wait for 4H candle close above EMA 21 for entry timing"
+        ],
+        "short": [
+          "EMA 8 crosses below EMA 21",
+          "Price below EMA 55 and EMA 200",
+          "RSI(14) between 20 and 50",
+          "MACD histogram negative",
+          "Only short in confirmed bear market (price < EMA 200)"
+        ]
+      },
+      "exit_rules": {
+        "stop_loss":   "2.0 × ATR(14) below entry",
+        "take_profit": "4.0 × ATR(14) — BTC moves are larger, use wider TP",
+        "trail_exit":  "EMA 8 crosses below EMA 21 (daily close)",
+        "partial_exit": "Take 50% off at 2×ATR TP, trail rest with EMA 21"
+      },
+      "risk_rules": [
+        "Max 3% portfolio risk per trade (higher volatility asset)",
+        "No new longs when BTC dominance falling rapidly (altcoin season risk)",
+        "Avoid leverage > 3× — BTC 20% moves common",
+        "Always use stops — no naked holds through major support breaks"
+      ]
+    },
+
+    "CRYPTO_XRP": {
+      "description": "XRP / USD — Ripple, high-beta crypto with regulatory sensitivity",
+      "watchlist": ["XRPUSDT", "XRPUSD", "XRPBTC"],
+      "default_timeframe": "D",
+      "current_price": 1.4069,
+      "current_regime": "Check EMA stack: close ~1.41, need EMA 8/21/50/200 check",
+      "strategy": {
+        "name": "EMA Trend Stack + MACD + RSI Swing",
+        "edge": "XRP has high beta vs BTC — amplifies BTC moves by 1.5–3×. Daily EMA 8/21 crossovers with MACD confirmation provide clean entries. RSI pullback-to-50 bounces in bull market are extremely reliable. Historical win rate 62–68% on daily swings when all conditions aligned.",
+        "timeframes": ["D (primary)", "4H (entry refinement)"],
+        "typical_move": "5–15% swings on daily. 20–40% in sustained trends.",
+        "key_levels": {
+          "major_support": [1.20, 1.00, 0.85],
+          "major_resistance": [1.60, 2.00, 2.50, 3.50]
+        }
+      },
+      "indicators": {
+        "EMA_8":   "Fast trend direction",
+        "EMA_21":  "Primary crossover trigger for entries",
+        "EMA_50":  "Trend qualifier — price above = bull bias",
+        "EMA_200": "Macro regime — long bias only above",
+        "RSI_14":  "Entry filter: 50–78 for longs, 22–50 for shorts. Avoid > 78 (overextended XRP)",
+        "MACD_12_26_9": "Momentum confirmation — histogram direction must match trade",
+        "Volume_SMA20": "Volume surge confirms moves"
+      },
+      "bias_criteria": {
+        "bullish":  ["EMA 8 > 21 > 50", "Price above EMA 200", "RSI 50–78", "MACD hist > 0"],
+        "bearish":  ["EMA 8 < 21 < 50", "Price below EMA 200", "RSI 22–50", "MACD hist < 0"],
+        "neutral":  ["EMAs converging", "RSI at 50", "MACD hist near zero"],
+        "special":  [
+          "XRP/BTC ratio breakout: if XRP/BTC rising while BTC flat = XRP-specific catalyst",
+          "News sensitivity: SEC/Ripple regulatory news can cause 10–30% gaps — widen stops"
+        ]
+      },
+      "entry_rules": {
+        "long": [
+          "EMA 8 crosses above EMA 21 (daily close)",
+          "Price is above EMA 50 and EMA 200",
+          "RSI(14) between 50 and 78",
+          "MACD histogram > 0 or just turned positive",
+          "Volume on signal bar > 20-period SMA",
+          "Enter at open of next daily candle OR at close of signal bar"
+        ],
+        "short": [
+          "EMA 8 crosses below EMA 21 (daily close)",
+          "Price is below EMA 50 and EMA 200",
+          "RSI(14) between 22 and 50",
+          "MACD histogram < 0",
+          "Volume on signal bar > 20-period SMA"
+        ],
+        "pullback_long": [
+          "In bull trend (EMA stack aligned)",
+          "Price pulls back to touch EMA 21",
+          "RSI pulls back to 45–55 range",
+          "MACD histogram decelerating but still positive",
+          "Enter on next candle bounce confirmation"
+        ]
+      },
+      "exit_rules": {
+        "stop_loss":    "1.5 × ATR(14) below entry (tighter due to XRP volatility clustering)",
+        "take_profit":  "3.0 × ATR(14) — 2:1 R:R minimum",
+        "trail_exit":   "EMA 8 crosses below EMA 21 on daily close",
+        "partial_exit": "Take 40% off at 1.5×ATR, 40% at 3×ATR, trail 20% with EMA 21"
+      },
+      "risk_rules": [
+        "Max 2% portfolio risk per trade",
+        "XRP is high-beta — size smaller than BTC trades",
+        "Avoid entries ahead of known Ripple court dates or regulatory events",
+        "Stop below nearest major support level (not just ATR) if support is closer than ATR stop"
+      ]
+    }
+
   },
 
-  "indicators": {
-    "rsi_14": "Momentum filter. Only trade when RSI is between 30–70 (avoid extremes).",
-    "price_momentum": "Compare last close vs previous close. Up = long signal. Down = short signal."
+  "watchlist": [
+    "BITFINEX:XRPUSD",
+    "BITSTAMP:BTCUSD",
+    "NASDAQ:QQQ",
+    "NASDAQ:AAPL",
+    "NASDAQ:NVDA",
+    "TADAWUL:TASI",
+    "TADAWUL:2222",
+    "TADAWUL:1120",
+    "TADAWUL:2010"
+  ],
+  "default_timeframe": "D",
+
+  "screener": {
+    "description": "Daily pre-session scan — runs runBrief() across all watchlist symbols",
+    "us_equity":  ["NASDAQ:QQQ", "NASDAQ:AAPL", "NASDAQ:NVDA", "NASDAQ:MSFT", "NYSE:SPY"],
+    "tadawul":    ["TADAWUL:TASI", "TADAWUL:2222", "TADAWUL:1120", "TADAWUL:2010", "TADAWUL:4200"],
+    "crypto":     ["BITFINEX:XRPUSD", "BITSTAMP:BTCUSD"],
+    "scan_note":  "Tadawul: Sun–Thu. US: Mon–Fri. Crypto: daily. Skip closed markets in scan."
   },
 
   "bias_criteria": {
     "bullish": [
-      "Last 1-min candle closed higher than the one before it",
-      "RSI is between 30 and 70"
+      "EMA Fast > EMA Mid > EMA Slow (stack aligned)",
+      "Price above EMA 200",
+      "RSI(14) above 52",
+      "MACD histogram positive",
+      "Volume >= 1.0x 20-period SMA (1.2x for Tadawul)"
     ],
     "bearish": [
-      "Last 1-min candle closed lower than the one before it",
-      "RSI is between 30 and 70"
+      "EMA Fast < EMA Mid < EMA Slow (stack inverted)",
+      "Price below EMA 200",
+      "RSI(14) below 48",
+      "MACD histogram negative"
     ],
     "neutral": [
-      "RSI is above 70 (overbought — skip)",
-      "RSI is below 30 (oversold — skip)",
-      "Candle close change is less than 0.05% (chop — skip)"
-    ]
-  },
-
-  "entry_rules": {
-    "long": [
-      "Last close > previous close by at least 0.05%",
-      "RSI between 30 and 70",
-      "Enter market buy immediately"
+      "EMA Fast/Mid/Slow tangled or not fully stacked",
+      "Price within 1% of EMA 200",
+      "RSI between 48–52",
+      "No active Long or Short signal from strategy"
     ],
-    "short": [
-      "Last close < previous close by at least 0.05%",
-      "RSI between 30 and 70",
-      "Enter market sell immediately"
+    "entry_trigger": [
+      "EMA Fast crosses above EMA Mid (in bull regime) = long entry",
+      "Price bounces off EMA Mid in uptrend with RSI 45–65 = pullback long",
+      "Do NOT enter when RSI > 72 (overbought) or < 28 (oversold)"
     ]
   },
-
-  "exit_rules": [
-    "Exit automatically after 10 seconds (next loop tick closes previous position)",
-    "No manual exit management — pure time-based scalp"
-  ],
 
   "risk_rules": [
-    "Fixed trade size: 1% of portfolio per trade",
-    "Maximum trade size: $3.00",
-    "Maximum 6 trades per 60-second run",
-    "No stop loss — exit is time-based at next tick",
-    "For demo purposes only — minimum BitGet order size may apply"
+    "Max 2% portfolio risk per trade across all markets",
+    "Max 3 open positions simultaneously",
+    "No new longs when RSI > 72; no new shorts when RSI < 28",
+    "Drawdown pause: stop trading if portfolio drops 10% in 7 days",
+    "Tadawul: no new entries Wednesday/Thursday afternoon (weekend gap risk)",
+    "Crypto: no entries 30 min before/after major macro events (FOMC, CPI)",
+    "US Equity: earnings blackout 3 days before/after earnings date",
+    "Stop loss: ATR-based per market (XRP 1.5×, BTC 2×, US/Tadawul 2×)",
+    "Take profit: minimum 2:1 R:R (XRP 3×ATR, BTC 4×ATR, Equity/Tadawul 3×ATR)"
   ],
 
-  "notes": "Demo strategy for YouTube video. Runs 6 trades over 60 seconds, one every 10 seconds. Signal is simple price momentum on 1-min candles with RSI sanity check."
+  "active_market": "CRYPTO_XRP",
+  "active_timeframe": "D",
+
+  "global_rules": {
+    "position_sizing": "Risk fixed % of portfolio (see per-market risk rules), never fixed dollar",
+    "max_open_trades": 3,
+    "correlation_rule": "Do not hold BTC + XRP + ETH simultaneously at full size — they are highly correlated",
+    "drawdown_pause":  "Pause trading if portfolio drops 10% in a rolling 7-day window",
+    "news_blackout":   "No new entries 30 min before or after major macro events (FOMC, CPI, etc.)"
+  },
+
+  "notes": "Strategy v2 — Multi-market EMA Trend Stack. US Equity (9/21/50/200 EMA), Tadawul (13/34/89/200 Fibonacci EMA), BTC (8/21/55/200 Fib EMA), XRP (8/21/50/200 EMA). All use MACD + RSI + volume confirmation. ATR-based dynamic SL/TP. Pine script: strategies/multi_market_strategy.pine"
 }

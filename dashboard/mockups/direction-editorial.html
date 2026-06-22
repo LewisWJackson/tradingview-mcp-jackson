@@ -1,0 +1,133 @@
+<!doctype html><html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Mawjah · Editorial direction</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0a0b0d; --panel:#101118; --panel2:#15161f; --line:rgba(255,255,255,.06); --line2:rgba(255,255,255,.1);
+  --txt:#f4f5fa; --txt2:#9197ad; --txt3:#5a607a;
+  --accent:#6d5efc; --accent2:#9d92ff; --up:#37d399; --down:#ff6b6b;
+}
+*{box-sizing:border-box;margin:0}
+body{background:var(--bg);color:var(--txt);font-family:"Geist",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+.mono{font-family:"JetBrains Mono",monospace;font-variant-numeric:tabular-nums}
+.wrap{max-width:1180px;margin:0 auto;padding:0 40px}
+/* nav */
+nav{display:flex;align-items:center;gap:36px;height:78px;border-bottom:1px solid var(--line)}
+.brand{font-size:21px;font-weight:800;letter-spacing:-.02em;display:flex;align-items:center;gap:11px}
+.mark{width:30px;height:30px;border-radius:9px;background:linear-gradient(135deg,var(--accent),var(--accent2));display:grid;place-items:center;font-size:15px}
+.navlinks{display:flex;gap:28px;margin-left:8px}
+.navlinks a{color:var(--txt2);text-decoration:none;font-size:14.5px;font-weight:500}
+.navlinks a.on{color:var(--txt)}
+.navr{margin-left:auto;display:flex;gap:10px;align-items:center}
+.pill{font-size:12px;color:var(--txt2);border:1px solid var(--line2);border-radius:999px;padding:7px 14px}
+.pill.live{color:var(--up);border-color:rgba(55,211,153,.35)}
+/* hero header */
+.head{padding:56px 0 40px}
+.eyebrow{font-size:12px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--accent2)}
+.head h1{font-size:46px;font-weight:800;letter-spacing:-.03em;line-height:1.05;margin-top:14px;max-width:680px}
+.head p{color:var(--txt2);font-size:16px;line-height:1.6;margin-top:16px;max-width:540px}
+/* big stat row */
+.stats{display:grid;grid-template-columns:repeat(5,1fr);gap:28px;padding:8px 0 52px;border-bottom:1px solid var(--line)}
+.s .n{font-size:48px;font-weight:800;letter-spacing:-.03em;line-height:1}
+.s .l{font-size:13px;color:var(--txt2);margin-top:10px;font-weight:500}
+.s.up .n{color:var(--up)} .s.dn .n{color:var(--down)} .s.mid .n{color:#ffc94d}
+.s.up2 .n{color:var(--txt)}
+/* section */
+.sec{padding:48px 0}
+.sec-h{display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:30px}
+.sec-h h2{font-size:28px;font-weight:800;letter-spacing:-.02em}
+.sec-h .meta{font-size:13px;color:var(--txt3);text-align:right;line-height:1.6}
+/* list rows — airy */
+.row{display:grid;grid-template-columns:48px 1fr 130px 120px 110px;align-items:center;gap:20px;padding:22px 24px;border:1px solid var(--line);border-radius:18px;margin-bottom:12px;background:var(--panel);transition:.2s}
+.row:hover{border-color:var(--line2);background:var(--panel2)}
+.row .rk{font-size:15px;font-weight:700;color:var(--accent2)}
+.row .id .t{font-size:18px;font-weight:700;letter-spacing:-.01em}
+.row .id .n{font-size:13.5px;color:var(--txt2);margin-top:2px}
+.row .col .lab{font-size:11px;color:var(--txt3);text-transform:uppercase;letter-spacing:.06em}
+.row .col .val{font-size:19px;font-weight:700;margin-top:3px}
+.row .col .val.pos{color:var(--up)}
+.row .px{text-align:right}
+.row .px .lab{font-size:11px;color:var(--txt3);text-transform:uppercase;letter-spacing:.06em}
+.row .px .v{font-size:22px;font-weight:800;letter-spacing:-.02em;margin-top:3px}
+.tag{display:inline-block;font-size:11px;font-weight:600;color:var(--up);background:rgba(55,211,153,.1);border:1px solid rgba(55,211,153,.25);padding:3px 10px;border-radius:999px;margin-top:6px}
+/* feature card */
+.pickcard{margin-top:40px;border:1px solid var(--line);border-radius:24px;padding:40px;background:
+  radial-gradient(120% 140% at 0% 0%,rgba(109,94,252,.12),transparent 55%),var(--panel)}
+.pickcard .pk-top{display:flex;align-items:flex-start;justify-content:space-between;gap:24px}
+.pickcard .pk-eyebrow{font-size:12px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--accent2)}
+.pickcard h3{font-size:34px;font-weight:800;letter-spacing:-.02em;margin-top:8px}
+.pickcard .pk-sub{color:var(--txt2);font-size:15px;margin-top:4px}
+.pickcard .pk-price{text-align:right}
+.pickcard .pk-price .v{font-size:40px;font-weight:800;letter-spacing:-.03em}
+.pickcard .pk-price .d{color:var(--up);font-size:15px;font-weight:600;margin-top:2px}
+.metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;margin-top:34px;border:1px solid var(--line);border-radius:16px;overflow:hidden;background:var(--line)}
+.metrics > div{background:var(--panel);padding:20px}
+.metrics .ml{font-size:12px;color:var(--txt3);text-transform:uppercase;letter-spacing:.06em}
+.metrics .mv{font-size:24px;font-weight:800;letter-spacing:-.02em;margin-top:8px}
+.note{color:var(--txt3);font-size:13px;margin-top:24px;line-height:1.6}
+.back{position:fixed;top:18px;right:24px;font-size:13px;color:var(--txt2);text-decoration:none;border:1px solid var(--line2);padding:7px 14px;border-radius:999px;z-index:5}
+</style></head><body>
+<a class="back" href="index.html">← directions</a>
+<div class="wrap">
+  <nav>
+    <span class="brand"><span class="mark">≈</span>Mawjah</span>
+    <span class="navlinks"><a class="on">Momentum</a><a>Screener</a><a>Markets</a><a>Lab</a><a>Goals</a></span>
+    <span class="navr"><span class="pill live">● Live</span><span class="pill">Sharia ✓</span></span>
+  </nav>
+  <header class="head">
+    <div class="eyebrow">The one validated edge</div>
+    <h1>This month's momentum buy-list.</h1>
+    <p>77 liquid Sharia names screened. Top quintile, ranked by the 6-month-momentum × 52-week-high combo. Next rebalance July 1.</p>
+  </header>
+  <section class="stats">
+    <div class="s up"><div class="n">45</div><div class="l">Strong Uptrend</div></div>
+    <div class="s up2"><div class="n">43</div><div class="l">Uptrend</div></div>
+    <div class="s mid"><div class="n">13</div><div class="l">Building</div></div>
+    <div class="s dn"><div class="n">35</div><div class="l">Strong Downtrend</div></div>
+    <div class="s up2"><div class="n" style="color:var(--txt2)">209</div><div class="l">Scanned</div></div>
+  </section>
+  <section class="sec">
+    <div class="sec-h">
+      <h2>Buy-list</h2>
+      <div class="meta">Ranked by 6mo-mom × 52wk-high combo<br>Gate t 3.38 · 9/9 positive years</div>
+    </div>
+    <div class="row"><span class="rk">01</span>
+      <div class="id"><div class="t">East Pipes <span style="font-size:13px;color:var(--txt3);font-weight:500">· 1321</span></div><div class="n">Industrial · Sharia ✓</div><span class="tag">▲ Strong Uptrend</span></div>
+      <div class="col"><div class="lab">6M Momentum</div><div class="val pos">+40.9%</div></div>
+      <div class="col"><div class="lab">52W High</div><div class="val">99.7%</div></div>
+      <div class="px"><div class="lab">Price</div><div class="v mono">222.40</div></div>
+    </div>
+    <div class="row"><span class="rk">02</span>
+      <div class="id"><div class="t">Al Yamamah Steel <span style="font-size:13px;color:var(--txt3);font-weight:500">· 1304</span></div><div class="n">Materials · Sharia ✓</div><span class="tag">▲ Strong Uptrend</span></div>
+      <div class="col"><div class="lab">6M Momentum</div><div class="val pos">+20.7%</div></div>
+      <div class="col"><div class="lab">52W High</div><div class="val">98.3%</div></div>
+      <div class="px"><div class="lab">Price</div><div class="v mono">41.20</div></div>
+    </div>
+    <div class="row"><span class="rk">03</span>
+      <div class="id"><div class="t">APC <span style="font-size:13px;color:var(--txt3);font-weight:500">· 2200</span></div><div class="n">Petrochem · Sharia ✓</div><span class="tag">▲ Strong Uptrend</span></div>
+      <div class="col"><div class="lab">6M Momentum</div><div class="val pos">+40.8%</div></div>
+      <div class="col"><div class="lab">52W High</div><div class="val">94.8%</div></div>
+      <div class="px"><div class="lab">Price</div><div class="v mono">7.40</div></div>
+    </div>
+    <div class="pickcard">
+      <div class="pk-top">
+        <div>
+          <div class="pk-eyebrow">▲ Top of buy-list</div>
+          <h3>East Pipes Co.</h3>
+          <div class="pk-sub">1321 · Industrial · Rank #1 of 77 · Sharia ✓</div>
+        </div>
+        <div class="pk-price"><div class="v mono">222.40</div><div class="d">▲ +1.8% today</div></div>
+      </div>
+      <div class="metrics">
+        <div><div class="ml">6M Momentum</div><div class="mv" style="color:var(--up)">+40.9%</div></div>
+        <div><div class="ml">52W-High prox.</div><div class="mv">99.7%</div></div>
+        <div><div class="ml">Combo rank</div><div class="mv">#1</div></div>
+        <div><div class="ml">Reference stop</div><div class="mv mono">211.8</div></div>
+      </div>
+      <p class="note">Illustrative levels only — the validated buy-list is this screen. Buy at the next monthly rebalance; equal-weight ~11% per name, Derayah 0.11% round-trip.</p>
+    </div>
+  </section>
+</div>
+</body></html>

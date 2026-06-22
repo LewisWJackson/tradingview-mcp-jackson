@@ -1,0 +1,133 @@
+<!doctype html><html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Mawjah · Fintech direction</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Geist:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0a0b10; --card:#13141c; --card2:#171823; --line:rgba(255,255,255,.07); --line2:rgba(255,255,255,.12);
+  --txt:#eceefb; --txt2:#8b91a8; --txt3:#565c72;
+  --teal:#2dd4bf; --blue:#5b8def; --violet:#a78bfa; --up:#34d399; --down:#fb7185;
+  --grad:linear-gradient(120deg,#2dd4bf,#5b8def 55%,#a78bfa);
+}
+*{box-sizing:border-box;margin:0}
+body{background:var(--bg);color:var(--txt);font-family:"Geist",system-ui,sans-serif;-webkit-font-smoothing:antialiased;min-height:100vh;
+  background-image:radial-gradient(800px 500px at 80% -10%,rgba(91,141,239,.10),transparent 60%),radial-gradient(700px 500px at 0% 0%,rgba(45,212,191,.07),transparent 55%);}
+.mono{font-family:"JetBrains Mono",monospace;font-variant-numeric:tabular-nums}
+.dsp{font-family:"Space Grotesk",sans-serif}
+.wrap{max-width:1200px;margin:0 auto;padding:0 28px}
+/* nav */
+nav{display:flex;align-items:center;gap:8px;height:70px}
+.brand{font-family:"Space Grotesk";font-size:20px;font-weight:700;letter-spacing:-.01em;display:flex;align-items:center;gap:10px;margin-right:24px}
+.mark{width:30px;height:30px;border-radius:9px;background:var(--grad);display:grid;place-items:center;color:#08131a;font-weight:700;box-shadow:0 4px 16px rgba(45,212,191,.3)}
+.tab{color:var(--txt2);font-size:14px;font-weight:500;padding:8px 14px;border-radius:9px;cursor:pointer}
+.tab.on{color:var(--txt);background:rgba(255,255,255,.05)}
+.navr{margin-left:auto;display:flex;gap:9px;align-items:center}
+.pill{font-size:12px;color:var(--txt2);background:rgba(255,255,255,.04);border:1px solid var(--line);border-radius:999px;padding:6px 13px}
+.pill.live{color:var(--up);border-color:rgba(52,211,153,.3)}
+.pill.live::before{content:"●";margin-right:5px;animation:pulse 2s infinite}
+@keyframes pulse{50%{opacity:.4}}
+/* stat cards */
+.stats{display:grid;grid-template-columns:repeat(5,1fr);gap:14px;margin:24px 0 8px}
+.sc{border:1px solid var(--line);border-radius:16px;padding:18px;background:var(--card);position:relative;overflow:hidden}
+.sc::before{content:"";position:absolute;inset:0 0 auto 0;height:2px;opacity:.8}
+.sc.up::before{background:var(--up)} .sc.mid::before{background:#fbbf24} .sc.dn::before{background:var(--down)} .sc.tot::before{background:var(--grad)}
+.sc .l{font-size:11.5px;color:var(--txt2);font-weight:500;text-transform:uppercase;letter-spacing:.04em}
+.sc .n{font-size:34px;font-weight:700;margin-top:8px;letter-spacing:-.02em;line-height:1}
+.sc.up .n{color:var(--up)} .sc.mid .n{color:#fbbf24} .sc.dn .n{color:var(--down)}
+.sc.tot .n{background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+.sc .m{font-size:11.5px;color:var(--txt3);margin-top:6px}
+/* segmented toolbar */
+.bar{display:flex;align-items:center;gap:8px;margin:26px 0 18px}
+.seg{display:flex;background:var(--card);border:1px solid var(--line);border-radius:11px;padding:4px}
+.seg span{font-size:13px;color:var(--txt2);font-weight:500;padding:7px 14px;border-radius:8px;cursor:pointer}
+.seg span.on{color:var(--txt);background:rgba(255,255,255,.06)}
+.bar .meta{margin-left:auto;font-size:12.5px;color:var(--txt3)}
+.bar .meta b{color:var(--teal);font-weight:600}
+/* table card */
+.tablecard{border:1px solid var(--line);border-radius:20px;background:var(--card);overflow:hidden}
+table{width:100%;border-collapse:collapse}
+thead th{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--txt3);font-weight:600;text-align:right;padding:14px 22px;border-bottom:1px solid var(--line)}
+thead th:first-child,thead th:nth-child(2){text-align:left}
+tbody td{padding:16px 22px;border-bottom:1px solid var(--line);text-align:right}
+tbody tr:last-child td{border-bottom:0}
+tbody td:first-child,tbody td:nth-child(2){text-align:left}
+tbody tr:hover{background:rgba(255,255,255,.025)}
+.rk{width:30px;height:30px;border-radius:9px;display:grid;place-items:center;font-size:13px;font-weight:700;background:rgba(255,255,255,.05);color:var(--txt2)}
+.rk.one{background:var(--grad);color:#08131a}
+.tkr{font-family:"JetBrains Mono";font-weight:600;font-size:15px}
+.nm{color:var(--txt2);font-size:12.5px;margin-top:1px}
+.state{font-size:11px;font-weight:600;color:var(--up);background:rgba(52,211,153,.1);border:1px solid rgba(52,211,153,.25);padding:3px 10px;border-radius:999px}
+.pos{color:var(--up);font-weight:600}
+.bigp{font-family:"JetBrains Mono";font-size:16px;font-weight:600}
+.barmini{height:6px;width:90px;background:rgba(255,255,255,.06);border-radius:99px;overflow:hidden;display:inline-block;vertical-align:middle}
+.barmini i{display:block;height:100%;background:var(--grad);border-radius:99px}
+/* pick card */
+.pick{margin-top:22px;border:1px solid var(--line);border-radius:22px;padding:30px;position:relative;overflow:hidden;
+  background:radial-gradient(120% 120% at 100% 0%,rgba(45,212,191,.10),transparent 50%),var(--card)}
+.pick .top{display:flex;justify-content:space-between;align-items:flex-start;gap:20px}
+.pick .eyebrow{font-size:11.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--teal)}
+.pick h3{font-family:"Space Grotesk";font-size:28px;font-weight:700;margin-top:7px;letter-spacing:-.01em}
+.pick .sub{color:var(--txt2);font-size:13.5px;margin-top:3px}
+.pick .pr{text-align:right}
+.pick .pr .v{font-family:"JetBrains Mono";font-size:32px;font-weight:600}
+.pick .pr .d{color:var(--up);font-size:14px;font-weight:600;margin-top:2px}
+.plan{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:26px}
+.plan .cell{border:1px solid var(--line);border-radius:14px;padding:15px;background:var(--card2)}
+.plan .cl{font-size:11px;color:var(--txt3);text-transform:uppercase;letter-spacing:.05em}
+.plan .cv{font-family:"JetBrains Mono";font-size:19px;font-weight:600;margin-top:6px}
+.plan .cv.dn{color:var(--down)} .plan .cv.up{color:var(--up)}
+.btn{margin-top:24px;display:inline-flex;align-items:center;gap:8px;background:var(--grad);color:#08131a;font-weight:700;font-size:14px;padding:12px 22px;border-radius:12px;border:0;box-shadow:0 6px 24px rgba(45,212,191,.25)}
+.note{color:var(--txt3);font-size:12.5px;margin-top:16px;line-height:1.6}
+.back{position:fixed;top:16px;right:22px;font-size:13px;color:var(--txt2);text-decoration:none;background:var(--card);border:1px solid var(--line2);padding:7px 13px;border-radius:999px;z-index:5}
+</style></head><body>
+<a class="back" href="index.html">← directions</a>
+<div class="wrap">
+  <nav>
+    <span class="brand"><span class="mark">≈</span>Mawjah</span>
+    <span class="tab on">Momentum</span><span class="tab">Screener</span><span class="tab">Markets</span><span class="tab">Lab</span><span class="tab">Goals</span>
+    <span class="navr"><span class="pill live">Live</span><span class="pill">Sharia ✓</span><span class="pill">Next scan 10:15</span></span>
+  </nav>
+  <div class="stats">
+    <div class="sc up"><div class="l">Strong Uptrend</div><div class="n">45</div><div class="m">7–8 criteria</div></div>
+    <div class="sc up"><div class="l">Uptrend</div><div class="n" style="color:var(--txt)">43</div><div class="m">5–6 criteria</div></div>
+    <div class="sc mid"><div class="l">Building</div><div class="n">13</div><div class="m">3–4 criteria</div></div>
+    <div class="sc dn"><div class="l">Strong Downtrend</div><div class="n">35</div><div class="m">7–8 bearish</div></div>
+    <div class="sc tot"><div class="l">Scanned</div><div class="n">209</div><div class="m">1:03:39 AM</div></div>
+  </div>
+  <div class="bar">
+    <div class="seg"><span class="on">Momentum buy-list</span><span>Screener</span><span>Signals</span></div>
+    <div class="meta">Ranked by the <b>6mo-mom × 52wk-high combo</b> · gate t 3.38 · next rebalance 2026-07-01</div>
+  </div>
+  <div class="tablecard">
+    <table>
+      <thead><tr><th></th><th>Symbol</th><th>State</th><th>6M Momentum</th><th>52W High</th><th>Price</th></tr></thead>
+      <tbody>
+        <tr><td><span class="rk one">1</span></td><td><div class="tkr">1321</div><div class="nm">East Pipes · Industrial</div></td><td><span class="state">▲ Strong Uptrend</span></td><td><span class="pos">+40.9%</span></td><td><span class="barmini"><i style="width:99%"></i></span> <span class="mono" style="color:var(--txt2);font-size:12px">99.7%</span></td><td class="bigp">222.40</td></tr>
+        <tr><td><span class="rk">2</span></td><td><div class="tkr">1304</div><div class="nm">Al Yamamah Steel · Materials</div></td><td><span class="state">▲ Strong Uptrend</span></td><td><span class="pos">+20.7%</span></td><td><span class="barmini"><i style="width:98%"></i></span> <span class="mono" style="color:var(--txt2);font-size:12px">98.3%</span></td><td class="bigp">41.20</td></tr>
+        <tr><td><span class="rk">3</span></td><td><div class="tkr">2200</div><div class="nm">APC · Petrochem</div></td><td><span class="state">▲ Strong Uptrend</span></td><td><span class="pos">+40.8%</span></td><td><span class="barmini"><i style="width:95%"></i></span> <span class="mono" style="color:var(--txt2);font-size:12px">94.8%</span></td><td class="bigp">7.40</td></tr>
+        <tr><td><span class="rk">4</span></td><td><div class="tkr">8010</div><div class="nm">Tawuniya · Insurance</div></td><td><span class="state">▲ Strong Uptrend</span></td><td><span class="pos">+33.1%</span></td><td><span class="barmini"><i style="width:96%"></i></span> <span class="mono" style="color:var(--txt2);font-size:12px">96.2%</span></td><td class="bigp">160.40</td></tr>
+        <tr><td><span class="rk">5</span></td><td><div class="tkr">7010</div><div class="nm">STC · Telecom</div></td><td><span class="state">▲ Strong Uptrend</span></td><td><span class="pos">+12.4%</span></td><td><span class="barmini"><i style="width:99%"></i></span> <span class="mono" style="color:var(--txt2);font-size:12px">99.1%</span></td><td class="bigp">44.66</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="pick">
+    <div class="top">
+      <div>
+        <div class="eyebrow">▲ Top of buy-list · #1 of 77</div>
+        <h3>East Pipes Co.</h3>
+        <div class="sub">1321 · Industrial · Sharia ✓ · Buy at next monthly rebalance</div>
+      </div>
+      <div class="pr"><div class="v">222.40</div><div class="d">▲ +1.8% today</div></div>
+    </div>
+    <div class="plan">
+      <div class="cell"><div class="cl">Entry</div><div class="cv">222.40</div></div>
+      <div class="cell"><div class="cl">Stop</div><div class="cv dn">211.76</div></div>
+      <div class="cell"><div class="cl">Target T1</div><div class="cv up">233.0</div></div>
+      <div class="cell"><div class="cl">Target T2</div><div class="cv up">243.7</div></div>
+    </div>
+    <button class="btn">Add to paper portfolio →</button>
+    <p class="note">Illustrative levels — the validated buy-list is this screen (6mo-mom × 52wk-high, gate t 3.38, 9/9 positive years). Equal-weight ~11% per name · Derayah 0.11% RT.</p>
+  </div>
+</div>
+</body></html>

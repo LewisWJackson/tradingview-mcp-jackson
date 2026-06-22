@@ -13,18 +13,32 @@
   },
   "scripts": {
     "start": "node src/server.js",
+    "dashboard": "node --experimental-sqlite -r dotenv/config dashboard/server.mjs dotenv_config_path=.env",
+    "decision": "node --experimental-sqlite scripts/decision.mjs",
+    "log-fill": "node --experimental-sqlite scripts/log-fill.mjs",
     "tv": "node src/cli/index.js",
     "test": "node --test tests/e2e.test.js tests/pine_analyze.test.js",
     "test:e2e": "node --test tests/e2e.test.js",
     "test:unit": "node --test tests/pine_analyze.test.js tests/cli.test.js",
     "test:cli": "node --test tests/cli.test.js",
-    "test:all": "node --test tests/e2e.test.js tests/pine_analyze.test.js tests/cli.test.js",
+    "test:strategy": "node --experimental-sqlite --test tests/strategy_state.test.js",
+    "test:money": "node --experimental-sqlite --test tests/moneypath.test.js",
+    "test:honesty": "node --test tests/honesty.test.js",
+    "test:drawer": "node scripts/pw-drawer-smoke.mjs",
+    "test:all": "node --test tests/e2e.test.js tests/pine_analyze.test.js tests/cli.test.js tests/honesty.test.js",
     "test:verbose": "node --test --test-reporter=spec tests/e2e.test.js tests/pine_analyze.test.js",
     "test:count": "node --test --test-reporter=spec tests/e2e.test.js 2>&1 | tail -5"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.30.1",
     "@modelcontextprotocol/sdk": "^1.12.1",
     "chrome-remote-interface": "^0.33.2",
     "dotenv": "^17.4.1"
+  },
+  "devDependencies": {
+    "playwright": "^1.60.0"
+  },
+  "engines": {
+    "node": ">=22.5"
   }
 }

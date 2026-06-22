@@ -1,0 +1,41 @@
+[
+  { "code": "7203", "name": "Elm Co.", "action": "add", "review": "2022-05", "announce_date": "2022-05-13", "effective_date": "2022-05-31", "index": "MSCI Saudi", "source": "argaam:1559383" },
+  { "code": "2082", "name": "ACWA Power", "action": "add", "review": "2022-05", "announce_date": "2022-05-13", "effective_date": "2022-05-31", "index": "MSCI Saudi", "source": "argaam:1559383" },
+  { "code": "1030", "name": "Saudi Investment Bank", "action": "add", "review": "2022-05", "announce_date": "2022-05-13", "effective_date": "2022-05-31", "index": "MSCI Saudi", "source": "argaam:1559383" },
+  { "code": "1111", "name": "Saudi Tadawul Group Holding", "action": "add", "review": "2022-05", "announce_date": "2022-05-13", "effective_date": "2022-05-31", "index": "MSCI Saudi", "source": "argaam:1559383" },
+  { "code": "4001", "name": "Abdullah Al Othaim Markets", "action": "delete", "review": "2022-05", "announce_date": "2022-05-13", "effective_date": "2022-05-31", "index": "MSCI Saudi", "source": "argaam:1559383" },
+  { "code": "8010", "name": "Tawuniya", "action": "delete", "review": "2022-05", "announce_date": "2022-05-13", "effective_date": "2022-05-31", "index": "MSCI Saudi", "source": "argaam:1559383" },
+
+  { "code": "4164", "name": "Nahdi Medical Co.", "action": "add", "review": "2022-11", "announce_date": "2022-11-11", "effective_date": "2022-11-30", "index": "MSCI Saudi", "source": "argaam:1601821" },
+  { "code": "7202", "name": "Arabian Internet & Communications (solutions by stc)", "action": "add", "review": "2022-11", "announce_date": "2022-11-11", "effective_date": "2022-11-30", "index": "MSCI Saudi", "source": "argaam:1601821" },
+  { "code": "4004", "name": "Dallah Healthcare Co.", "action": "add", "review": "2022-11", "announce_date": "2022-11-11", "effective_date": "2022-11-30", "index": "MSCI Saudi", "source": "argaam:1601821" },
+  { "code": "1322", "name": "Almasane Alkobra Mining (AMAK)", "action": "add", "review": "2022-11", "announce_date": "2022-11-11", "effective_date": "2022-11-30", "index": "MSCI Saudi", "source": "argaam:1601821" },
+  { "code": "4163", "name": "Aldawaa Medical Services Co.", "action": "add", "review": "2022-11", "announce_date": "2022-11-11", "effective_date": "2022-11-30", "index": "MSCI Saudi", "source": "argaam:1601821" },
+  { "code": "6014", "name": "Alamar Foods Co.", "action": "add", "review": "2022-11", "announce_date": "2022-11-11", "effective_date": "2022-11-30", "index": "MSCI Saudi", "source": "argaam:1601821" },
+  { "code": "1302", "name": "Bawan Co.", "action": "add", "review": "2022-11", "announce_date": "2022-11-11", "effective_date": "2022-11-30", "index": "MSCI Saudi", "source": "argaam:1601821" },
+  { "code": "4161", "name": "BinDawood Holding Co.", "action": "add", "review": "2022-11", "announce_date": "2022-11-11", "effective_date": "2022-11-30", "index": "MSCI Saudi", "source": "argaam:1601821" },
+  { "code": "4322", "name": "Retal Urban Development Co.", "action": "add", "review": "2022-11", "announce_date": "2022-11-11", "effective_date": "2022-11-30", "index": "MSCI Saudi", "source": "argaam:1601821" },
+  { "code": "4330", "name": "Riyad REIT Fund", "action": "add", "review": "2022-11", "announce_date": "2022-11-11", "effective_date": "2022-11-30", "index": "MSCI Saudi", "source": "argaam:1601821" },
+  { "code": "4323", "name": "Sumou Real Estate Co.", "action": "add", "review": "2022-11", "announce_date": "2022-11-11", "effective_date": "2022-11-30", "index": "MSCI Saudi", "source": "argaam:1601821" },
+  { "code": "2281", "name": "Tanmiah Food Co.", "action": "add", "review": "2022-11", "announce_date": "2022-11-11", "effective_date": "2022-11-30", "index": "MSCI Saudi", "source": "argaam:1601821" },
+
+  { "code": "2083", "name": "MARAFIQ (Power & Water Utility Jubail/Yanbu)", "action": "add", "review": "2023-08", "announce_date": "2023-08-10", "effective_date": "2023-08-31", "index": "MSCI Saudi", "source": "argaam:1663420" },
+
+  { "code": "2382", "name": "ADES Holding Co.", "action": "add", "review": "2024-02", "announce_date": "2024-02-13", "effective_date": "2024-02-29", "index": "MSCI Saudi", "source": "argaam:1704748" },
+  { "code": "2380", "name": "Rabigh Refining and Petrochemical Co.", "action": "delete", "review": "2024-02", "announce_date": "2024-02-13", "effective_date": "2024-02-29", "index": "MSCI Saudi", "source": "argaam:1704748" },
+
+  { "code": "4263", "name": "SAL Saudi Logistics Services Co.", "action": "add", "review": "2024-05", "announce_date": "2024-05-15", "effective_date": "2024-05-31", "index": "MSCI Saudi", "source": "argaam:1727837" },
+  { "code": "1182", "name": "Amlak International Finance Co.", "action": "delete", "review": "2024-05", "announce_date": "2024-05-15", "effective_date": "2024-05-31", "index": "MSCI Saudi", "source": "argaam:1727837" },
+  { "code": "4240", "name": "Cenomi Retail", "action": "delete", "review": "2024-05", "announce_date": "2024-05-15", "effective_date": "2024-05-31", "index": "MSCI Saudi", "source": "argaam:1727837" },
+  { "code": "2001", "name": "Chemanol", "action": "delete", "review": "2024-05", "announce_date": "2024-05-15", "effective_date": "2024-05-31", "index": "MSCI Saudi", "source": "argaam:1727837" },
+  { "code": "4330", "name": "Riyad REIT Fund", "action": "delete", "review": "2024-05", "announce_date": "2024-05-15", "effective_date": "2024-05-31", "index": "MSCI Saudi", "source": "argaam:1727837" },
+  { "code": "4008", "name": "SACO", "action": "delete", "review": "2024-05", "announce_date": "2024-05-15", "effective_date": "2024-05-31", "index": "MSCI Saudi", "source": "argaam:1727837" },
+  { "code": "2030", "name": "SARCO", "action": "delete", "review": "2024-05", "announce_date": "2024-05-15", "effective_date": "2024-05-31", "index": "MSCI Saudi", "source": "argaam:1727837" },
+
+  { "code": "2084", "name": "Miahona Co.", "action": "add", "review": "2024-11", "announce_date": "2024-11-07", "effective_date": "2024-11-25", "index": "MSCI Saudi", "source": "argaam:1767438" },
+  { "code": "8313", "name": "Rasan Information Technology Co.", "action": "add", "review": "2024-11", "announce_date": "2024-11-07", "effective_date": "2024-11-25", "index": "MSCI Saudi", "source": "argaam:1767438" },
+  { "code": "3092", "name": "Riyadh Cement Co.", "action": "add", "review": "2024-11", "announce_date": "2024-11-07", "effective_date": "2024-11-25", "index": "MSCI Saudi", "source": "argaam:1767438" },
+  { "code": "1834", "name": "Saudi Manpower Solutions (SMASCO)", "action": "add", "review": "2024-11", "announce_date": "2024-11-07", "effective_date": "2024-11-25", "index": "MSCI Saudi", "source": "argaam:1767438" },
+  { "code": "1183", "name": "SHL Finance Co.", "action": "delete", "review": "2024-11", "announce_date": "2024-11-07", "effective_date": "2024-11-25", "index": "MSCI Saudi", "source": "argaam:1767438" },
+  { "code": "3002", "name": "Najran Cement Co.", "action": "delete", "review": "2024-11", "announce_date": "2024-11-07", "effective_date": "2024-11-25", "index": "MSCI Saudi", "source": "argaam:1767438" }
+]

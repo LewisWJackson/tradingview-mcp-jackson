@@ -1,0 +1,856 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mawjah — Market Screener</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&family=Noto+Sans+Arabic:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/app.css">
+
+<!-- ═══════════════════════════════════════════════════════════════
+     MAWJAH REDESIGN v3.0
+     Pure CSS overrides — zero HTML/JS changes, all class names intact.
+     ═══════════════════════════════════════════════════════════════ -->
+</head>
+<body>
+
+<!-- ── Auth gate — shown by default, hidden if key is already stored ── -->
+<div id="mwj-gate" role="dialog" aria-modal="true" aria-label="Dashboard access">
+  <div class="gate-brand">
+    <div class="gate-wave-mark">
+      <svg viewBox="0 0 20 14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" width="20" height="14">
+        <path d="M1 7 C3.5 2 5 2 7.5 7 C10 12 11.5 12 14 7 C16.5 2 18 2 19 7"/>
+      </svg>
+    </div>
+    <div class="gate-brand-name">Mawjah</div>
+    <div class="gate-brand-arabic">موجة</div>
+    <p class="gate-brand-desc">Multi-market screener for US Equity, Tadawul, BTC, and XRP. Powered by live TradingView data.</p>
+    <div class="gate-markets">
+      <div class="gate-mkt-row"><span class="gate-mkt-dot bull"></span><span class="gate-mkt-sym">TASI</span><span class="gate-mkt-chg up">+0.74%</span><span>Saudi Exchange</span></div>
+      <div class="gate-mkt-row"><span class="gate-mkt-dot bull"></span><span class="gate-mkt-sym">BTCUSD</span><span class="gate-mkt-chg up">+2.3%</span><span>Crypto</span></div>
+      <div class="gate-mkt-row"><span class="gate-mkt-dot idle"></span><span class="gate-mkt-sym">SPY</span><span class="gate-mkt-chg dn">-0.1%</span><span>US Equity</span></div>
+    </div>
+  </div>
+  <div class="gate-form-side">
+    <div class="gate-form-inner">
+      <p class="gate-eyebrow">Mawjah Terminal</p>
+
+      <!-- Google sign-in -->
+      <a id="mwj-google-btn" class="gate-google-btn" href="/auth/google">
+        <svg width="18" height="18" viewBox="0 0 48 48"><path fill="#FFC107" d="M43.6 20.1H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.1 7.9 3l5.7-5.7C34.5 6.3 29.5 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.6-.4-3.9z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.1 7.9 3l5.7-5.7C34.5 6.3 29.5 4 24 4 16.3 4 9.7 8.4 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-1.9 13.5-5.1l-6.2-5.3C29.5 35.5 26.9 36 24 36c-5.2 0-9.7-3.3-11.3-8H6.3C9.7 35.6 16.3 44 24 44z"/><path fill="#1976D2" d="M43.6 20.1H42V20H24v8h11.3c-.8 2.1-2.2 3.9-4 5.1l6.2 5.3C43 34.8 44 29.7 44 24c0-1.3-.1-2.6-.4-3.9z"/></svg>
+        Continue with Google
+      </a>
+
+      <div class="gate-social-divider"><span>or sign in with email</span></div>
+
+      <!-- Login / Register tabs -->
+      <div class="gate-tabs">
+        <button class="gate-tab-btn active" id="tab-login-btn" type="button" onclick="mwjAuth.switchTab('login')">Sign in</button>
+        <button class="gate-tab-btn" id="tab-register-btn" type="button" onclick="mwjAuth.switchTab('register')">Create account</button>
+      </div>
+
+      <!-- Sign-in form -->
+      <div id="mwj-login-form">
+        <div class="gate-input-group">
+          <input id="mwj-identifier" class="gate-input" type="text"
+                 placeholder="Email or username" autocomplete="username" spellcheck="false">
+        </div>
+        <div class="gate-input-group">
+          <input id="mwj-password" class="gate-input" type="password"
+                 placeholder="Password" autocomplete="current-password">
+          <button class="gate-eye-btn" id="mwj-eye-btn" type="button" title="Toggle visibility" onclick="mwjAuth.toggleVis('mwj-password','mwj-eye-icon')">
+            <svg id="mwj-eye-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16">
+              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- Register form -->
+      <div id="mwj-register-form" style="display:none">
+        <div class="gate-input-group">
+          <input id="mwj-reg-email" class="gate-input" type="email"
+                 placeholder="Email address" autocomplete="email" spellcheck="false">
+        </div>
+        <div class="gate-input-group">
+          <input id="mwj-reg-username" class="gate-input" type="text"
+                 placeholder="Username (optional)" autocomplete="username" spellcheck="false">
+        </div>
+        <div class="gate-input-group">
+          <input id="mwj-reg-displayname" class="gate-input" type="text"
+                 placeholder="Display name (optional)" autocomplete="name" spellcheck="false">
+        </div>
+        <div class="gate-input-group">
+          <input id="mwj-reg-password" class="gate-input" type="password"
+                 placeholder="Password (8+ characters)" autocomplete="new-password">
+          <button class="gate-eye-btn" type="button" title="Toggle visibility" onclick="mwjAuth.toggleVis('mwj-reg-password','mwj-reg-eye-icon')">
+            <svg id="mwj-reg-eye-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16">
+              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <span id="mwj-gate-error" class="gate-error" aria-live="polite"></span>
+      <button id="mwj-submit-btn" class="gate-submit" type="button" onclick="mwjAuth.submit()">Sign in</button>
+    </div>
+  </div>
+</div>
+
+<!-- Profile modal -->
+<div id="profile-modal-overlay" onclick="if(event.target===this)closeProfileModal()">
+  <div class="profile-modal">
+    <h3>Edit Profile</h3>
+    <div class="profile-avatar-preview" id="profile-avatar-preview"></div>
+    <div class="profile-field">
+      <label>Display name</label>
+      <input id="profile-display-name" type="text" placeholder="Your name">
+    </div>
+    <div class="profile-field">
+      <label>Username</label>
+      <input id="profile-username" type="text" placeholder="username">
+    </div>
+    <div class="profile-field">
+      <label>Avatar URL</label>
+      <input id="profile-avatar-url" type="url" placeholder="https://…">
+    </div>
+    <div class="profile-modal-actions">
+      <button class="btn btn-secondary" onclick="closeProfileModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveProfile()">Save</button>
+    </div>
+  </div>
+</div>
+
+<header>
+  <div class="logo">
+    <div class="logo-icon">≈</div>
+    <span data-i18n="title">Mawjah</span>
+  </div>
+  <div id="market-status"></div>
+  <div class="header-right">
+    <div id="clock"></div>
+    <button class="ccy-btn" id="ccy-btn" onclick="toggleCurrency()" title="Currency::Toggle price display between SAR (Saudi Riyal) and USD (US Dollar). Conversion uses live exchange rate. Affects price column only — scores and signals are always currency-independent.">$ USD</button>
+    <button class="lang-btn" id="lang-btn" onclick="toggleLang()" title="Language::Switch the interface between English and Arabic. Arabic mode enables RTL layout and shows Arabic company names in the screener.">عربي</button>
+    <div class="view-toggle" id="view-toggle" title="View Mode::Switch between Pro mode (full data table with all technical metrics) and Guide mode (simplified card view with plain-language explanations).">
+      <button class="view-btn" id="view-btn-pro" onclick="setViewMode('pro')" title="Pro — full data table with all technical metrics. For experienced traders who want raw numbers.">Pro</button>
+      <button class="view-btn" id="view-btn-guide" onclick="setViewMode('guide')" title="Guide — simplified card view with plain-language explanations. Perfect if you're new to trading or just want clarity.">Guide</button>
+    </div>
+    <button class="live-btn" id="btn-live" onclick="toggleLiveMode()" title="Live Mode::Enable continuous auto-refresh — the dashboard re-scans your universe at regular intervals throughout the trading session so you always have fresh signals without pressing Full Scan manually."><span class="live-dot"></span><span id="btn-live-label" data-i18n="liveOff">Live</span></button>
+    <button class="btn btn-quick"     id="btn-quick" onclick="startQuickScan()" title="Quick re-scan — only checks stocks that already have an active signal (BUY, WATCH, SELL). Much faster than a full scan. Good for a mid-session update.">⚡ Quick</button>
+    <button class="btn btn-primary"   id="btn-scan"  onclick="startScan()"  data-i18n-btn="scanAll" title="Full scan — fetches live prices and recomputes all 9 criteria for every stock in the universe. Takes 30–90 seconds depending on the universe size.">⟳ Full Scan</button>
+    <button class="btn btn-secondary pro-only" id="btn-presignal" onclick="loadPreSignal()" title="Pre-signal finder — shows stocks that are 1 or 2 criteria away from triggering a buy or sell signal. These are the ones to watch closely before the next scan." style="font-size:11px;position:relative">🎯 Pre-Signal<span id="presignal-badge" style="display:none;position:absolute;top:-4px;inset-inline-end:-4px;background:var(--red);color:#fff;font-size:9px;font-weight:700;border-radius:10px;padding:1px 5px;min-width:16px;text-align:center"></span></button>
+    <div id="auto-scan-pill" class="auto-scan-pill" title="Auto-scan is running — the dashboard automatically re-scans the universe 3 times per trading day during market hours so you always have fresh signals." style="display:none"><span class="as-dot"></span><span id="auto-scan-pill-text">Next scan —</span></div>
+    <div class="status-dot" id="status-dot"></div>
+    <!-- User avatar / profile menu -->
+    <div class="user-menu" id="user-menu" style="display:none">
+      <button class="user-avatar-btn" id="user-avatar-btn" onclick="toggleUserDropdown()" title="Account"></button>
+      <div class="user-dropdown" id="user-dropdown">
+        <div class="user-dropdown-name">
+          <div class="udn-name" id="dd-display-name">User</div>
+          <div class="udn-email" id="dd-email"></div>
+        </div>
+        <button class="user-dropdown-item" onclick="openProfileModal()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
+          Edit Profile
+        </button>
+        <button class="user-dropdown-item danger" onclick="mwjAuth.logout()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+          Sign out
+        </button>
+      </div>
+    </div>
+  </div>
+</header>
+
+<main>
+  <div class="summary-grid">
+    <div class="summary-card card-sb"  title="Strong Uptrend::7+ of 9 criteria aligned right now — a DESCRIPTION of current trend state, NOT a buy signal. In testing this score lagged simple buy-and-hold (~37% win rate). The validated buy-list is the Momentum tab.">  <div class="summary-card-inner"><div class="label" data-i18n="strongBuy">Strong Uptrend</div>  <div class="value" id="count-strong-buy">—</div><div class="sublabel" data-i18n="all8">All 8 criteria</div></div></div>
+    <div class="summary-card card-buy" title="Uptrend::5–6 criteria aligned — a description of current price state, not a recommendation. The score does not predict returns (it lagged buy-and-hold in testing). Validated buy-list = Momentum tab."> <div class="summary-card-inner"><div class="label" data-i18n="buy">Uptrend</div>                 <div class="value" id="count-buy">—</div>       <div class="sublabel" data-i18n="crit56">5–6 criteria</div></div></div>
+    <div class="summary-card card-wch" title="Building::3–4 criteria aligned — mixed trend state, not a signal. Descriptive context only; the score is not predictive. Keep on your radar; act on the Momentum tab + your chart."> <div class="summary-card-inner"><div class="label" data-i18n="watch">Building</div>             <div class="value" id="count-watch">—</div>     <div class="sublabel" data-i18n="crit34">3–4 criteria</div></div></div>
+    <div class="summary-card card-ss"  title="Strong Sell::Stocks with 7+ bearish criteria active — strong downtrend, negative momentum, and trend breakdown. Avoid new entries. If you hold one, review your exit plan."> <div class="summary-card-inner"><div class="label" data-i18n="strongSell">Strong Downtrend</div> <div class="value" id="count-strong-sell">—</div><div class="sublabel" data-i18n="allBear8">All 8 bearish</div></div></div>
+    <div class="summary-card card-tot" title="Scanned::Total number of stocks analyzed in the last run, plus the time it completed. Click Full Scan to refresh all data."> <div class="summary-card-inner"><div class="label" data-i18n="scanned">Scanned</div>        <div class="value" id="count-total">—</div>     <div class="sublabel" id="scan-time" data-i18n="noScan">No scan yet</div></div></div>
+  </div>
+
+  <div id="scan-progress"><span id="scan-progress-text"></span><div class="prog-bar"><div class="prog-fill" id="prog-fill"></div></div></div>
+
+  <div class="selection-bar" id="selection-bar">
+    <span data-i18n="selected">Selected:</span>
+    <span class="sel-count" id="sel-count">0</span>
+    <span data-i18n="stocks">stocks</span>
+    <button class="btn btn-success" id="btn-scan-selected" onclick="scanSelected()">⟳ <span data-i18n="scanSelected">Scan Selected</span></button>
+    <button class="btn btn-secondary" onclick="clearSelection()">✕ <span data-i18n="clearSel">Clear</span></button>
+  </div>
+
+  <div class="tabs">
+    <button class="tab active" onclick="switchTab('screener',this)"  data-i18n="tabScreener" title="Screener::Scan all stocks in your universe and rank them by signal strength. Run a Full Scan to get the latest readings.">Screener</button>
+    <button class="tab tab-edge" onclick="switchTab('momentum',this)"          id="tab-momentum"       title="Signals::The validated edges proven to beat the market on your real constraints (Sharia-compliant, low-cost Derayah). Two signals live here: the monthly Momentum buy-list (recent winners), and the Block-Deal signal (follow big premium trades, ~1-month hold). This is the one tab backed by a proven edge — start here.">📊 Signals <span class="edge-pill">✓ Edge</span></button>
+    <button class="tab" onclick="switchTab('markets',this)"          data-i18n="tabMarkets"  title="Markets Overview::Global market conditions at a glance — index levels, sector heat maps, and macro signals to frame the day.">🌍 Markets</button>
+    <button class="tab" onclick="switchTab('positions',this)"        data-i18n="tabPositions" title="Portfolio::Track your real positions and P&amp;L, paper-trade with the virtual portfolio, and monitor block deals.">💼 Portfolio</button>
+    <button class="tab" onclick="switchTab('lab',this)"              id="tab-lab"            title="Accuracy Lab::Analyze your trade history to discover which setups work best for you — by score, RSI zone, sector, and hold time.">🔬 Lab</button>
+    <button class="tab" onclick="switchTab('goals',this)"            id="tab-goals"          title="Goals &amp; Objectives::Set and track your trading targets — win rate goals, return targets, and trade consistency metrics.">🎯 Goals</button>
+    <button class="tab" onclick="switchTab('criteria',this)"         data-i18n="tabCriteria" title="Alerts::Set smart alert rules — get notified when a stock crosses a score threshold, hits a price target, or changes signal.">🔔 Alerts</button>
+    <button class="tab" onclick="switchTab('universe',this)"         data-i18n="tabUniverse" title="Settings::Configure your symbol universe, adjust scoring rules, and customize the platform to match your strategy.">⚙ Settings</button>
+  </div>
+
+  <!-- Screener -->
+  <div class="panel active" id="panel-screener">
+
+    <!-- Beginner: Market Mood + learn bar -->
+    <div class="beginner-only" id="market-mood-banner"></div>
+    <div class="beginner-only beg-toolbar">
+      <span style="font-size:11px;color:var(--text2)">Showing stocks sorted by signal strength. Click any card to see the full analysis.</span>
+    </div>
+
+    <div class="screener-toolbar pro-only" style="justify-content:space-between">
+      <div id="style-filter-bar" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+        <span style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;white-space:nowrap">Style</span>
+        <div class="filter-group" id="style-filter-group">
+          <button class="filter-btn active" onclick="filterStyle('all',this)" title="Show all styles">All</button>
+          <button class="filter-btn" onclick="filterStyle('Momentum',this)"   title="RSI 55-70 + MACD + Volume — strong near-term momentum">Momentum</button>
+          <button class="filter-btn" onclick="filterStyle('Trend',this)"      title="EMA stack + above EMA200 + Hurst trending — sustained uptrend">Trend</button>
+          <button class="filter-btn" onclick="filterStyle('Breakout',this)"   title="Volume ≥2× + RS leadership — early breakout candidates">Breakout</button>
+          <button class="filter-btn" onclick="filterStyle('Recovery',this)"   title="RSI building from oversold — early reversal">Recovery</button>
+          <button class="filter-btn" onclick="filterStyle('Pullback',this)"   title="Price at EMA34 in uptrend — buying the dip">Pullback</button>
+        </div>
+        <div style="height:20px;width:1px;background:var(--border);margin:0 2px"></div>
+        <div class="filter-group" id="scan-mode-grp" title="Scoring mode affects how criteria are weighted. Swing is the default.">
+          <button class="filter-btn active" id="mode-swing"    onclick="setMode('swing',this)"    title="Swing: 9-criterion scoring with VWAP — optimal for 5–20 day trades">Swing</button>
+          <button class="filter-btn"        id="mode-position" onclick="setMode('position',this)" title="Position: same as Swing but weekly confirmation required — for multi-week holds">Position</button>
+          <button class="filter-btn"        id="mode-breakout" onclick="setMode('breakout',this)" title="Breakout: 8-criterion scoring emphasizing volume surge and relative strength">Breakout</button>
+        </div>
+      </div>
+      <div style="display:flex;gap:6px;align-items:center">
+        <button class="legend-toggle-btn" id="legend-toggle-btn" onclick="toggleLegend()" data-i18n="legendBtn" title="Signal Guide::Toggle a quick-reference legend below the toolbar — explains each signal type (Strong Buy, Buy, Watch, Sell, etc.) with color codes and score ranges.">ℹ Signal Guide</button>
+        <button class="btn btn-secondary" style="font-size:11px;padding:5px 10px" onclick="exportCsv()" data-i18n="exportCsv" title="Export CSV::Download the current screener results as a CSV file — includes ticker, name, price, score, RSI, MACD, signal, and all other visible columns. Compatible with Excel and Google Sheets.">⬇ Export CSV</button>
+      </div>
+    </div>
+    <!-- Signal Legend Bar (collapsible) -->
+    <div class="legend-bar" id="legend-bar"></div>
+    <div class="screener-toolbar">
+      <div class="filter-group" id="market-filters">
+        <button class="filter-btn active" onclick="setMarket('all',this)"       data-i18n="mAll"       title="All Markets::Show every asset in your universe — TASI, US equities, ETFs, crypto, and commodities combined.">All Markets</button>
+        <button class="filter-btn"        onclick="setMarket('tasi',this)"      data-i18n="mTasi"      title="TASI::Tadawul All-Share Index — Saudi stock exchange. Includes all listed Saudi equities in your universe.">TASI</button>
+        <button class="filter-btn"        onclick="setMarket('us',this)"        data-i18n="mUs"        title="US Equity::US-listed stocks from the NYSE and NASDAQ — large caps, growth stocks, and sector leaders.">US Equity</button>
+        <button class="filter-btn"        onclick="setMarket('etf',this)"       data-i18n="mEtf"       title="ETF::Exchange-Traded Funds — equity index ETFs, sector ETFs, commodity ETFs, and bond ETFs.">ETF</button>
+        <button class="filter-btn"        onclick="setMarket('crypto',this)"    data-i18n="mCrypto"    title="Crypto::Cryptocurrency pairs — Bitcoin, Ethereum, XRP, and other major digital assets.">Crypto</button>
+        <button class="filter-btn"        onclick="setMarket('commodity',this)" data-i18n="mCommodity" title="Commodities::Raw materials — Gold, Silver, Crude Oil, and other commodity futures.">Commodities</button>
+      </div>
+    </div>
+    <div class="screener-toolbar">
+      <div class="search-wrap">
+        <span class="search-icon">🔍</span>
+        <input type="search" id="sym-search" class="sym-search-input"
+          placeholder="Ticker or name..."
+          oninput="onSearchInput(event)"
+          onkeydown="if(event.key==='Escape')clearSearch()">
+        <button class="search-clear-btn" id="search-clear-btn" onclick="clearSearch()" title="Clear search">✕</button>
+      </div>
+      <span class="search-match-count" id="search-match-count"></span>
+      <div class="filter-group" id="sector-filters">
+        <button class="filter-btn active" data-sector="all"       onclick="filterSector('all',this)"       data-i18n="all">All</button>
+        <button class="filter-btn" data-sector="banking"          onclick="filterSector('banking',this)"   data-i18n="fBanks">Banks</button>
+        <button class="filter-btn" data-sector="energy"           onclick="filterSector('energy',this)"    data-i18n="fEnergy">Energy</button>
+        <button class="filter-btn" data-sector="petrochem"        onclick="filterSector('petrochem',this)" data-i18n="fPetro">Petrochem</button>
+        <button class="filter-btn" data-sector="telecom"          onclick="filterSector('telecom',this)"   data-i18n="fTelecom">Telecom</button>
+        <button class="filter-btn" data-sector="health"           onclick="filterSector('health',this)"    data-i18n="fHealth">Health</button>
+        <button class="filter-btn" data-sector="food"             onclick="filterSector('food',this)"      data-i18n="fFood">Food</button>
+        <button class="filter-btn" data-sector="other"            onclick="filterSector('other',this)"     data-i18n="fOther">Other</button>
+      </div>
+      <div class="filter-group">
+        <button class="filter-btn active" data-bias="all"  onclick="filterBias('all',this)"   data-i18n="all">All</button>
+        <button class="filter-btn" data-bias="buys"        onclick="filterBias('buys',this)"  data-i18n="fBuys" title="Filters to stocks in an UPTREND state (score-based). This is a trend-state filter, not a buy list — the score has no validated edge. Validated buy-list = Momentum tab.">Buys</button>
+        <button class="filter-btn" data-bias="watch"       onclick="filterBias('watch',this)" data-i18n="fWatch">Watch</button>
+        <button class="filter-btn" data-bias="sells"       onclick="filterBias('sells',this)" data-i18n="fSells">Sells</button>
+        <button class="filter-btn" data-bias="halal"       onclick="filterBias('halal',this)" data-i18n="fHalal">Halal</button>
+      </div>
+      <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text2);cursor:pointer;">
+        <input type="checkbox" id="cb-select-all" onchange="toggleSelectAll(this.checked)" style="accent-color:var(--accent)">
+        <span data-i18n="selectAllVis">Select all visible</span>
+      </label>
+      <div class="last-run" id="last-run-label" style="display:flex;align-items:center;gap:4px;flex-wrap:wrap">
+        <span id="last-run-text"></span>
+        <span id="freshness-badge" class="freshness-badge" style="display:none"></span>
+        <div class="archive-wrap">
+          <button class="legend-toggle-btn" id="archive-btn" onclick="toggleArchiveDropdown()" style="display:none" data-i18n="archiveBtn">📦 History</button>
+          <div class="archive-dropdown-menu" id="archive-dropdown-menu"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Quick scan data integrity warning -->
+    <div id="quick-scan-banner" style="display:none" class="quick-scan-banner">
+      ⚡ <strong>Quick Scan active</strong> — <span id="quick-scan-skipped"></span> SKIP-rated stocks were <em>not</em> re-scanned. They may have changed.
+      Run <strong>⟳ Full Scan</strong> to get a complete picture before making new trades.
+      <button onclick="document.getElementById('quick-scan-banner').style.display='none'" style="margin-inline-start:8px;background:none;border:none;color:inherit;cursor:pointer;font-size:13px">✕</button>
+    </div>
+
+    <!-- Index Regime Panel -->
+    <div id="regime-panel" class="regime-panel" style="display:none">
+      <div class="regime-top">
+        <div>
+          <div class="regime-sym" id="rg-sym">—</div>
+          <div style="display:flex;align-items:baseline;gap:8px;margin-top:2px">
+            <span class="regime-price-val" id="rg-price">—</span>
+            <span class="regime-change" id="rg-change">—</span>
+          </div>
+        </div>
+        <div class="regime-trend" id="rg-trend">—</div>
+        <button class="regime-refresh-btn" onclick="refreshRegime()">⟳</button>
+      </div>
+      <div class="regime-metrics">
+        <div class="regime-metric"><span class="regime-metric-val" id="rg-ema">—</span><span class="regime-metric-lbl" data-i18n="lEmaStack">EMA Stack</span></div>
+        <div class="regime-metric"><span class="regime-metric-val" id="rg-200">—</span><span class="regime-metric-lbl" data-i18n="lEma200">Above 200</span></div>
+        <div class="regime-metric"><span class="regime-metric-val" id="rg-rsi">—</span><span class="regime-metric-lbl">RSI</span></div>
+        <div class="regime-metric"><span class="regime-metric-val" id="rg-vol">—</span><span class="regime-metric-lbl" data-i18n="rgDailyVol">Daily Vol</span></div>
+        <div class="regime-metric"><span class="regime-metric-val" id="rg-20d">—</span><span class="regime-metric-lbl" data-i18n="rg20d">20d Perf</span></div>
+        <div class="regime-metric"><span class="regime-metric-val" id="rg-pos">—</span><span class="regime-metric-lbl" data-i18n="rg52w">52w Pos</span></div>
+      </div>
+      <div class="regime-52w">
+        <div class="regime-52w-labels"><span id="rg-lo52">—</span><span data-i18n="rg52wRange">52-Week Range</span><span id="rg-hi52">—</span></div>
+        <div class="regime-52w-track"><div class="regime-52w-fill"></div><div class="regime-52w-cursor" id="rg-cursor" style="inset-inline-start:50%"></div></div>
+      </div>
+      <div class="regime-signal" id="rg-signal">—</div>
+    </div>
+
+    <!-- Breadth bar -->
+    <div id="breadth-container" class="breadth-container" style="display:none">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:2px">
+        <span style="font-size:11px;font-weight:700;color:var(--text2)" data-i18n="breadthTitle">Market Breadth</span>
+        <span style="font-size:10px;color:var(--text3)" id="breadth-total"></span>
+      </div>
+      <div class="breadth-track">
+        <div class="breadth-bull" id="breadth-bull" style="width:0%"></div>
+        <div class="breadth-neutral" id="breadth-neutral" style="width:0%"></div>
+        <div class="breadth-bear" id="breadth-bear" style="width:0%"></div>
+      </div>
+      <div class="breadth-labels">
+        <span class="bl-bull" id="breadth-lbl-bull">▲ 0%</span>
+        <span class="bl-neutral" id="breadth-lbl-neutral">◆ 0%</span>
+        <span class="bl-bear" id="breadth-lbl-bear">▼ 0%</span>
+      </div>
+    </div>
+
+    <!-- Sector heatmap -->
+    <div id="sector-heatmap" class="heatmap-row" style="display:none"></div>
+    <div id="sector-rotation-wrap" style="display:none"></div>
+
+    <!-- Pre-Signal panel -->
+    <div id="presignal-panel" class="presignal-panel" style="display:none">
+      <div class="presignal-header">
+        🎯 Pre-Signal Watch
+        <span class="presignal-sub">Stocks approaching a signal — position before the flip</span>
+        <button class="drawer-close" style="margin-inline-start:auto;font-size:13px" onclick="document.getElementById('presignal-panel').style.display='none'">✕</button>
+      </div>
+      <div id="presignal-body" style="display:grid;grid-template-columns:1fr 1fr;min-height:120px">
+        <div style="border-inline-end:1px solid var(--border)">
+          <div style="padding:6px 12px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--green);border-bottom:1px solid var(--border);background:rgba(0,230,118,.04)">📈 Opportunity Signals</div>
+          <div id="presignal-positive"></div>
+        </div>
+        <div>
+          <div style="padding:6px 12px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--red);border-bottom:1px solid var(--border);background:rgba(255,80,80,.04)">⚠ Risk Signals</div>
+          <div id="presignal-negative"></div>
+        </div>
+      </div>
+      <div id="presignal-list" style="display:none"></div>
+    </div>
+
+    <!-- Movers panel -->
+    <div id="movers-panel" class="movers-panel" style="display:none">
+      <div class="movers-header">
+        <span data-i18n="moversTitle">What Changed</span>
+        <span id="movers-imp-badge" class="movers-badge imp" style="display:none"></span>
+        <span id="movers-deg-badge" class="movers-badge deg" style="display:none"></span>
+        <button class="drawer-close" style="margin-inline-start:auto;font-size:14px" onclick="document.getElementById('movers-panel').style.display='none'">✕</button>
+      </div>
+      <div id="movers-list"></div>
+    </div>
+
+    <div class="table-wrap pro-only">
+      <div class="ccy-info-bar" id="ccy-info-bar">
+        <span>💱</span>
+        <span id="ccy-info-text">TASI prices in <strong>SAR</strong> · US/Crypto/Commodity in <strong>USD</strong></span>
+        <span style="margin-inline-start:auto;color:var(--text3)">Toggle <strong id="ccy-info-btn-label">$ USD</strong> above to convert · <span class="price-tilde" style="vertical-align:baseline;font-size:10px">~</span> = converted price</span>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th class="cb-cell"></th>
+            <th onclick="sortTable('ticker')" data-i18n="colTicker" title="Stock ticker symbol. Click to sort alphabetically.">Ticker</th>
+            <th onclick="sortTable('name')"   data-i18n="colName"   title="Company name. Click to sort alphabetically.">Name</th>
+            <th class="hm" onclick="sortTable('sector')" data-i18n="colSector" title="Industry sector this stock belongs to.">Sector</th>
+            <th onclick="sortTable('price')" style="text-align:end" title="Current price. Click the currency badge in the header to toggle between SAR and USD.">Price&nbsp;<span id="price-ccy-badge" style="font-size:9px;opacity:.7;font-weight:400">(SAR)</span></th>
+            <th onclick="sortTable('chg')" style="text-align:end" title="How much the stock moved today as a percentage. Green means it went up, red means it went down.">Chg%</th>
+            <th onclick="sortTable('score')"  data-i18n="colScore" class="sorted" title="Score = how many of our 9 trend checks this stock passes right now (EMA stack, RSI, MACD, volume, VWAP, relative strength, weekly). It DESCRIBES current trend alignment — it is NOT a buy signal and did NOT beat buy-and-hold in testing. The validated buy-list is the Momentum tab.">Score ↓ <span class="learn-chip" title="Score = how many of our 9 trend checks pass right now.&#10;&#10;EMA trend, RSI momentum, MACD, volume, VWAP, relative strength, weekly confirmation.&#10;&#10;7–9 = strong trend alignment · 5–6 = moderate · 3–4 = mixed · below 3 = weak.&#10;&#10;NOTE: this is descriptive context, NOT a buy signal — the score had no validated edge (lagged buy-and-hold). Act on the Momentum tab.">?</span></th>
+            <th class="hm" onclick="sortTable('delta')" data-i18n="colDelta" title="Score change since the last scan. A positive delta means the setup is strengthening — more criteria have flipped in the right direction.">Δ <button class="col-info-btn" onclick="event.stopPropagation();showColPopover('delta',event)" title="Score change between the two most recent scans.&#10;&#10;+2 means two more criteria passed since the last scan — the signal is building.&#10;-1 means one criterion failed — the setup is weakening.&#10;&#10;Watch stocks with rising deltas — they often trigger a full buy signal on the next scan.">?</button></th>
+            <th onclick="sortTable('rsi')"    data-i18n="colRsi"   style="text-align:end" title="RSI (14-period Relative Strength Index) — measures how fast price is rising or falling on a 0–100 scale.&#10;&#10;52–78: Sweet spot — strong momentum, not overextended&#10;78+: Overbought — the move may be getting tired&#10;Below 48: Bearish zone — sellers dominate&#10;&#10;We require RSI above 52 for a buy signal.">RSI <span class="learn-chip" title="RSI (Relative Strength Index) — momentum meter on a 0–100 scale.&#10;&#10;Think of it as measuring how energetically a stock is moving:&#10;• 52–78: Strong momentum, buyers in control&#10;• 78+: Overbought — might be due for a rest&#10;• Below 48: Sellers dominate — avoid&#10;&#10;We use RSI 52–78 as the ideal zone for new buys.">?</span></th>
+            <th class="hm" onclick="sortTable('macd')" data-i18n="colMacd" style="text-align:end" title="MACD histogram — measures the difference between fast and slow momentum lines.&#10;&#10;Positive (green bar): Buying momentum is building&#10;Negative (red bar): Selling pressure dominates&#10;Crossing from negative to positive: strongest momentum shift signal&#10;&#10;We require MACD histogram to be positive for a buy signal.">MACD <span class="learn-chip" title="MACD (Moving Average Convergence Divergence) — tracks momentum shifts.&#10;&#10;Green number = bullish momentum building.&#10;Red number = bearish momentum.&#10;&#10;The most powerful signal is when MACD flips from red to green — that's when buying pressure takes over from selling pressure.">?</span></th>
+            <th class="hm" onclick="sortTable('vol')"  data-i18n="colVol"  style="text-align:end" title="Volume multiplier — how much trading activity today vs. the 20-day average.&#10;&#10;1.0× = exactly average. 2.0× = twice as much trading as usual.&#10;&#10;We require at least 1.2× to confirm a move has real participation behind it. A breakout on low volume often fails.">Vol× <span class="learn-chip" title="Volume× — today's trading activity vs. the 20-day average.&#10;&#10;1.5× means 50% more shares changed hands than usual.&#10;&#10;Why it matters: price moves on high volume are more reliable. A stock that rises on 3× normal volume has conviction behind it. One that rises on 0.5× is drifting on thin air and often reverses.">?</span></th>
+            <th class="hm" data-i18n="colEma" title="EMA trend stack indicator. ▲▲ means fully bullish (EMA 13 > 34 > 89 and price above 200-day). ▼▼ means fully bearish. Partial arrows mean some criteria are met. Click the ? for a detailed breakdown.">EMA&nbsp;<button class="col-info-btn" onclick="event.stopPropagation();showColPopover('ema',event)" title="EMA (Exponential Moving Average) trend stack.&#10;&#10;We check 4 conditions:&#10;1. EMA 13 is above EMA 34 (short-term trend is up)&#10;2. EMA 34 is above EMA 89 (medium-term trend is up)&#10;3. Price is above EMA 89 (stock is above its trend)&#10;4. Price is above EMA 200 (long-term bull market)&#10;&#10;▲▲ = all 4 passed · ▲ = 2–3 passed · ◆ = mixed · ▼ = mostly bearish · ▼▼ = all bearish">?</button></th>
+            <th onclick="sortTable('bias')" data-i18n="colSignal" title="Trend State = a DESCRIPTION of the stock's current price behaviour, not a buy/sell call.&#10;&#10;Strong Uptrend / Uptrend: trending up with momentum now&#10;Building: mixed, trend not established&#10;Flat: no clear trend&#10;Weak / Downtrend / Strong Downtrend: trending down&#10;&#10;IMPORTANT: this does NOT predict returns — in testing these labels lagged simple buy-and-hold. Use it to read the market, not as advice. The validated buy-list is the Momentum tab.&#10;Click the badge for the criteria breakdown.">Trend State <span class="learn-chip" title="Trend State — describes where the stock IS, not what to do.&#10;&#10;It summarises trend + momentum + volume into a current-state label. It is NOT a forecast: the score did not beat buy-and-hold in testing.&#10;Treat it as context for your own read; act on the Momentum screen + your chart analysis.">?</span></th>
+            <th class="hm" data-i18n="colDiv" title="RSI divergence — when price makes a new high or low but RSI does not follow, momentum is secretly reversing. A warning signal before the price catches up to reality.">Div&nbsp;<button class="col-info-btn" onclick="event.stopPropagation();showColPopover('div',event)" title="RSI Divergence — a hidden warning signal.&#10;&#10;Bullish divergence: Price makes a lower low but RSI makes a higher low → hidden buying pressure, possible reversal up.&#10;Bearish divergence: Price makes a higher high but RSI makes a lower high → hidden selling pressure, possible reversal down.&#10;&#10;Divergences often precede reversals by 2–5 bars.">?</button></th>
+            <th class="hm" data-i18n="colSharia" title="Sharia compliance status based on the company's business activities and debt ratios. Compliant = halal to trade. Review = uncertain. Non-compliant = not halal.">Halal&nbsp;<button class="col-info-btn" onclick="event.stopPropagation();showColPopover('halal',event)" title="Click to see the Sharia compliance methodology.">?</button></th>
+            <th class="hm" onclick="sortTable('rs')" data-i18n="colRs" style="text-align:end" title="RS = Relative Strength vs. the market index over 20 trading days.&#10;&#10;+5% means this stock gained 5% MORE than its benchmark index over the same period.&#10;-3% means it lagged by 3%.&#10;&#10;Rule: In a rising market, only buy stocks with positive RS. Leaders tend to keep leading. Laggards tend to keep lagging.">RS <span class="learn-chip" title="RS (Relative Strength) — how this stock performs vs. its market index.&#10;&#10;+5% = outperformed the market by 5% over the past 20 days.&#10;-3% = underperformed by 3%.&#10;&#10;The most powerful setups combine a high Score AND positive RS — that means both the individual stock and its absolute strength are aligned.">?</span></th>
+            <th class="hm" data-i18n="colWeekly" title="Weekly timeframe confirmation — checks whether the daily trend is also confirmed on the weekly chart.&#10;&#10;W (pass): Weekly EMA trend and RSI also support the bullish case. Adds conviction for longer holds.&#10;— (fail): Daily signal is not yet confirmed on the weekly — shorter-term trade only.">W <span class="learn-chip" title="W = Weekly confirmation.&#10;&#10;We check the same criteria on the weekly chart to make sure the daily trend is backed by a larger picture.&#10;&#10;W pass = stronger conviction, better for multi-week holds.&#10;W fail = shorter-term opportunity only, exit faster.">?</span></th>
+          </tr>
+        </thead>
+        <tbody id="screener-body">
+          <tr><td colspan="17"><div class="empty-state"><div class="icon">🔍</div><p id="empty-screener-text">No scan data yet.<br>Click <strong>Scan All</strong> to start.</p></div></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Beginner card list -->
+    <div class="beginner-only" id="beg-screener-wrap">
+      <div id="beg-screener-content">
+        <div class="beg-empty">No scan data yet.<br>Click <strong>Full Scan</strong> to get started.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Goals & Objectives -->
+  <div class="panel" id="panel-goals">
+    <div id="goals-content">
+      <div class="empty-state"><div class="icon">🎯</div><p>Loading goals…</p></div>
+    </div>
+    <div id="allocation-content" style="margin-block-start:18px"></div>
+  </div>
+
+  <!-- Momentum Screen (validated monthly buy-list) -->
+  <div class="panel" id="panel-momentum">
+    <div id="momentum-content">
+      <div class="empty-state"><div class="icon">📈</div><p>Loading momentum screen…</p></div>
+    </div>
+    <div id="pead-content"></div>
+    <div id="blockdeal-content"></div>
+    <div id="fills-content" style="margin-block-start:18px"></div>
+  </div>
+
+  <!-- Accuracy Lab -->
+  <div class="panel" id="panel-lab">
+    <div id="lab-content">
+      <div class="empty-state"><div class="icon">🔬</div><p>Loading lab…</p></div>
+    </div>
+
+    <!-- ── Shadow Tracks (moved from Markets — untraded-hypothesis tracker) ── -->
+    <div class="port-section-divider" style="margin-top:18px" title="Shadow Tracks::Setups you're watching but haven't traded — &quot;paper&quot; hypotheses. Compare each against what actually happened to learn which of YOUR reads hold up, without risking money. (Distinct from Strategy Edge/True Edge above, which grade the proven momentum edge on the whole universe, and from the Accuracy Lab, which grades your REAL closed trades.)">📊 Shadow Tracks
+      <span>Untraded hypotheses you're tracking · <button class="btn btn-secondary" onclick="loadStrategyValidation()" style="font-size:10px;padding:2px 8px;display:inline-flex">⟳ Refresh</button></span>
+    </div>
+    <div id="sv-root" style="padding:2px 0">
+      <!-- Tab bar -->
+      <div style="display:flex;gap:2px;border-bottom:1px solid var(--border);margin-bottom:10px">
+        <button class="sv-tab active" onclick="svTab('tracks')" id="svt-tracks" title="Open Tracks::Shadow trades you're currently monitoring — setups you liked but didn't enter. They stay open until you close them manually or they hit a signal change.">📌 Open Tracks</button>
+        <button class="sv-tab" onclick="svTab('closed')" id="svt-closed" title="Closed Tracks::Completed shadow trades with their outcome. Did the setup work? Compare your hypothesis to reality to sharpen your pattern recognition.">✅ Closed</button>
+        <button class="sv-tab" onclick="svTab('leaderboard')" id="svt-leaderboard" title="Track Leaderboard::Best-performing shadow-track setup types — by score tier, style tag, sector, and RSI zone. Ranks YOUR untraded hypotheses, not real trades (that's the Accuracy Lab) and not the proven edge (that's Strategy Edge above).">🏆 Track Leaderboard</button>
+        <button class="sv-tab" onclick="svTab('insights')" id="svt-insights" title="Track Patterns::Visual breakdown of which criteria combinations produced the best shadow-track outcomes. Helps refine which of your reads to trust.">🔬 Track Patterns</button>
+      </div>
+      <div id="sv-panel-tracks"></div>
+      <div id="sv-panel-closed" style="display:none"></div>
+      <div id="sv-panel-leaderboard" style="display:none"></div>
+      <div id="sv-panel-insights" style="display:none"></div>
+    </div>
+
+    <!-- ── Portfolio Backtest (moved from Markets — research simulation) ── -->
+    <div class="port-section-divider" style="margin-top:18px" title="Portfolio Backtest::Simulates the full strategy historically across your universe — how much would 100K SAR have grown? Uses the same 9-criterion scoring with a max of 5 simultaneous positions to model realistic capital allocation.">📈 Portfolio Backtest <span>Simulate strategy across full universe · capital-constrained · <button class="btn btn-secondary" onclick="runPortfolioBt()" id="port-bt-btn" style="font-size:10px;padding:2px 8px;display:inline-flex">▶ Run</button></span></div>
+    <div id="port-bt-result" style="padding:10px 14px;font-size:11px;color:var(--text3)">Click Run to simulate the strategy across TASI with 100K SAR capital, max 5 concurrent positions.</div>
+  </div>
+
+  <!-- Positions -->
+  <div class="panel" id="panel-positions">
+    <div class="heatmap-section" id="pos-heatmap" style="display:none">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+        <span style="font-size:11px;font-weight:700;color:var(--text2)" data-i18n="hmapTitle" title="Portfolio Map::Visual treemap of your positions. Each box is sized by current market value, colored green if profitable and red if at a loss. Lets you instantly see where most of your capital is concentrated.">Portfolio Map</span>
+        <span style="font-size:10px;color:var(--text3)" data-i18n="hmapSub">Size = position value · Color = P&L</span>
+      </div>
+      <svg id="heatmap-svg" class="heatmap-svg" height="120"></svg>
+    </div>
+    <div id="pos-analytics" class="scoring-card" style="margin-bottom:14px;display:none">
+      <div class="scoring-card-header"><h3 data-i18n="analyticsTitle" title="Trade Analytics::Summary statistics from your real position history — win rate, average gain, average loss, profit factor, and equity curve. Based on closed positions where both entry and exit price are recorded.">Trade Analytics</h3></div>
+      <div class="analytics-grid" id="analytics-grid"></div>
+      <div style="padding:0 14px 12px"><svg id="analytics-equity" class="bt-equity" style="width:100%;height:80px"></svg></div>
+    </div>
+    <div id="open-risk-bar" style="display:none"></div>
+    <div class="scoring-card">
+      <div class="scoring-card-header">
+        <h3 data-i18n="posTitle" title="My Positions::Your real trading journal — log every entry here to track P&amp;L automatically. Prices update from each scan run, so your P&amp;L reflects current market prices vs. what you paid.">My Positions</h3>
+        <span style="font-size:11px;color:var(--text3)" data-i18n="posSubtitle">Track your entries and P&amp;L against last scan price</span>
+      </div>
+      <div id="positions-summary" class="pos-summary" style="display:none"></div>
+      <div class="table-wrap" style="border-radius:0;border:none">
+        <table class="pos-table"><thead><tr>
+          <th data-i18n="colTicker" title="Ticker::Stock symbol — the short code identifying this company on the exchange.">Ticker</th><th data-i18n="colName" title="Name::Full company name.">Name</th>
+          <th data-i18n="posEntry" title="Entry::The price you paid per share when you entered this position.">Entry</th><th data-i18n="posScanPrice" title="Scan Price::Most recent price fetched from the last scan run. Updates each time you scan.">Scan Price</th>
+          <th data-i18n="posPnl" title="P&amp;L::Profit and Loss — difference between current scan price and your entry price, multiplied by shares held. Green = profit, red = loss.">P&amp;L</th><th data-i18n="posShares" title="Shares::Number of shares (or units) you hold in this position.">Shares</th>
+          <th data-i18n="posDate" title="Date::The date you entered this position. Used to calculate hold duration.">Date</th><th></th>
+        </tr></thead>
+        <tbody id="positions-body"><tr><td colspan="8" style="padding:30px;text-align:center;color:var(--text3);font-size:12px" data-i18n="posEmpty">No positions yet.</td></tr></tbody>
+        </table>
+      </div>
+      <div class="pos-add-form">
+        <input id="pos-sym"   class="add-criteria-input" style="max-width:120px" placeholder="Code e.g. 1120" title="Enter the 4-digit Tadawul code (e.g. 1120 for Al Rajhi). It's stored so the Momentum tab can match your holding for BUY/HOLD/SELL." onkeydown="if(event.key==='Enter')addPosition()">
+        <input id="pos-entry" class="add-criteria-input" style="max-width:90px"  placeholder="Entry price" type="number" step="0.01">
+        <input id="pos-shares" class="add-criteria-input" style="max-width:80px" placeholder="Shares" type="number">
+        <input id="pos-date"  class="add-criteria-input" style="max-width:110px" type="date">
+        <button class="btn btn-success" onclick="addPosition()" data-i18n="univAdd">+ Add</button>
+      </div>
+    </div>
+
+    <!-- ── Exit Intelligence ────────────────────────────────────────────────── -->
+    <div class="port-section-divider" style="margin-top:18px" title="Exit Intelligence::Rule-based analysis of your open positions. Signals when to hold vs. when to exit based on the same 9 criteria used for entries — so you exit with data, not emotion.">🚦 Exit Intelligence
+      <span>Rule-based hold/exit signals for open positions · <button class="btn btn-secondary" onclick="loadExitCheck()" style="font-size:10px;padding:2px 8px;display:inline-flex">⟳ Check</button></span>
+    </div>
+    <div id="exit-check-panel" style="padding:4px 0">
+      <div style="color:var(--text3);font-size:12px;padding:10px 0">Add positions above then click Check.</div>
+    </div>
+
+    <!-- ── Portfolio Correlation ──────────────────────────────────────────── -->
+    <div class="port-section-divider" style="margin-top:18px" title="Portfolio Correlation::Measures how closely your holdings move together. Values near +1 = they move in lockstep (concentrated risk). Values near 0 = uncorrelated (diversified). Aim to keep most pairs below +0.7 for real diversification.">🔗 Portfolio Correlation
+      <span>Pairwise return correlation for open positions · <button class="btn btn-secondary" onclick="loadCorrelationMatrix()" style="font-size:10px;padding:2px 8px;display:inline-flex">⟳ Refresh</button></span>
+    </div>
+    <div id="correlation-panel" style="padding:4px 0">
+      <div style="color:var(--text3);font-size:12px;padding:10px 0">Add positions above — correlation matrix loads automatically.</div>
+    </div>
+
+    <!-- ── Virtual Portfolio section ─────────────────────────────────────── -->
+    <div class="port-section-divider" title="Virtual Portfolio::Paper-trade with fake money to test your strategy without risk. Use Virtual Buy/Sell from any stock's drawer to build your hypothetical portfolio and track how your ideas would have performed.">🎮 Virtual Portfolio <span>Paper-trade without real money</span></div>
+    <div class="vp-summary">
+      <div class="vp-card" title="Cash::Remaining cash available in your virtual portfolio. Decreases when you virtual-buy, increases when you virtual-sell."><div class="vp-card-lbl" data-i18n="vpCash">Cash</div><div class="vp-card-val" id="vp-cash">—</div></div>
+      <div class="vp-card" title="Portfolio Value::Current market value of all your virtual holdings — shares × last scan price."><div class="vp-card-lbl" data-i18n="vpValue">Portfolio Value</div><div class="vp-card-val" id="vp-value">—</div></div>
+      <div class="vp-card" title="Total P&amp;L::Cumulative profit or loss across all virtual holdings, compared to your average cost."><div class="vp-card-lbl" data-i18n="vpPnl">Total P&amp;L</div><div class="vp-card-val" id="vp-pnl">—</div></div>
+      <div class="vp-card" title="Return::Percentage return on your entire virtual portfolio since the starting balance."><div class="vp-card-lbl" data-i18n="vpReturn">Return</div><div class="vp-card-val" id="vp-return">—</div></div>
+    </div>
+    <div class="scoring-card" style="margin-bottom:14px">
+      <div class="scoring-card-header">
+        <h3 data-i18n="vpHoldings">Holdings</h3>
+        <div style="display:flex;gap:6px;align-items:center">
+          <input id="vp-reset-bal" class="add-criteria-input" style="max-width:110px;font-size:11px" type="number" placeholder="100000" value="100000">
+          <button class="btn btn-secondary" style="font-size:11px;padding:5px 10px" onclick="resetVirtual()" data-i18n="vpReset">↺ Reset</button>
+        </div>
+      </div>
+      <div class="table-wrap" style="border:none;border-radius:0">
+        <table class="pos-table">
+          <thead><tr>
+            <th data-i18n="colTicker" title="Ticker::Stock symbol on the exchange.">Ticker</th><th data-i18n="colName" title="Name::Full company name.">Name</th>
+            <th data-i18n="posShares" title="Shares::Number of virtual shares held. Builds up if you buy the same stock multiple times.">Shares</th><th data-i18n="vpAvgCost" title="Avg Cost::Average price paid per share across all virtual buy orders for this position.">Avg Cost</th>
+            <th data-i18n="posScanPrice" title="Scan Price::Most recent market price from the last scan.">Scan Price</th><th data-i18n="vpValue2" title="Value::Current market value of this holding — shares × scan price.">Value</th>
+            <th data-i18n="posPnl" title="P&amp;L::Profit or loss on this holding — (scan price − avg cost) × shares.">P&amp;L</th><th data-i18n="vpReturnCol" title="Return::Percentage gain or loss since your average cost.">Return</th><th></th>
+          </tr></thead>
+          <tbody id="vp-holdings"><tr><td colspan="9" style="padding:30px;text-align:center;color:var(--text3);font-size:12px" data-i18n="vpEmpty">No virtual positions yet. Use Virtual Buy in the Execute tab.</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="scoring-card">
+      <div class="scoring-card-header"><h3 data-i18n="vpHistory">Trade History</h3></div>
+      <div class="table-wrap" style="border:none;border-radius:0">
+        <table class="pos-table">
+          <thead><tr>
+            <th data-i18n="posDate" title="Date::When this virtual trade was executed.">Date</th><th data-i18n="vpAction" title="Action::Buy or Sell — the direction of this virtual trade.">Action</th>
+            <th data-i18n="colTicker" title="Ticker::Stock symbol traded.">Ticker</th><th data-i18n="posShares" title="Shares::Number of shares bought or sold in this trade.">Shares</th>
+            <th data-i18n="colPrice" title="Price::Price per share at the time of this virtual trade.">Price</th><th data-i18n="vpTotal" title="Total::Total value of this transaction — shares × price.">Total</th><th data-i18n="vpCashAfter" title="Cash After::Your virtual cash balance immediately after this trade was executed.">Cash After</th>
+          </tr></thead>
+          <tbody id="vp-history"><tr><td colspan="7" style="padding:20px;text-align:center;color:var(--text3);font-size:12px" data-i18n="vpNoTrades">No trades yet.</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ── Watchlist section ───────────────────────────────────────────────── -->
+    <div class="port-section-divider" title="Watchlist::Stocks you're keeping an eye on — not ready to buy yet, but worth monitoring. Click ☆ next to any row in the Screener to add or remove.">☆ Watchlist <span>Stocks you're monitoring</span></div>
+    <div class="scoring-card">
+      <div class="scoring-card-header">
+        <h3 data-i18n="tabWatchlist">☆ Watchlist</h3>
+        <span style="font-size:11px;color:var(--text3)" data-i18n="wlSubtitle">Click ☆ in the screener to add stocks</span>
+      </div>
+      <div id="watchlist-content"><div class="wl-empty" data-i18n="wlEmpty">No stocks in your watchlist yet.<br>Click ☆ next to any row in the screener to add.</div></div>
+    </div>
+  </div>
+
+  <!-- Alerts (was: Criteria & Rules) -->
+  <div class="panel" id="panel-criteria">
+    <div class="criteria-grid" id="criteria-grid" style="display:none"></div>
+    <!-- Telegram Notifications -->
+    <div class="notif-card">
+      <div class="notif-header">
+        <h3 data-i18n="notifTitle" title="Telegram Notifications::Connect a Telegram bot to receive real-time alerts on your phone. You'll get a message every time a scan runs and a stock crosses your alert rules. Setup takes 2 minutes — create a bot via @BotFather on Telegram, paste the token here, and add your Chat ID.">Telegram Notifications</h3>
+        <button class="btn btn-secondary" style="font-size:10px;padding:4px 10px" onclick="testTelegram()" data-i18n="notifTest">Test</button>
+      </div>
+      <div class="notif-body">
+        <div class="notif-row">
+          <label class="notif-toggle"><input type="checkbox" id="tg-enabled" onchange="saveTelegram()"> <span data-i18n="notifEnabled">Enabled</span></label>
+        </div>
+        <div class="notif-row">
+          <span class="notif-label" data-i18n="notifToken">Bot Token</span>
+          <input id="tg-token" class="notif-input" type="password" placeholder="123456:ABC-..." onblur="saveTelegram()">
+        </div>
+        <div class="notif-row">
+          <span class="notif-label" data-i18n="notifChatId">Chat ID</span>
+          <input id="tg-chatid" class="notif-input" placeholder="-100123456789" onblur="saveTelegram()">
+        </div>
+        <div class="notif-row">
+          <span class="notif-label" data-i18n="finnhubToken">Finnhub Token</span>
+          <input id="finnhub-token" class="notif-input" type="password" placeholder="Free at finnhub.io" onblur="saveSettings()">
+        </div>
+        <div class="notif-row" style="font-size:11px;color:var(--text3)" data-i18n="notifHint">
+          Telegram Chat ID: message @userinfobot. Finnhub: free at finnhub.io (for earnings calendar).
+        </div>
+        <div id="tg-status" style="font-size:11px;color:var(--green);display:none"></div>
+      </div>
+    </div>
+    <!-- Smart Alert Rules -->
+    <div class="notif-card" style="margin-top:14px">
+      <div class="notif-header">
+        <h3 data-i18n="ruleTitle" title="Smart Alert Rules::Define conditions that trigger a Telegram message automatically after each scan. Example: &quot;Alert me when Al Rajhi score ≥ 6&quot; or &quot;Alert me when BTC RSI &lt; 40.&quot; Rules run silently in the background — you just receive the message.">Smart Alert Rules</h3>
+        <span style="font-size:11px;color:var(--text3)" data-i18n="ruleSub">Trigger Telegram alerts when conditions are met after each scan</span>
+      </div>
+      <div id="alert-rules-list" style="max-height:220px;overflow-y:auto"></div>
+      <div class="rule-form">
+        <input id="rule-name"  class="add-criteria-input" style="flex:2;min-width:120px" placeholder="Rule name (e.g. Al Rajhi Score≥6)">
+        <input id="rule-sym"   class="add-criteria-input" style="max-width:110px" placeholder="Symbol">
+        <select id="rule-field" class="rule-select" title="Score and Bias are DESCRIPTIVE state labels (the 9-criterion score), not return predictors — the score has no measured edge (t=0.74). Use them to get notified about state changes, not as buy/sell triggers. The validated, tradeable edges live in the Signals tab.">
+          <option value="score">Score (descriptive)</option>
+          <option value="rsi">RSI</option>
+          <option value="bias">Bias (descriptive)</option>
+        </select>
+        <select id="rule-op" class="rule-select">
+          <option value="gte">≥</option>
+          <option value="lte">≤</option>
+          <option value="is">= (bias)</option>
+        </select>
+        <input id="rule-threshold" class="add-criteria-input" style="max-width:90px" placeholder="Value / STRONG BUY">
+        <button class="btn btn-success" style="font-size:11px;padding:5px 10px" onclick="addAlertRule()" data-i18n="univAdd">+ Add</button>
+      </div>
+      <div style="font-size:10px;color:var(--text3);padding:8px 2px 0;line-height:1.5">
+        ⚠ <strong>Score</strong> and <strong>Bias</strong> are descriptive state labels — the 9-criterion score has <strong>no measured edge</strong> (t=0.74). Alert on them to track state changes, not as buy/sell triggers. For validated, tradeable signals see the <strong>📊 Signals</strong> tab.
+      </div>
+    </div>
+  </div>
+
+  <!-- panel-virtual and panel-watchlist content now lives in panel-positions -->
+  <!-- Keep empty divs so JS references to panel-virtual/watchlist don't error -->
+  <div id="panel-virtual"   style="display:none"></div>
+  <div id="panel-watchlist" style="display:none"></div>
+
+  <!-- Markets + Whale Watch -->
+  <div class="panel" id="panel-markets">
+
+    <!-- ── Session Playbook ────────────────────────────────────────────────── -->
+    <div class="port-section-divider" title="Session Playbook::A rule-based daily briefing generated from your last scan — market mood, regime, risk posture, top setups by market, position alerts, and leading sectors. No AI, no guesswork — pure data from your universe.">📋 Session Playbook
+      <span>Rule-based market summary · auto-loads after scan · <button class="btn btn-secondary" onclick="loadPlaybook()" style="font-size:10px;padding:2px 8px;display:inline-flex">⟳ Refresh</button></span>
+    </div>
+    <div id="playbook-panel" style="margin-bottom:16px">
+      <div style="color:var(--text3);font-size:12px;padding:8px 0">Run a scan first to generate the session playbook.</div>
+    </div>
+
+    <div class="mkt-refresh-bar">
+      <span data-i18n="mktOverviewTitle">Global Market Overview</span>
+      <button class="btn btn-secondary" style="font-size:11px;padding:5px 10px" id="mkt-refresh-btn" onclick="loadMarketsPanel(true)" data-i18n="mktRefresh">⟳ Refresh</button>
+      <span class="mkt-ts" id="mkt-ts"></span>
+    </div>
+    <div class="mkt-grid" id="mkt-grid"><div class="mkt-loading"><span class="spin">⟳</span><span data-i18n="mktLoading">Loading market data (requires TradingView)…</span></div></div>
+    <!-- Top Opportunities removed Phase 1 — score-derived ranking; the 9-pt score has no edge (t=0.74) -->
+
+    <!-- ── Sector Breadth ────────────────────────────────────────────────────── -->
+    <div class="port-section-divider" style="margin-top:18px" title="Sector Breadth::Shows which sectors have the most stocks with active buy signals right now. A sector with 70%+ bullish breadth is in a strong trend — this helps you size up positions in leading sectors with confidence.">📊 Sector Breadth
+      <span>Which sectors are leading · <button class="btn btn-secondary" onclick="loadSectorBreadth()" style="font-size:10px;padding:2px 8px;display:inline-flex">⟳ Refresh</button></span>
+    </div>
+    <div id="sector-breadth-panel" style="padding:4px 0">
+      <div style="color:var(--text3);font-size:12px;padding:10px 0">Run a scan to see sector breakdown.</div>
+    </div>
+
+    <!-- Strategy Validation + Portfolio Backtest moved to Lab tab (research belongs next to Accuracy Lab) -->
+
+    <!-- ── Macro Calendar (kept, Morning Brief removed) ────────────────────── -->
+    <div class="port-section-divider" style="margin-top:18px" title="Macro Calendar::Economic events scheduled over the next 21 days — interest rate decisions, inflation reports, earnings releases, and other market-moving dates. High-impact events (red) can cause sharp moves; plan your trades around them.">🌐 Macro Calendar <span>Upcoming events · <button class="btn btn-secondary" onclick="loadMacroPanel(true)" style="font-size:10px;padding:2px 8px;display:inline-flex">⟳ Refresh</button></span></div>
+    <div class="macro-section" id="macro-section">
+      <div class="macro-header">
+        <div>
+          <div class="macro-header-title">Upcoming Events <span id="macro-event-count" style="font-weight:400;color:var(--text3)"></span></div>
+          <div class="macro-header-sub">Next 21 days · hover for details</div>
+        </div>
+        <div style="display:flex;gap:6px;align-items:center;font-size:10px;color:var(--text3)">
+          <span style="border-left:3px solid var(--red);padding-left:5px">High</span>
+          <span style="border-left:3px solid var(--orange);padding-left:5px">Medium</span>
+          <span style="border-left:3px solid var(--text3);padding-left:5px">Low</span>
+        </div>
+      </div>
+      <div class="macro-cal-scroll" id="macro-cal-scroll"><div class="macro-empty">Loading events…</div></div>
+    </div>
+
+    <!-- Insider Buying removed Phase 1 — DB tables empty, collection never ran (dead UI) -->
+
+    <!-- ── CMA Filing Monitor ─────────────────────────────────────────────── -->
+    <div class="port-section-divider" style="margin-top:18px" title="CMA Ownership Filings::Capital Market Authority mandatory disclosures — any institution crossing a 5% ownership threshold must file publicly. Unlike anonymous block deals, these filings name the institution and confirm whether they bought or sold.">
+      🏛 CMA Ownership Filings
+      <span>
+        Major shareholding changes (≥5% stake) · auto-fetched daily
+        <button class="btn btn-secondary" onclick="refreshCMAFilings()" id="cma-refresh-btn" style="font-size:10px;padding:2px 8px;display:inline-flex">⟳ Refresh</button>
+      </span>
+    </div>
+    <div class="scoring-card">
+      <div class="scoring-card-header" style="flex-wrap:wrap;gap:8px">
+        <h3 title="CMA Ownership Disclosures::Confirmed direction — unlike block deals, these filings identify the institution and action. A fund crossing 5% is required to disclose; crossing 10% means even deeper commitment.">CMA Ownership Disclosures</h3>
+        <span style="font-size:11px;color:var(--text3)">Confirmed direction — unlike block deals, these filings identify the institution and action</span>
+      </div>
+      <!-- Manual entry form -->
+      <div style="padding:12px 16px;border-bottom:1px solid var(--border);background:var(--bg2)">
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--text3);margin-bottom:8px">Manual Entry — from cma.org.sa disclosure</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:flex-end">
+          <div style="display:flex;flex-direction:column;gap:3px">
+            <label style="font-size:9px;color:var(--text3);font-weight:700;text-transform:uppercase;letter-spacing:.5px">Stock Code</label>
+            <input id="cma-sym" class="add-criteria-input" style="max-width:90px" placeholder="e.g. 1140" maxlength="6">
+          </div>
+          <div style="display:flex;flex-direction:column;gap:3px">
+            <label style="font-size:9px;color:var(--text3);font-weight:700;text-transform:uppercase;letter-spacing:.5px">Institution</label>
+            <input id="cma-inst" class="add-criteria-input" style="min-width:160px" placeholder="Shareholder name (Arabic OK)">
+          </div>
+          <div style="display:flex;flex-direction:column;gap:3px">
+            <label style="font-size:9px;color:var(--text3);font-weight:700;text-transform:uppercase;letter-spacing:.5px">Direction</label>
+            <select id="cma-dir" class="add-criteria-input" style="max-width:90px">
+              <option value="buy">Buy ↑</option>
+              <option value="sell">Sell ↓</option>
+              <option value="unknown">Unknown</option>
+            </select>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:3px">
+            <label style="font-size:9px;color:var(--text3);font-weight:700;text-transform:uppercase;letter-spacing:.5px">Prev %</label>
+            <input id="cma-prev" class="add-criteria-input" style="max-width:72px" type="number" placeholder="4.8" step="0.01" min="0" max="100">
+          </div>
+          <div style="display:flex;flex-direction:column;gap:3px">
+            <label style="font-size:9px;color:var(--text3);font-weight:700;text-transform:uppercase;letter-spacing:.5px">New %</label>
+            <input id="cma-new" class="add-criteria-input" style="max-width:72px" type="number" placeholder="7.3" step="0.01" min="0" max="100">
+          </div>
+          <div style="display:flex;flex-direction:column;gap:3px">
+            <label style="font-size:9px;color:var(--text3);font-weight:700;text-transform:uppercase;letter-spacing:.5px">Filing Date</label>
+            <input id="cma-date" class="add-criteria-input" type="date" style="max-width:130px">
+          </div>
+          <div style="display:flex;flex-direction:column;gap:3px">
+            <label style="font-size:9px;color:var(--text3);font-weight:700;text-transform:uppercase;letter-spacing:.5px">Source URL</label>
+            <input id="cma-url" class="add-criteria-input" style="min-width:180px" placeholder="https://cma.org.sa/...">
+          </div>
+          <button class="btn btn-primary" onclick="addCMAFiling()" style="font-size:11px;padding:5px 12px;align-self:flex-end">+ Add Filing</button>
+        </div>
+        <div id="cma-add-status" style="font-size:11px;margin-top:6px;min-height:16px"></div>
+      </div>
+      <div id="cma-filings-list"><div class="whale-empty">No CMA filings loaded. Click ⟳ Refresh or add manually from cma.org.sa</div></div>
+    </div>
+
+    <!-- Block-deal manual log (whale_score "Volume Activity" removed Phase 1 — tested at -8.9%/yr, no edge) -->
+    <div class="port-section-divider" style="margin-top:18px" title="Block Deals::Large off-market transactions logged from Argaam + manual entry. The validated, tradeable block-deal signal (follow big premium buyers, ~1-month hold) lives in the Signals tab — this is the raw log.">🏦 Block Deals <span>Off-market institutional trades · auto-fetched from Argaam · <button class="btn btn-secondary" onclick="loadWhaleTab(true)" style="font-size:10px;padding:2px 8px;display:inline-flex">⟳ Refresh</button> <span title="Argaam scraping is fragile — site changes may break auto-fetch silently. Use manual entry as fallback." style="font-size:10px;color:var(--yellow);cursor:help;margin-left:4px">⚠ scraper</span></span></div>
+    <div class="whale-two-col">
+      <div class="whale-section">
+        <div class="whale-section-title" title="Block Deals::Large off-market transactions — when institutions trade huge lots privately, it shows up here. The buyer and seller are anonymous, but the size and price tell you where big money transacted. A block deal above 5M SAR near a key support level is significant.">🏦 Block Deals <span class="whale-section-sub" id="block-deals-source">Auto-fetched from Argaam + manual entry</span></div>
+        <div class="bd-entry-form">
+          <div class="bd-entry-row">
+            <input id="bd-sym"   class="add-criteria-input" placeholder="Code e.g. 2222" style="width:80px">
+            <input id="bd-price" class="add-criteria-input" placeholder="Price" type="number" step="0.01" style="width:75px">
+            <input id="bd-qty"   class="add-criteria-input" placeholder="Qty (shares)" type="number" style="width:90px">
+            <input id="bd-note"  class="add-criteria-input" placeholder="Note (optional)" style="flex:1;min-width:80px">
+            <button class="btn btn-primary" onclick="addBlockDeal()" style="font-size:11px;padding:4px 10px">+ Add</button>
+          </div>
+        </div>
+        <div id="block-deals-list"><div class="whale-empty">No block deals logged yet.</div></div>
+      </div>
+    </div>
+
+  </div>
+
+
+  <!-- Settings (was: My Universe — now includes scoring rules + universe + API keys) -->
+  <div class="panel" id="panel-universe">
+    <div class="scoring-card" style="margin-bottom:14px">
+      <div class="scoring-card-header">
+        <h3 title="Scoring Rules::The 9 criteria the screener checks on every scan. Each criterion that passes adds 1 to the score. You can toggle or adjust thresholds — changes take effect on the next Full Scan.">⚙ Scoring Rules</h3>
+        <span style="font-size:11px;color:var(--text3)" data-i18n="scoringSubtitle">Applied automatically during every scan</span>
+      </div>
+      <div class="scoring-rules" id="scoring-rules-grid-settings"></div>
+    </div>
+    <div class="scoring-card" style="margin-bottom:14px">
+      <div class="scoring-card-header">
+        <h3 data-i18n="univTitle" title="Symbol Universe::The list of stocks, ETFs, and assets scanned on each run. Add or remove symbols per market. Only listed symbols are included in the scan — the screener only knows about what you've told it to watch.">Symbol Universe</h3>
+        <span style="font-size:11px;color:var(--text3)" data-i18n="univSubtitle">Manage which symbols are scanned per market</span>
+      </div>
+    </div>
+    <div class="criteria-grid" id="universe-grid">
+      <div style="padding:20px;color:var(--text3);font-size:12px;grid-column:1/-1">Click the tab to load.</div>
+    </div>
+  </div>
+
+  <!-- panel-whale kept as hidden for backward-compatible JS references -->
+  <div id="panel-whale" style="display:none"></div>
+</main>
+
+<!-- Shared column header popover -->
+<div id="col-popover"><div class="cpop-title" id="cpop-title"></div><div id="cpop-body"></div><div class="cpop-note" id="cpop-note" style="display:none"></div></div>
+
+<!-- Drawer -->
+<div id="detail-overlay" onclick="closeDrawer()"></div>
+<div id="detail-drawer">
+  <div class="drawer-header">
+    <div>
+      <div class="drawer-ticker" id="d-ticker"></div>
+      <div class="drawer-name"   id="d-name"></div>
+      <div style="display:flex;align-items:center;gap:8px;margin-top:6px;flex-wrap:wrap;">
+        <div class="drawer-price" id="d-price"></div>
+        <div id="d-bias-badge"></div>
+        <div id="drawer-cal"></div>
+      </div>
+      <div id="d-discovery" style="margin-top:6px"></div>
+      <div class="tv-actions" id="d-tv-actions"></div>
+    </div>
+    <button class="drawer-close" onclick="closeDrawer()">✕</button>
+  </div>
+  <div class="drawer-tabs">
+    <button class="drawer-tab active" onclick="switchDrawerTab('signal',this)"   title="Why Now::Full criteria breakdown — which of the 9 checks passed, which failed, and why the signal is forming right now. Start here before every trade.">Why Now</button>
+    <button class="drawer-tab" onclick="switchDrawerTab('trade',this)"           title="Plan::Your complete trade plan — suggested entry price, stop-loss level, take-profit targets, position size, and R:R ratio.">Plan</button>
+    <button class="drawer-tab" onclick="switchDrawerTab('analysis',this)"        title="Chart::Deeper chart context — volume dynamics, Hurst exponent (trending vs. mean-reverting), ATR, and key support/resistance levels.">Chart</button>
+    <button class="drawer-tab" onclick="switchDrawerTab('fund',this)"            title="Company::Fundamental data — valuation multiples, profitability margins, fair value estimate, and backtest results for this score level.">Company</button>
+    <button class="drawer-tab" onclick="switchDrawerTab('news',this)"            title="News::Latest headlines in Arabic and English from Google News. Helps you spot catalysts behind unusual price or volume moves.">News</button>
+  </div>
+  <div id="dtab-signal"   class="drawer-tab-panel dtab-active"></div>
+  <div id="dtab-trade"    class="drawer-tab-panel"></div>
+  <div id="dtab-analysis" class="drawer-tab-panel"></div>
+  <div id="dtab-fund"     class="drawer-tab-panel"></div>
+  <div id="dtab-news"     class="drawer-tab-panel"></div>
+</div>
+
+<script src="/assets/auth.js"></script>
+
+<script src="/assets/app-core-01-i18n-fmt.js"></script>
+<script src="/assets/app-core-02-screener.js"></script>
+<script src="/assets/app-core-03-panels.js"></script>
+<script src="/assets/app-core-04-table-drawer-nav.js"></script>
+<script src="/assets/app-core-05-markets-portfolio.js"></script>
+<script src="/assets/app-core-06-drawer-analysis.js"></script>
+<script src="/assets/app-core-07-drawer-scan-init.js"></script>
+<script src="/assets/app-core-08-feeds-misc.js"></script>
+
+<!-- Glossary Overlay -->
+<div class="glossary-overlay" id="glossary-overlay" onclick="if(event.target===this)closeGlossary()">
+  <div class="glossary-box">
+    <div class="glossary-title">
+      📖 Financial Terms Explained
+      <button class="glossary-close" onclick="closeGlossary()">✕</button>
+    </div>
+    <div id="glossary-content"></div>
+  </div>
+</div>
+
+<!-- Trade Checklist Modal -->
+<div class="cl-overlay" id="cl-overlay" onclick="if(event.target===this)closeChecklist()">
+  <div class="cl-modal">
+    <div class="cl-title">Trade Checklist</div>
+    <div class="cl-subtitle" id="cl-subtitle">Review before entering this position</div>
+    <div class="cl-items" id="cl-items"></div>
+    <div class="cl-footer">
+      <button class="cl-cancel-btn" onclick="closeChecklist()">Cancel</button>
+      <button class="cl-confirm-btn" id="cl-confirm-btn">Proceed anyway</button>
+    </div>
+  </div>
+</div>
+
+<div id="mwj-tt"></div>
+<script src="/assets/app-lab.js"></script>
+
+<script src="/assets/app-init.js"></script>
+</body>
+</html>

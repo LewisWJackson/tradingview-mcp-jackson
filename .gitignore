@@ -10,5 +10,35 @@ discovery-log.json
 .env.*
 !.env.example
 
-# Install-time symlink created by the one-shot setup
+# Databases
+dashboard/mawjah.db
+dashboard/mawjah.db-shm
+dashboard/mawjah.db-wal
+
+# Playwright auth session + verify artifacts (local only)
+.playwright-auth.json
+.playwright-auth/
+
+# Local tooling / agent state
+.DS_Store
+.claude/
+.agents/
+.codex/
+.playwright-mcp/
+skills-lock.json
+auth-test.cjs
+
+# Install-time symlink created by the one-shot setup (generated, not tracked)
 AGENTS.md
+
+# Dev screenshots (root)
+/*.png
+
+# Dashboard runtime state (regenerated at runtime)
+dashboard/*.json
+
+# On-disk price cache (regenerable)
+data/bars_cache.json
+
+# Sharia compliance dataset is curated reference data — DO track it
+!dashboard/sharia_data.json

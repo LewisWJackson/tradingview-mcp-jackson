@@ -1,0 +1,911 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mawjah — Multi-Market Screener</title>
+<meta name="description" content="Daily pre-session scan across US Equity, Tadawul, Bitcoin, and XRP. EMA stacks, MACD, RSI, volume — scored and ranked before the open.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #040507;
+  --bg2: #080a0f;
+  --card: #0d0f16;
+  --border: rgba(255,255,255,.06);
+  --border2: rgba(255,255,255,.09);
+  --glass: rgba(255,255,255,.03);
+  --glass-border: rgba(255,255,255,.07);
+  --text: #e8eaf2;
+  --text2: #6b7394;
+  --text3: #363d58;
+  --accent: #3d8bff;
+  --accent-dim: rgba(61,139,255,.1);
+  --green: #00e676;
+  --green-dim: rgba(0,230,118,.1);
+  --lime: #b9ff6e;
+  --yellow: #ffd740;
+  --yellow-dim: rgba(255,215,64,.1);
+  --red: #ff3d71;
+  --orange: #ff9100;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-spring: cubic-bezier(0.32, 0.72, 0, 1);
+  --shadow-card: 0 1px 0 rgba(255,255,255,.04) inset, 0 8px 32px rgba(0,0,0,.6);
+}
+
+html { font-size: 16px; scroll-behavior: smooth; }
+body {
+  background: var(--bg); color: var(--text);
+  font-family: "Geist", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  min-height: 100dvh; line-height: 1.5; overflow-x: hidden;
+  background-image:
+    radial-gradient(ellipse 70% 45% at 5% 0%, rgba(61,139,255,.07) 0%, transparent 60%),
+    radial-gradient(ellipse 50% 55% at 95% 100%, rgba(0,230,118,.04) 0%, transparent 60%);
+}
+
+/* ── Scroll reveal ─────────────────────────────────────────────────────────── */
+.reveal {
+  opacity: 0; transform: translateY(22px);
+  transition: opacity .65s var(--ease-out), transform .65s var(--ease-out);
+}
+.reveal.visible { opacity: 1; transform: translateY(0); }
+.reveal-d1 { transition-delay: .1s; }
+.reveal-d2 { transition-delay: .18s; }
+.reveal-d3 { transition-delay: .26s; }
+.reveal-d4 { transition-delay: .34s; }
+
+/* ── NAV ───────────────────────────────────────────────────────────────────── */
+nav {
+  position: sticky; top: 0; z-index: 200;
+  height: 56px; padding: 0 32px;
+  display: flex; align-items: center; gap: 16px;
+  background: rgba(4,5,7,.8);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border-bottom: 1px solid var(--glass-border);
+  box-shadow: 0 1px 0 rgba(255,255,255,.03), 0 4px 24px rgba(0,0,0,.5);
+}
+.nav-logo {
+  display: flex; align-items: center; gap: 9px;
+  font-size: 15px; font-weight: 700; color: #fff; letter-spacing: -.3px;
+  text-decoration: none;
+}
+.nav-logo-icon {
+  width: 28px; height: 28px; background: var(--accent); border-radius: 7px;
+  display: flex; align-items: center; justify-content: center; color: #fff; flex-shrink: 0;
+  box-shadow: 0 0 0 1px rgba(255,255,255,.14) inset;
+}
+.nav-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+.nav-link {
+  font-size: 13px; color: var(--text2); text-decoration: none;
+  transition: color .2s var(--ease-out); font-weight: 500;
+}
+.nav-link:hover { color: var(--text); }
+.nav-cta {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 7px 16px; border-radius: 8px;
+  background: var(--accent); color: #fff; text-decoration: none;
+  font-size: 13px; font-weight: 600; letter-spacing: -.1px;
+  box-shadow: 0 0 0 1px rgba(255,255,255,.12) inset;
+  transition: opacity .2s, transform .1s var(--ease-out);
+}
+.nav-cta:hover { opacity: .88; }
+.nav-cta:active { transform: scale(.98); }
+
+/* ── HERO ──────────────────────────────────────────────────────────────────── */
+.hero {
+  min-height: calc(100dvh - 56px);
+  max-width: 1400px; margin: 0 auto;
+  padding: 80px 48px 80px 64px;
+  display: grid; grid-template-columns: 52fr 48fr;
+  align-items: center; gap: 64px;
+}
+.hero-left { display: flex; flex-direction: column; align-items: flex-start; }
+.hero-eyebrow {
+  display: inline-flex; align-items: center; gap: 8px;
+  font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.4px;
+  color: var(--accent); margin-bottom: 22px;
+  padding: 5px 12px; border-radius: 20px;
+  background: var(--accent-dim); border: 1px solid rgba(61,139,255,.2);
+}
+.hero-eyebrow-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--green); animation: pulse-dot 2s ease-in-out infinite; }
+@keyframes pulse-dot { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.5;transform:scale(.7)} }
+
+.hero-h1 {
+  font-size: clamp(40px, 5.5vw, 72px);
+  font-weight: 800; letter-spacing: -3px; line-height: 1.02;
+  color: var(--text); margin-bottom: 22px;
+}
+.hero-h1 em {
+  font-style: normal; color: var(--accent);
+}
+.hero-sub {
+  font-size: 16px; color: var(--text2); line-height: 1.7;
+  max-width: 480px; margin-bottom: 36px; font-weight: 400;
+}
+.hero-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.btn-primary {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 11px 22px; border-radius: 9px;
+  background: var(--accent); color: #fff; text-decoration: none;
+  font-size: 14px; font-weight: 600; letter-spacing: -.15px;
+  box-shadow: 0 0 0 1px rgba(255,255,255,.12) inset, 0 4px 16px rgba(61,139,255,.2);
+  transition: opacity .2s, transform .12s var(--ease-out);
+}
+.btn-primary:hover { opacity: .88; }
+.btn-primary:active { transform: scale(.98); }
+.btn-primary svg { transition: transform .2s var(--ease-out); }
+.btn-primary:hover svg { transform: translateX(3px); }
+.btn-ghost {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 11px 20px; border-radius: 9px;
+  background: var(--glass); color: var(--text2); text-decoration: none;
+  font-size: 14px; font-weight: 500;
+  border: 1px solid var(--glass-border);
+  transition: all .2s var(--ease-out);
+}
+.btn-ghost:hover { color: var(--text); background: rgba(255,255,255,.05); border-color: var(--border2); }
+
+/* ── Dashboard mockup ──────────────────────────────────────────────────────── */
+.hero-right {
+  display: flex; justify-content: center; align-items: center;
+  padding-bottom: 20px;
+}
+.mockup-wrap {
+  width: 100%; max-width: 520px;
+  animation: float 6s ease-in-out infinite;
+  will-change: transform;
+  filter: drop-shadow(0 40px 60px rgba(0,0,0,.7));
+}
+@keyframes float {
+  0%,100% { transform: translateY(0); }
+  50%      { transform: translateY(-12px); }
+}
+.mockup {
+  background: var(--card);
+  border: 1px solid var(--glass-border);
+  border-radius: 14px; overflow: hidden;
+  box-shadow: 0 1px 0 rgba(255,255,255,.05) inset;
+}
+.mockup-chrome {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 14px; background: var(--bg2); border-bottom: 1px solid var(--border);
+}
+.chrome-dots { display: flex; gap: 5px; }
+.chrome-dot { width: 9px; height: 9px; border-radius: 50%; }
+.chrome-dot-r { background: #ff5f57; } .chrome-dot-y { background: #febc2e; } .chrome-dot-g { background: #28c840; }
+.chrome-url {
+  flex: 1; background: rgba(255,255,255,.04); border-radius: 5px;
+  padding: 3px 10px; font-size: 10px; color: var(--text3); font-family: "JetBrains Mono", monospace;
+  text-align: center;
+}
+/* Mini header inside mockup */
+.mockup-header {
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 12px; background: rgba(4,5,7,.6); border-bottom: 1px solid var(--border);
+}
+.mockup-logo-mark {
+  width: 18px; height: 18px; background: var(--accent); border-radius: 4px;
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+  color: #fff;
+}
+.mockup-title-text { font-size: 11px; font-weight: 700; color: var(--text); }
+.mockup-clock { margin-left: auto; font-size: 10px; font-family: "JetBrains Mono",monospace; color: var(--text3); }
+/* Summary mini cards */
+.mockup-summary { display: grid; grid-template-columns: repeat(5, 1fr); gap: 1px; background: var(--border); border-bottom: 1px solid var(--border); }
+.ms-card { background: var(--card); padding: 8px 10px; }
+.ms-val { font-size: 16px; font-weight: 800; line-height: 1; }
+.ms-lbl { font-size: 8px; font-weight: 600; text-transform: uppercase; letter-spacing: .4px; color: var(--text3); margin-top: 2px; }
+.ms-sb .ms-val { color: var(--green); } .ms-buy .ms-val { color: var(--lime); }
+.ms-watch .ms-val { color: var(--yellow); } .ms-ss .ms-val { color: var(--red); }
+.ms-tot .ms-val { color: var(--accent); }
+/* Scan progress */
+.mockup-scan {
+  padding: 7px 12px; background: var(--bg2); border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: 10px; font-size: 10px; color: var(--text2);
+}
+.mockup-scan-bar { flex: 1; height: 2px; background: var(--border2); border-radius: 2px; overflow: hidden; }
+.mockup-scan-fill {
+  height: 100%; background: linear-gradient(90deg, var(--accent), var(--green));
+  border-radius: 2px;
+  animation: scan-fill 3.5s ease-in-out infinite;
+}
+@keyframes scan-fill {
+  0%   { width: 0%; } 55%  { width: 82%; }
+  75%  { width: 82%; } 92%  { width: 100%; }
+  100% { width: 100%; }
+}
+/* Table header */
+.mockup-thead {
+  display: grid; grid-template-columns: 56px 1fr 80px 70px;
+  padding: 5px 12px; background: var(--bg2); border-bottom: 1px solid var(--border);
+  font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: .6px; color: var(--text3);
+}
+/* Table rows */
+.mockup-row {
+  display: grid; grid-template-columns: 56px 1fr 80px 70px;
+  align-items: center; padding: 7px 12px;
+  border-bottom: 1px solid rgba(255,255,255,.03);
+  opacity: 0;
+  animation: row-in .4s var(--ease-out) both;
+  animation-delay: calc(var(--i) * 110ms + 800ms);
+}
+.mockup-row:last-child { border-bottom: none; }
+@keyframes row-in {
+  from { opacity: 0; transform: translateX(-6px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+.mtr-ticker { font-family: "JetBrains Mono",monospace; font-weight: 700; font-size: 10px; color: var(--accent); }
+.mtr-name { font-size: 10px; color: var(--text); font-weight: 500; }
+.mtr-badge {
+  display: inline-flex; padding: 2px 6px; border-radius: 10px;
+  font-size: 8px; font-weight: 700; white-space: nowrap;
+}
+.mtr-sb    { background: var(--green-dim); color: var(--green); }
+.mtr-buy   { background: rgba(185,255,110,.1); color: var(--lime); }
+.mtr-watch { background: var(--yellow-dim); color: var(--yellow); }
+.mtr-sell  { background: rgba(255,61,113,.12); color: var(--red); }
+.mtr-score { display: flex; align-items: center; gap: 5px; font-size: 9px; font-family: "JetBrains Mono",monospace; color: var(--text2); }
+.mtr-bar { flex: 1; height: 2px; background: var(--border2); border-radius: 2px; overflow: hidden; }
+.mtr-fill { height: 100%; background: var(--accent); border-radius: 2px; }
+
+/* ── STAT BAND ─────────────────────────────────────────────────────────────── */
+.stat-band {
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  background: var(--bg2);
+  padding: 0 64px;
+}
+.stat-band-inner {
+  max-width: 1400px; margin: 0 auto;
+  display: grid; grid-template-columns: repeat(4, 1fr);
+}
+.stat-item {
+  padding: 32px 24px; border-right: 1px solid var(--border);
+  display: flex; flex-direction: column; gap: 4px;
+}
+.stat-item:last-child { border-right: none; }
+.stat-val { font-size: 32px; font-weight: 800; letter-spacing: -1.5px; color: var(--text); font-family: "JetBrains Mono", monospace; }
+.stat-val span { font-size: 14px; font-weight: 500; color: var(--accent); margin-left: 2px; }
+.stat-desc { font-size: 12px; color: var(--text2); font-weight: 500; }
+
+/* ── MARKETS ───────────────────────────────────────────────────────────────── */
+.markets-section {
+  max-width: 1400px; margin: 0 auto;
+  padding: 100px 64px;
+}
+.section-eyebrow {
+  font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px;
+  color: var(--text3); margin-bottom: 14px;
+}
+.section-heading {
+  font-size: clamp(28px, 3.5vw, 44px); font-weight: 800;
+  letter-spacing: -2px; color: var(--text); margin-bottom: 10px; line-height: 1.1;
+}
+.section-sub { font-size: 14px; color: var(--text2); max-width: 520px; line-height: 1.65; margin-bottom: 52px; }
+
+.markets-grid {
+  display: grid;
+  grid-template-columns: 3fr 2fr;
+  grid-template-rows: auto auto;
+  gap: 1px; background: var(--border);
+  border: 1px solid var(--border); border-radius: 16px; overflow: hidden;
+}
+.market-card {
+  background: var(--card); padding: 32px;
+  position: relative; overflow: hidden;
+  transition: background .25s var(--ease-out);
+  cursor: default;
+}
+.market-card:hover { background: #0f1219; }
+/* Spotlight border on hover */
+.market-card::before {
+  content: '';
+  position: absolute; inset: 0; pointer-events: none;
+  background: radial-gradient(280px circle at var(--mx, -100px) var(--my, -100px), rgba(61,139,255,.06) 0%, transparent 70%);
+  transition: opacity .3s;
+  opacity: 0;
+}
+.market-card:hover::before { opacity: 1; }
+
+.market-flag { font-size: 22px; margin-bottom: 14px; line-height: 1; }
+.market-name { font-size: 18px; font-weight: 700; color: var(--text); margin-bottom: 4px; letter-spacing: -.4px; }
+.market-exchange { font-size: 11px; color: var(--text3); font-weight: 600; text-transform: uppercase; letter-spacing: .6px; margin-bottom: 16px; }
+.market-hours {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 11px; color: var(--text2);
+  padding: 4px 10px; border-radius: 5px;
+  background: var(--glass); border: 1px solid var(--glass-border);
+  margin-bottom: 20px; font-family: "JetBrains Mono",monospace;
+}
+.market-hours-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--text3); }
+.market-hours-dot.open { background: var(--green); animation: pulse-dot 2s ease-in-out infinite; }
+.market-indicators { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 16px; }
+.market-ind {
+  font-size: 10px; font-weight: 600; font-family: "JetBrains Mono",monospace;
+  padding: 2px 7px; border-radius: 3px;
+  background: rgba(255,255,255,.04); color: var(--text2);
+  border: 1px solid var(--border);
+}
+.market-edge { font-size: 12px; color: var(--text2); line-height: 1.55; max-width: 360px; }
+
+/* EMA stack visual */
+.ema-vis { display: flex; align-items: flex-end; gap: 3px; height: 24px; margin-bottom: 16px; }
+.ema-bar {
+  width: 6px; border-radius: 2px; background: var(--accent);
+  opacity: .7; transition: opacity .2s;
+}
+.market-card:hover .ema-bar { opacity: 1; }
+
+/* ── FEATURES ──────────────────────────────────────────────────────────────── */
+.features-section {
+  max-width: 1400px; margin: 0 auto;
+  padding: 0 64px 100px;
+}
+.features-grid {
+  display: grid;
+  grid-template-columns: 3fr 2fr;
+  grid-template-rows: auto auto;
+  gap: 16px;
+}
+.feature-card {
+  background: var(--card); border: 1px solid var(--glass-border);
+  border-radius: 14px; padding: 32px; overflow: hidden;
+  position: relative;
+}
+.feature-card.tall { grid-row: span 2; display: flex; flex-direction: column; }
+.feature-eyebrow {
+  font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.2px;
+  color: var(--text3); margin-bottom: 10px;
+}
+.feature-title { font-size: 18px; font-weight: 700; letter-spacing: -.4px; color: var(--text); margin-bottom: 8px; }
+.feature-desc { font-size: 13px; color: var(--text2); line-height: 1.65; max-width: 340px; margin-bottom: 28px; }
+
+/* Scoring breakdown visual */
+.score-breakdown { display: flex; flex-direction: column; gap: 8px; flex: 1; }
+.sb-row {
+  display: flex; align-items: center; gap: 12px;
+  font-size: 12px; color: var(--text2);
+}
+.sb-label { min-width: 130px; }
+.sb-track { flex: 1; height: 4px; background: var(--border2); border-radius: 2px; overflow: hidden; }
+.sb-fill { height: 100%; border-radius: 2px; transition: width .6s var(--ease-out); }
+.sb-pts { font-family: "JetBrains Mono",monospace; font-size: 11px; color: var(--text3); min-width: 24px; text-align: right; }
+.sb-fill-2 { background: var(--accent); }
+.sb-fill-1 { background: var(--lime); }
+
+/* AI analysis card visual */
+.ai-card-vis {
+  background: var(--bg2); border: 1px solid var(--border);
+  border-radius: 8px; padding: 14px; font-size: 11px;
+  color: var(--text2); line-height: 1.7; flex: 1;
+}
+.ai-card-vis .ai-header {
+  display: flex; align-items: center; gap: 7px;
+  margin-bottom: 10px; padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+  font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .6px; color: var(--text3);
+}
+.ai-model-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); animation: pulse-dot 2s ease-in-out infinite; }
+.ai-ticker { font-family: "JetBrains Mono",monospace; color: var(--accent); font-weight: 700; }
+.ai-text-line { height: 8px; background: var(--border2); border-radius: 3px; margin-bottom: 5px; animation: shimmer-line 2.4s ease-in-out infinite; }
+.ai-text-line:nth-child(2) { width: 92%; animation-delay: .15s; }
+.ai-text-line:nth-child(3) { width: 78%; animation-delay: .3s; }
+.ai-text-line:nth-child(4) { width: 88%; margin-top: 10px; animation-delay: .45s; }
+.ai-text-line:nth-child(5) { width: 65%; animation-delay: .6s; }
+@keyframes shimmer-line {
+  0%,100% { opacity: .5; }
+  50%      { opacity: 1; }
+}
+
+/* Block deal card visual */
+.block-deal-vis { display: flex; flex-direction: column; gap: 7px; }
+.bd-row {
+  display: flex; align-items: center; gap: 10px;
+  font-size: 11px; padding: 7px 10px;
+  background: var(--bg2); border-radius: 5px;
+  border: 1px solid var(--border);
+}
+.bd-ticker { font-family: "JetBrains Mono",monospace; font-weight: 700; font-size: 11px; color: var(--accent); min-width: 60px; }
+.bd-date { color: var(--text3); font-size: 10px; min-width: 68px; }
+.bd-vol { margin-left: auto; font-family: "JetBrains Mono",monospace; font-weight: 700; color: var(--green); font-size: 11px; }
+.bd-badge {
+  font-size: 9px; font-weight: 700; padding: 1px 6px; border-radius: 3px;
+  background: rgba(255,215,64,.1); color: var(--yellow);
+}
+
+/* ── CTA ───────────────────────────────────────────────────────────────────── */
+.cta-section {
+  border-top: 1px solid var(--border);
+  padding: 120px 64px;
+  text-align: center;
+  position: relative; overflow: hidden;
+}
+.cta-section::before {
+  content: '';
+  position: absolute; top: 0; left: 50%; transform: translateX(-50%);
+  width: 1px; height: 100%;
+  background: linear-gradient(180deg, var(--border) 0%, transparent 100%);
+}
+.cta-inner { max-width: 520px; margin: 0 auto; position: relative; }
+.cta-tag {
+  display: inline-block; font-size: 10px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 1.4px; color: var(--text3);
+  margin-bottom: 20px;
+}
+.cta-heading {
+  font-size: clamp(32px, 4vw, 52px); font-weight: 800;
+  letter-spacing: -2.5px; color: var(--text); line-height: 1.05;
+  margin-bottom: 16px;
+}
+.cta-sub { font-size: 14px; color: var(--text2); line-height: 1.65; margin-bottom: 36px; }
+.cta-actions { display: flex; align-items: center; justify-content: center; gap: 12px; flex-wrap: wrap; }
+
+/* ── FOOTER ────────────────────────────────────────────────────────────────── */
+footer {
+  border-top: 1px solid var(--border); padding: 28px 64px;
+  display: flex; align-items: center; gap: 12px;
+  max-width: 1400px; margin: 0 auto;
+}
+.footer-logo { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 700; color: var(--text2); }
+.footer-logo-mark {
+  width: 20px; height: 20px; background: var(--accent); border-radius: 5px;
+  display: flex; align-items: center; justify-content: center; color: #fff;
+}
+.footer-copy { margin-left: auto; font-size: 12px; color: var(--text3); }
+
+/* ── Responsive ────────────────────────────────────────────────────────────── */
+@media (max-width: 1024px) {
+  .hero { grid-template-columns: 1fr; gap: 48px; padding: 60px 40px; text-align: left; }
+  .hero-right { justify-content: flex-start; }
+  .markets-grid { grid-template-columns: 1fr; }
+  .features-grid { grid-template-columns: 1fr; }
+  .feature-card.tall { grid-row: span 1; }
+  .stat-band-inner { grid-template-columns: repeat(2, 1fr); }
+  .stat-item:nth-child(2) { border-right: none; }
+}
+@media (max-width: 768px) {
+  .hero { padding: 40px 20px; }
+  .markets-section, .features-section, .cta-section { padding-left: 20px; padding-right: 20px; }
+  .stat-band { padding: 0 20px; }
+  .stat-band-inner { grid-template-columns: 1fr 1fr; }
+  nav { padding: 0 20px; }
+  footer { padding: 24px 20px; flex-wrap: wrap; }
+  .mockup-wrap { max-width: 100%; }
+}
+@media (max-width: 480px) {
+  .stat-band-inner { grid-template-columns: 1fr; }
+  .stat-item { border-right: none; border-bottom: 1px solid var(--border); }
+  .hero-h1 { letter-spacing: -2px; }
+}
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav>
+  <a href="/" class="nav-logo">
+    <div class="nav-logo-icon">
+      <svg viewBox="0 0 20 14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" width="14" height="10">
+        <path d="M1 7 C3.5 2 5 2 7.5 7 C10 12 11.5 12 14 7 C16.5 2 18 2 19 7"/>
+      </svg>
+    </div>
+    Mawjah
+  </a>
+  <div class="nav-right">
+    <a href="#markets" class="nav-link">Markets</a>
+    <a href="#features" class="nav-link">Features</a>
+    <a href="http://localhost:3000" class="nav-cta">
+      Open dashboard
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" width="13" height="13">
+        <path d="M3 8h10M9 4l4 4-4 4" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </a>
+  </div>
+</nav>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="hero-left">
+    <p class="hero-eyebrow reveal">
+      <span class="hero-eyebrow-dot"></span>
+      Multi-market screener
+    </p>
+    <h1 class="hero-h1 reveal reveal-d1">
+      Screen every<br>
+      market. Act on<br>
+      <em>signal.</em>
+    </h1>
+    <p class="hero-sub reveal reveal-d2">
+      Daily pre-session scan across US Equity, Tadawul, Bitcoin, and XRP.
+      EMA stacks, MACD, RSI, and volume confirmation — scored and ranked before the open.
+    </p>
+    <div class="hero-actions reveal reveal-d3">
+      <a href="http://localhost:3000" class="btn-primary">
+        Open dashboard
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" width="14" height="14">
+          <path d="M3 8h10M9 4l4 4-4 4" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </a>
+      <a href="#markets" class="btn-ghost">View markets</a>
+    </div>
+  </div>
+
+  <div class="hero-right reveal reveal-d2">
+    <div class="mockup-wrap">
+      <div class="mockup">
+        <!-- Browser chrome -->
+        <div class="mockup-chrome">
+          <div class="chrome-dots">
+            <span class="chrome-dot chrome-dot-r"></span>
+            <span class="chrome-dot chrome-dot-y"></span>
+            <span class="chrome-dot chrome-dot-g"></span>
+          </div>
+          <div class="chrome-url">mawjah.local:3000</div>
+        </div>
+        <!-- Mini dashboard header -->
+        <div class="mockup-header">
+          <div class="mockup-logo-mark">
+            <svg viewBox="0 0 20 14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" width="12" height="9">
+              <path d="M1 7 C3.5 2 5 2 7.5 7 C10 12 11.5 12 14 7 C16.5 2 18 2 19 7"/>
+            </svg>
+          </div>
+          <span class="mockup-title-text">Mawjah</span>
+          <span class="mockup-clock">09:32 AST</span>
+        </div>
+        <!-- Summary cards -->
+        <div class="mockup-summary">
+          <div class="ms-card ms-sb"><div class="ms-val">4</div><div class="ms-lbl">Strong Buy</div></div>
+          <div class="ms-card ms-buy"><div class="ms-val">7</div><div class="ms-lbl">Buy</div></div>
+          <div class="ms-card ms-watch"><div class="ms-val">3</div><div class="ms-lbl">Watch</div></div>
+          <div class="ms-card ms-ss"><div class="ms-val">2</div><div class="ms-lbl">Sell</div></div>
+          <div class="ms-card ms-tot"><div class="ms-val">16</div><div class="ms-lbl">Scanned</div></div>
+        </div>
+        <!-- Scan progress -->
+        <div class="mockup-scan">
+          <span>Scanning TASI universe...</span>
+          <div class="mockup-scan-bar"><div class="mockup-scan-fill"></div></div>
+          <span style="color:var(--text3);font-family:'JetBrains Mono',monospace;font-size:9px;">14/16</span>
+        </div>
+        <!-- Table header -->
+        <div class="mockup-thead">
+          <span>Ticker</span><span>Name</span><span>Signal</span><span>Score</span>
+        </div>
+        <!-- Table rows -->
+        <div class="mockup-row" style="--i:0">
+          <span class="mtr-ticker">AAPL</span>
+          <span class="mtr-name">Apple</span>
+          <span class="mtr-badge mtr-sb">Strong Buy</span>
+          <span class="mtr-score"><span class="mtr-bar"><span class="mtr-fill" style="width:100%"></span></span>8/8</span>
+        </div>
+        <div class="mockup-row" style="--i:1">
+          <span class="mtr-ticker">2222.SR</span>
+          <span class="mtr-name">Aramco</span>
+          <span class="mtr-badge mtr-buy">Buy</span>
+          <span class="mtr-score"><span class="mtr-bar"><span class="mtr-fill" style="width:87.5%"></span></span>7/8</span>
+        </div>
+        <div class="mockup-row" style="--i:2">
+          <span class="mtr-ticker">BTCUSD</span>
+          <span class="mtr-name">Bitcoin</span>
+          <span class="mtr-badge mtr-sb">Strong Buy</span>
+          <span class="mtr-score"><span class="mtr-bar"><span class="mtr-fill" style="width:100%"></span></span>8/8</span>
+        </div>
+        <div class="mockup-row" style="--i:3">
+          <span class="mtr-ticker">NVDA</span>
+          <span class="mtr-name">Nvidia</span>
+          <span class="mtr-badge mtr-buy">Buy</span>
+          <span class="mtr-score"><span class="mtr-bar"><span class="mtr-fill" style="width:75%"></span></span>6/8</span>
+        </div>
+        <div class="mockup-row" style="--i:4">
+          <span class="mtr-ticker">XRPUSD</span>
+          <span class="mtr-name">Ripple</span>
+          <span class="mtr-badge mtr-watch">Watch</span>
+          <span class="mtr-score"><span class="mtr-bar"><span class="mtr-fill" style="width:62.5%;background:var(--yellow)"></span></span>5/8</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- STAT BAND -->
+<div class="stat-band">
+  <div class="stat-band-inner">
+    <div class="stat-item reveal">
+      <div class="stat-val">4<span>mkt</span></div>
+      <div class="stat-desc">Markets covered daily</div>
+    </div>
+    <div class="stat-item reveal reveal-d1">
+      <div class="stat-val">68<span>tools</span></div>
+      <div class="stat-desc">TradingView MCP tools</div>
+    </div>
+    <div class="stat-item reveal reveal-d2">
+      <div class="stat-val">8<span>pt</span></div>
+      <div class="stat-desc">Signal scoring criteria</div>
+    </div>
+    <div class="stat-item reveal reveal-d3">
+      <div class="stat-val">AI<span>+</span></div>
+      <div class="stat-desc">Claude analysis per signal</div>
+    </div>
+  </div>
+</div>
+
+<!-- MARKETS -->
+<section id="markets" class="markets-section">
+  <p class="section-eyebrow reveal">Coverage</p>
+  <h2 class="section-heading reveal reveal-d1">Four markets,<br>one screener.</h2>
+  <p class="section-sub reveal reveal-d2">Each market has its own EMA periods, session rules, and risk parameters — tuned to its specific liquidity and volatility profile.</p>
+
+  <div class="markets-grid reveal reveal-d3">
+    <!-- US Equity -->
+    <div class="market-card">
+      <div class="market-flag">
+        <svg viewBox="0 0 24 18" width="28" height="21" fill="none">
+          <rect width="24" height="18" rx="2" fill="#B22234"/>
+          <rect y="2" width="24" height="2" fill="#fff"/>
+          <rect y="6" width="24" height="2" fill="#fff"/>
+          <rect y="10" width="24" height="2" fill="#fff"/>
+          <rect y="14" width="24" height="2" fill="#fff"/>
+          <rect width="10" height="10" rx="1" fill="#3C3B6E"/>
+        </svg>
+      </div>
+      <div class="market-name">US Equity</div>
+      <div class="market-exchange">NYSE · NASDAQ</div>
+      <div class="market-hours">
+        <span class="market-hours-dot"></span>
+        Mon–Fri · 09:30–16:00 ET
+      </div>
+      <div class="market-indicators">
+        <span class="market-ind">EMA 9/21/50/200</span>
+        <span class="market-ind">MACD 12/26/9</span>
+        <span class="market-ind">RSI 14</span>
+        <span class="market-ind">Volume SMA20</span>
+      </div>
+      <div class="ema-vis">
+        <div class="ema-bar" style="height:8px;opacity:.4"></div>
+        <div class="ema-bar" style="height:12px;opacity:.55"></div>
+        <div class="ema-bar" style="height:16px;opacity:.7"></div>
+        <div class="ema-bar" style="height:20px;opacity:.85"></div>
+        <div class="ema-bar" style="height:24px"></div>
+      </div>
+      <p class="market-edge">9/21 EMA crossover in trend direction. MACD histogram confirmation. Volume must exceed 20-period average on signal bar. SL at 2× ATR, TP at 3× ATR.</p>
+    </div>
+
+    <!-- Tadawul -->
+    <div class="market-card">
+      <div class="market-flag">
+        <svg viewBox="0 0 24 18" width="28" height="21" fill="none">
+          <rect width="24" height="18" rx="2" fill="#006C35"/>
+        </svg>
+      </div>
+      <div class="market-name">Tadawul</div>
+      <div class="market-exchange">Saudi Exchange · TASI</div>
+      <div class="market-hours">
+        <span class="market-hours-dot open"></span>
+        Sun–Thu · 10:00–15:00 AST
+      </div>
+      <div class="market-indicators">
+        <span class="market-ind">EMA 13/34/89/200</span>
+        <span class="market-ind">Volume 1.2×</span>
+      </div>
+      <div class="ema-vis">
+        <div class="ema-bar" style="height:8px;opacity:.35;background:var(--green)"></div>
+        <div class="ema-bar" style="height:13px;opacity:.55;background:var(--green)"></div>
+        <div class="ema-bar" style="height:18px;opacity:.75;background:var(--green)"></div>
+        <div class="ema-bar" style="height:24px;background:var(--green)"></div>
+      </div>
+      <p class="market-edge">Fibonacci EMA 13/34/89. Volume surge of 1.2× SMA20 required. No new entries Wednesday afternoon — weekend gap risk. TASI index as regime filter.</p>
+    </div>
+
+    <!-- BTC -->
+    <div class="market-card">
+      <div class="market-flag">
+        <svg viewBox="0 0 24 24" width="24" height="24" fill="none">
+          <circle cx="12" cy="12" r="12" fill="#F7931A"/>
+          <text x="6" y="17" font-size="13" font-weight="800" fill="white" font-family="sans-serif">B</text>
+        </svg>
+      </div>
+      <div class="market-name">Bitcoin</div>
+      <div class="market-exchange">BTCUSD · 24/7</div>
+      <div class="market-hours">
+        <span class="market-hours-dot open"></span>
+        24 hours · 7 days
+      </div>
+      <div class="market-indicators">
+        <span class="market-ind">EMA 8/21/55/200</span>
+        <span class="market-ind">ATR 14</span>
+      </div>
+      <div class="ema-vis">
+        <div class="ema-bar" style="height:8px;opacity:.35;background:var(--orange)"></div>
+        <div class="ema-bar" style="height:12px;opacity:.55;background:var(--orange)"></div>
+        <div class="ema-bar" style="height:17px;opacity:.75;background:var(--orange)"></div>
+        <div class="ema-bar" style="height:24px;background:var(--orange)"></div>
+      </div>
+      <p class="market-edge">Fibonacci EMAs 8/21/55. Long bias only above 200 EMA. Partial exit at 2× ATR, trail remainder with EMA 21. TP at 4× ATR for wider BTC moves.</p>
+    </div>
+
+    <!-- XRP -->
+    <div class="market-card">
+      <div class="market-flag">
+        <svg viewBox="0 0 24 24" width="24" height="24" fill="none">
+          <circle cx="12" cy="12" r="12" fill="#346AA9"/>
+          <text x="5" y="17" font-size="12" font-weight="800" fill="white" font-family="sans-serif">XRP</text>
+        </svg>
+      </div>
+      <div class="market-name">XRP</div>
+      <div class="market-exchange">XRPUSD · High Beta</div>
+      <div class="market-hours">
+        <span class="market-hours-dot open"></span>
+        24 hours · 7 days
+      </div>
+      <div class="market-indicators">
+        <span class="market-ind">EMA 8/21/50/200</span>
+        <span class="market-ind">RSI 50–78</span>
+      </div>
+      <div class="ema-vis">
+        <div class="ema-bar" style="height:8px;opacity:.35;background:var(--accent)"></div>
+        <div class="ema-bar" style="height:12px;opacity:.55;background:var(--accent)"></div>
+        <div class="ema-bar" style="height:17px;opacity:.75;background:var(--accent)"></div>
+        <div class="ema-bar" style="height:24px;background:var(--accent)"></div>
+      </div>
+      <p class="market-edge">High beta vs BTC — amplifies moves 1.5–3×. RSI pullback to 45–55 in bull trend is the primary entry trigger. SL at 1.5× ATR. Avoid ahead of Ripple court dates.</p>
+    </div>
+  </div>
+</section>
+
+<!-- FEATURES -->
+<section id="features" class="features-section">
+  <p class="section-eyebrow reveal">How it works</p>
+  <h2 class="section-heading reveal reveal-d1">Built for decisions,<br>not exploration.</h2>
+  <p class="section-sub reveal reveal-d2">Three layers of analysis run before you open the chart. Signal scoring, AI interpretation, and institutional activity — together.</p>
+
+  <div class="features-grid">
+    <!-- Tall left: Signal scoring -->
+    <div class="feature-card tall reveal reveal-d1">
+      <p class="feature-eyebrow">Signal scoring</p>
+      <h3 class="feature-title">8 criteria. One score.</h3>
+      <p class="feature-desc">Each symbol is evaluated against eight technical conditions. The total score drives the bias label — Strong Buy through Strong Sell. No black box.</p>
+
+      <div class="score-breakdown">
+        <div class="sb-row">
+          <span class="sb-label">EMA stack aligned</span>
+          <div class="sb-track"><div class="sb-fill sb-fill-2" style="width:100%"></div></div>
+          <span class="sb-pts">2 pt</span>
+        </div>
+        <div class="sb-row">
+          <span class="sb-label">Above EMA 200</span>
+          <div class="sb-track"><div class="sb-fill sb-fill-2" style="width:100%"></div></div>
+          <span class="sb-pts">2 pt</span>
+        </div>
+        <div class="sb-row">
+          <span class="sb-label">RSI in signal zone</span>
+          <div class="sb-track"><div class="sb-fill sb-fill-1" style="width:50%"></div></div>
+          <span class="sb-pts">1 pt</span>
+        </div>
+        <div class="sb-row">
+          <span class="sb-label">MACD histogram</span>
+          <div class="sb-track"><div class="sb-fill sb-fill-1" style="width:50%"></div></div>
+          <span class="sb-pts">1 pt</span>
+        </div>
+        <div class="sb-row">
+          <span class="sb-label">Volume surge</span>
+          <div class="sb-track"><div class="sb-fill sb-fill-1" style="width:50%"></div></div>
+          <span class="sb-pts">1 pt</span>
+        </div>
+        <div class="sb-row">
+          <span class="sb-label">Weekly timeframe</span>
+          <div class="sb-track"><div class="sb-fill sb-fill-1" style="width:50%"></div></div>
+          <span class="sb-pts">1 pt</span>
+        </div>
+        <div class="sb-row" style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border)">
+          <span class="sb-label" style="color:var(--text);font-weight:700">Total — AAPL</span>
+          <div class="sb-track"><div class="sb-fill sb-fill-2" style="width:100%"></div></div>
+          <span class="sb-pts" style="color:var(--green);font-weight:700">8/8</span>
+        </div>
+        <div style="margin-top:16px">
+          <span class="mtr-badge mtr-sb" style="font-size:11px;padding:4px 12px">Strong Buy</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Top right: Claude AI analysis -->
+    <div class="feature-card reveal reveal-d2" style="display:flex;flex-direction:column;">
+      <p class="feature-eyebrow">AI analysis</p>
+      <h3 class="feature-title">Claude reads the setup.</h3>
+      <p class="feature-desc" style="margin-bottom:16px">Per-symbol AI commentary explains why the signal is forming, what invalidates it, and whether to enter now or wait.</p>
+
+      <div class="ai-card-vis" style="flex:1">
+        <div class="ai-header">
+          <span class="ai-model-dot"></span>
+          Claude · <span class="ai-ticker">AAPL</span> · Strong Buy 8/8
+        </div>
+        <div class="ai-text-line" style="width:96%"></div>
+        <div class="ai-text-line"></div>
+        <div class="ai-text-line"></div>
+        <div class="ai-text-line"></div>
+        <div class="ai-text-line"></div>
+      </div>
+    </div>
+
+    <!-- Bottom right: Block deal tracking -->
+    <div class="feature-card reveal reveal-d3" style="display:flex;flex-direction:column;">
+      <p class="feature-eyebrow">Whale tracking</p>
+      <h3 class="feature-title">Block deals. In context.</h3>
+      <p class="feature-desc" style="margin-bottom:16px">Argaam block deal data surfaces alongside your scan results — see which signals have institutional activity behind them.</p>
+
+      <div class="block-deal-vis">
+        <div class="bd-row">
+          <span class="bd-ticker">2222.SR</span>
+          <span class="bd-date">May 19</span>
+          <span class="bd-badge">3× this week</span>
+          <span class="bd-vol">SAR 47.2M</span>
+        </div>
+        <div class="bd-row">
+          <span class="bd-ticker">1120.SR</span>
+          <span class="bd-date">May 18</span>
+          <span class="bd-badge">2× in 30d</span>
+          <span class="bd-vol">SAR 18.9M</span>
+        </div>
+        <div class="bd-row">
+          <span class="bd-ticker">4200.SR</span>
+          <span class="bd-date">May 17</span>
+          <span class="bd-badge">1× in 30d</span>
+          <span class="bd-vol">SAR 9.3M</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- CTA -->
+<section class="cta-section">
+  <div class="cta-inner">
+    <p class="cta-tag reveal">Get started</p>
+    <h2 class="cta-heading reveal reveal-d1">Ready to run<br>the scan?</h2>
+    <p class="cta-sub reveal reveal-d2">The dashboard runs locally. No cloud account, no subscription. Your data stays on your machine.</p>
+    <div class="cta-actions reveal reveal-d3">
+      <a href="http://localhost:3000" class="btn-primary">
+        Open Mawjah
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" width="14" height="14">
+          <path d="M3 8h10M9 4l4 4-4 4" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </a>
+      <a href="https://github.com/LewisWJackson/tradingview-mcp-jackson" class="btn-ghost" target="_blank" rel="noopener">
+        View source
+      </a>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="footer-logo">
+    <div class="footer-logo-mark">
+      <svg viewBox="0 0 20 14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" width="12" height="9">
+        <path d="M1 7 C3.5 2 5 2 7.5 7 C10 12 11.5 12 14 7 C16.5 2 18 2 19 7"/>
+      </svg>
+    </div>
+    Mawjah
+  </div>
+  <span class="footer-copy">Multi-market screener — US Equity · Tadawul · BTC · XRP</span>
+</footer>
+
+<script>
+// Scroll reveal
+const observer = new IntersectionObserver(entries => {
+  entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('visible'); observer.unobserve(e.target); } });
+}, { threshold: 0.08 });
+document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+
+// Market card spotlight border (mouse position CSS variables)
+document.querySelectorAll('.market-card').forEach(card => {
+  card.addEventListener('mousemove', e => {
+    const rect = card.getBoundingClientRect();
+    card.style.setProperty('--mx', `${e.clientX - rect.left}px`);
+    card.style.setProperty('--my', `${e.clientY - rect.top}px`);
+  });
+});
+</script>
+</body>
+</html>

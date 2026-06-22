@@ -1,0 +1,41 @@
+<!doctype html><html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Mawjah — Design Directions</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0}
+body{background:#050608;color:#e8eaf2;font-family:"Geist",system-ui,sans-serif;min-height:100vh;padding:48px 24px}
+.wrap{max-width:920px;margin:0 auto}
+h1{font-size:30px;font-weight:800;letter-spacing:-.02em}
+.sub{color:#6b7394;margin-top:8px;font-size:15px;line-height:1.6}
+.grid{display:grid;gap:18px;margin-top:36px}
+a.card{display:block;text-decoration:none;color:inherit;border:1px solid rgba(255,255,255,.08);border-radius:16px;padding:24px;background:#0b0d13;transition:.2s}
+a.card:hover{border-color:rgba(255,255,255,.2);transform:translateY(-2px)}
+.card h2{font-size:19px;font-weight:700;display:flex;align-items:center;gap:10px}
+.card p{color:#8a90a8;font-size:13.5px;margin-top:8px;line-height:1.6}
+.tag{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;padding:3px 9px;border-radius:20px;margin-left:auto}
+.swatch{display:flex;gap:6px;margin-top:16px}
+.swatch span{width:26px;height:26px;border-radius:6px;border:1px solid rgba(255,255,255,.1)}
+</style></head><body><div class="wrap">
+<h1>Mawjah — 3 design directions</h1>
+<p class="sub">Same data slice (summary tiles · momentum buy-list table · top-pick card), three aesthetics. Open each, compare, then tell me which one (or which parts to mix).</p>
+<div class="grid">
+  <a class="card" href="direction-terminal.html">
+    <h2>A · Terminal <span class="tag" style="background:rgba(61,220,132,.14);color:#3ddc84">Institutional</span></h2>
+    <p>Bloomberg-style quant terminal. Maximum density, monospace numbers, hairline grids, sharp corners, phosphor green/red. For a power user who lives in the data.</p>
+    <div class="swatch"><span style="background:#07090c"></span><span style="background:#0b0e13"></span><span style="background:#3ddc84"></span><span style="background:#ff4d4d"></span><span style="background:#ffb020"></span></div>
+  </a>
+  <a class="card" href="direction-editorial.html">
+    <h2>B · Editorial <span class="tag" style="background:rgba(109,94,252,.16);color:#9d92ff">Quantango-inspired</span></h2>
+    <p>Premium minimal. Huge display numbers, generous whitespace, one electric accent, restrained color. "Less but bigger" — looks like a funded fintech brand, not a dashboard template.</p>
+    <div class="swatch"><span style="background:#0a0b0d"></span><span style="background:#121319"></span><span style="background:#6d5efc"></span><span style="background:#e8eaf2"></span><span style="background:#5a607a"></span></div>
+  </a>
+  <a class="card" href="direction-fintech.html">
+    <h2>C · Fintech <span class="tag" style="background:rgba(45,212,191,.16);color:#2dd4bf">Polished SaaS</span></h2>
+    <p>Modern dark SaaS (Linear/Vercel feel). Subtle gradient glow, rounded cards, gradient accents on key numbers, balanced density. Approachable-premium, smooth.</p>
+    <div class="swatch"><span style="background:#0c0d12"></span><span style="background:#14151c"></span><span style="background:#2dd4bf"></span><span style="background:#5b8def"></span><span style="background:#a78bfa"></span></div>
+  </a>
+</div>
+<p class="sub" style="margin-top:32px;font-size:13px">These are throwaway mockups in <code>dashboard/mockups/</code> — the live app is untouched.</p>
+</div></body></html>

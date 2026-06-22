@@ -1,0 +1,6 @@
+[
+  { "code": "1120", "name": "Al Rajhi Bank", "action": "add", "review": "2019-05",
+    "announce_date": "2019-05-14", "effective_date": "2019-05-28", "index": "MSCI Saudi", "source": "fixture" },
+  { "code": "2010", "name": "SABIC", "action": "add", "review": "2019-05",
+    "announce_date": "2019-05-14", "effective_date": "2019-05-28", "index": "MSCI Saudi", "source": "fixture" }
+]

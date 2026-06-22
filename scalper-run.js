@@ -1,6 +1,7 @@
 import { createHmac } from "crypto";
 import https from "https";
 import { existsSync, readFileSync, writeFileSync } from "fs";
+import { getActiveMarketConfig } from "./src/rules-engine.js";
 
 // Load .env
 readFileSync(new URL(".env", import.meta.url), "utf8")
@@ -15,7 +16,19 @@ const API_KEY = process.env.BITGET_API_KEY;
 const SECRET_KEY = process.env.BITGET_SECRET_KEY;
 const PASSPHRASE = process.env.BITGET_PASSPHRASE;
 
-const SYMBOL = "XRPUSDT"; // XRP/USDT spot — low price, above min order size
+// Derive symbol from active market config in rules.json (e.g. XRPUSDT from CRYPTO_XRP watchlist)
+// Falls back to hardcoded default if rules.json is unavailable
+function resolveSymbol() {
+  try {
+    const mkt = getActiveMarketConfig();
+    const first = mkt?.watchlist?.[0] ?? '';
+    // Convert "XRPUSDT" / "XRPUSD" → "XRPUSDT" (BitGet spot uses USDT pairs)
+    const base = first.replace(/USDT?$/, '');
+    return base ? `${base}USDT` : 'XRPUSDT';
+  } catch { return 'XRPUSDT'; }
+}
+
+const SYMBOL = resolveSymbol();
 const INTERVAL_MS = 10000; // 10 seconds
 const TOTAL_TRADES = 6;
 

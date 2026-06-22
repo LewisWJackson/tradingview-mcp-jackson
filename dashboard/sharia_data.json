@@ -1,0 +1,2372 @@
+{
+  "source": "musaffa (AAOIFI)",
+  "generatedAt": "2026-06-17T00:14:20.559Z",
+  "ratioNote": "debt & cash ratios computed from TradingView fundamentals (impure-income ratio not sourced; Musaffa is authority)",
+  "data": {
+    "TADAWUL:1120": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "March 2026",
+      "source": "musaffa",
+      "financial": true,
+      "ratios": null,
+      "flag": null
+    },
+    "TADAWUL:1180": {
+      "status": "non_compliant",
+      "label": "NOT HALAL",
+      "asOf": "March 2026",
+      "source": "musaffa",
+      "financial": true,
+      "ratios": null,
+      "flag": null
+    },
+    "TADAWUL:1010": {
+      "status": "non_compliant",
+      "label": "NOT HALAL",
+      "asOf": "March 2026",
+      "source": "musaffa",
+      "financial": true,
+      "ratios": null,
+      "flag": null
+    },
+    "TADAWUL:1030": {
+      "status": "non_compliant",
+      "label": "NOT HALAL",
+      "asOf": "March 2026",
+      "source": "musaffa",
+      "financial": true,
+      "ratios": null,
+      "flag": null
+    },
+    "TADAWUL:1050": {
+      "status": "non_compliant",
+      "label": "NOT HALAL",
+      "asOf": "March 2026",
+      "source": "musaffa",
+      "financial": true,
+      "ratios": null,
+      "flag": null
+    },
+    "TADAWUL:1040": {
+      "status": "non_compliant",
+      "label": "NOT COMPLIANT",
+      "asOf": null,
+      "source": "muslimxchange",
+      "financial": true,
+      "ratios": null,
+      "flag": null
+    },
+    "TADAWUL:1080": {
+      "status": "non_compliant",
+      "label": "NOT HALAL",
+      "asOf": "March 2026",
+      "source": "musaffa",
+      "financial": true,
+      "ratios": null,
+      "flag": null
+    },
+    "TADAWUL:1140": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "March 2026",
+      "source": "musaffa",
+      "financial": true,
+      "ratios": null,
+      "flag": null
+    },
+    "TADAWUL:1150": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "March 2026",
+      "source": "musaffa",
+      "financial": true,
+      "ratios": null,
+      "flag": null
+    },
+    "TADAWUL:1060": {
+      "status": "non_compliant",
+      "label": "NOT HALAL",
+      "asOf": "March 2026",
+      "source": "musaffa",
+      "financial": true,
+      "ratios": null,
+      "flag": null
+    },
+    "TADAWUL:1020": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "March 2026",
+      "source": "musaffa",
+      "financial": true,
+      "ratios": null,
+      "flag": null
+    },
+    "TADAWUL:2222": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "March 2026",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.059,
+        "cashRatio": 0.044,
+        "ratioFails": []
+      },
+      "flag": null
+    },
+    "TADAWUL:2010": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "March 2026",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.232,
+        "cashRatio": 0.216,
+        "ratioFails": []
+      },
+      "flag": null
+    },
+    "TADAWUL:2060": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "December 2025",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.836,
+        "cashRatio": 0.282,
+        "ratioFails": [
+          "debt"
+        ]
+      },
+      "flag": "Musaffa says compliant but computed debt ratio >30% — verify"
+    },
+    "TADAWUL:2310": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "December 2025",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.362,
+        "cashRatio": 0.229,
+        "ratioFails": [
+          "debt"
+        ]
+      },
+      "flag": "Musaffa says compliant but computed debt ratio >30% — verify"
+    },
+    "TADAWUL:2380": {
+      "status": "non_compliant",
+      "label": "NOT HALAL",
+      "asOf": "March 2026",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.685,
+        "cashRatio": 0.036,
+        "ratioFails": [
+          "debt"
+        ]
+      },
+      "flag": null
+    },
+    "TADAWUL:2350": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "March 2026",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 1.099,
+        "cashRatio": 0.028,
+        "ratioFails": [
+          "debt"
+        ]
+      },
+      "flag": "Musaffa says compliant but computed debt ratio >30% — verify"
+    },
+    "TADAWUL:2020": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "March 2026",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.004,
+        "cashRatio": 0.197,
+        "ratioFails": []
+      },
+      "flag": null
+    },
+    "TADAWUL:2330": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "March 2026",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 1.352,
+        "cashRatio": 0.02,
+        "ratioFails": [
+          "debt"
+        ]
+      },
+      "flag": "Musaffa says compliant but computed debt ratio >30% — verify"
+    },
+    "TADAWUL:2130": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "January 2026",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.044,
+        "cashRatio": 0.184,
+        "ratioFails": []
+      },
+      "flag": null
+    },
+    "TADAWUL:1211": {
+      "status": "non_compliant",
+      "label": "NOT HALAL",
+      "asOf": "March 2026",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.147,
+        "cashRatio": 0.054,
+        "ratioFails": []
+      },
+      "flag": null
+    },
+    "TADAWUL:4110": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "December 2025",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.094,
+        "cashRatio": 0.088,
+        "ratioFails": []
+      },
+      "flag": null
+    },
+    "TADAWUL:7010": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "March 2026",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.112,
+        "cashRatio": 0.1,
+        "ratioFails": []
+      },
+      "flag": null
+    },
+    "TADAWUL:7020": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "March 2026",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.19,
+        "cashRatio": 0.066,
+        "ratioFails": []
+      },
+      "flag": null
+    },
+    "TADAWUL:7030": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "March 2026",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 1.024,
+        "cashRatio": 0.081,
+        "ratioFails": [
+          "debt"
+        ]
+      },
+      "flag": "Musaffa says compliant but computed debt ratio >30% — verify"
+    },
+    "TADAWUL:7203": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "March 2026",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.048,
+        "cashRatio": 0.07,
+        "ratioFails": []
+      },
+      "flag": null
+    },
+    "TADAWUL:5110": {
+      "status": "non_compliant",
+      "label": "NOT HALAL",
+      "asOf": "March 2026",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 5.338,
+        "cashRatio": 0.045,
+        "ratioFails": [
+          "debt"
+        ]
+      },
+      "flag": null
+    },
+    "TADAWUL:2082": {
+      "status": "non_compliant",
+      "label": "NOT HALAL",
+      "asOf": "March 2026",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.203,
+        "cashRatio": 0.051,
+        "ratioFails": []
+      },
+      "flag": null
+    },
+    "TADAWUL:2280": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "March 2026",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.313,
+        "cashRatio": 0.036,
+        "ratioFails": [
+          "debt"
+        ]
+      },
+      "flag": "Musaffa says compliant but computed debt ratio >30% — verify"
+    },
+    "TADAWUL:2050": {
+      "status": "compliant",
+      "label": "COMPLIANT",
+      "asOf": null,
+      "source": "muslimxchange",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.637,
+        "cashRatio": 0.151,
+        "ratioFails": [
+          "debt"
+        ]
+      },
+      "flag": "Musaffa says compliant but computed debt ratio >30% — verify"
+    },
+    "TADAWUL:6002": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "March 2026",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.462,
+        "cashRatio": 0.015,
+        "ratioFails": [
+          "debt"
+        ]
+      },
+      "flag": "Musaffa says compliant but computed debt ratio >30% — verify"
+    },
+    "TADAWUL:2281": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "March 2026",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 1.51,
+        "cashRatio": 0.12,
+        "ratioFails": [
+          "debt"
+        ]
+      },
+      "flag": "Musaffa says compliant but computed debt ratio >30% — verify"
+    },
+    "TADAWUL:6070": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "March 2026",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.308,
+        "cashRatio": 0.036,
+        "ratioFails": [
+          "debt"
+        ]
+      },
+      "flag": "Musaffa says compliant but computed debt ratio >30% — verify"
+    },
+    "TADAWUL:2270": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "March 2026",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.01,
+        "cashRatio": 0.052,
+        "ratioFails": []
+      },
+      "flag": null
+    },
+    "TADAWUL:4190": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "December 2025",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.039,
+        "cashRatio": 0.029,
+        "ratioFails": []
+      },
+      "flag": null
+    },
+    "TADAWUL:4180": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "January 2026",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.002,
+        "cashRatio": 0.003,
+        "ratioFails": []
+      },
+      "flag": null
+    },
+    "TADAWUL:4003": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "March 2026",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.429,
+        "cashRatio": 0.347,
+        "ratioFails": [
+          "debt",
+          "cash"
+        ]
+      },
+      "flag": "Musaffa says compliant but computed debt+cash ratio >30% — verify"
+    },
+    "TADAWUL:4200": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "March 2026",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.402,
+        "cashRatio": 0.023,
+        "ratioFails": [
+          "debt"
+        ]
+      },
+      "flag": "Musaffa says compliant but computed debt ratio >30% — verify"
+    },
+    "TADAWUL:4260": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "December 2025",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.444,
+        "cashRatio": 0.009,
+        "ratioFails": [
+          "debt"
+        ]
+      },
+      "flag": "Musaffa says compliant but computed debt ratio >30% — verify"
+    },
+    "TADAWUL:4007": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "December 2025",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.062,
+        "cashRatio": 0.004,
+        "ratioFails": []
+      },
+      "flag": null
+    },
+    "TADAWUL:4004": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "March 2026",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.346,
+        "cashRatio": 0.016,
+        "ratioFails": [
+          "debt"
+        ]
+      },
+      "flag": "Musaffa says compliant but computed debt ratio >30% — verify"
+    },
+    "TADAWUL:2160": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "January 2026",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.375,
+        "cashRatio": 0.053,
+        "ratioFails": [
+          "debt"
+        ]
+      },
+      "flag": "Musaffa says compliant but computed debt ratio >30% — verify"
+    },
+    "TADAWUL:4013": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "February 2026",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.124,
+        "cashRatio": 0.032,
+        "ratioFails": []
+      },
+      "flag": null
+    },
+    "TADAWUL:4005": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "March 2026",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.15,
+        "cashRatio": 0.104,
+        "ratioFails": []
+      },
+      "flag": null
+    },
+    "TADAWUL:4017": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "March 2026",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.143,
+        "cashRatio": 0.047,
+        "ratioFails": []
+      },
+      "flag": null
+    },
+    "TADAWUL:4341": {
+      "status": "unknown",
+      "label": null,
+      "asOf": null,
+      "source": "musaffa",
+      "financial": false,
+      "ratios": null,
+      "flag": null
+    },
+    "TADAWUL:4009": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "March 2026",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.842,
+        "cashRatio": 0.008,
+        "ratioFails": [
+          "debt"
+        ]
+      },
+      "flag": "Musaffa says compliant but computed debt ratio >30% — verify"
+    },
+    "TADAWUL:4338": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "October 2024",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.84,
+        "cashRatio": 0.023,
+        "ratioFails": [
+          "debt"
+        ]
+      },
+      "flag": "Musaffa says compliant but computed debt ratio >30% — verify"
+    },
+    "TADAWUL:4300": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "March 2026",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.756,
+        "cashRatio": 0.324,
+        "ratioFails": [
+          "debt",
+          "cash"
+        ]
+      },
+      "flag": "Musaffa says compliant but computed debt+cash ratio >30% — verify"
+    },
+    "TADAWUL:4310": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "December 2025",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": null,
+        "cashRatio": null,
+        "ratioFails": []
+      },
+      "flag": null
+    },
+    "TADAWUL:4150": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "March 2026",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.012,
+        "cashRatio": 0.267,
+        "ratioFails": []
+      },
+      "flag": null
+    },
+    "TADAWUL:4323": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "March 2026",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.368,
+        "cashRatio": 0.141,
+        "ratioFails": [
+          "debt"
+        ]
+      },
+      "flag": "Musaffa says compliant but computed debt ratio >30% — verify"
+    },
+    "TADAWUL:3010": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "March 2026",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.009,
+        "cashRatio": 0.042,
+        "ratioFails": []
+      },
+      "flag": null
+    },
+    "TADAWUL:3020": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "March 2026",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.359,
+        "cashRatio": 0.07,
+        "ratioFails": [
+          "debt"
+        ]
+      },
+      "flag": "Musaffa says compliant but computed debt ratio >30% — verify"
+    },
+    "TADAWUL:3030": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "December 2025",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.04,
+        "cashRatio": 0.014,
+        "ratioFails": []
+      },
+      "flag": null
+    },
+    "TADAWUL:3040": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "March 2026",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.021,
+        "cashRatio": 0.079,
+        "ratioFails": []
+      },
+      "flag": null
+    },
+    "TADAWUL:3050": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "December 2025",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.456,
+        "cashRatio": 0.031,
+        "ratioFails": [
+          "debt"
+        ]
+      },
+      "flag": "Musaffa says compliant but computed debt ratio >30% — verify"
+    },
+    "TADAWUL:3060": {
+      "status": "compliant",
+      "label": "COMPLIANT",
+      "asOf": null,
+      "source": "muslimxchange",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.027,
+        "cashRatio": 0.024,
+        "ratioFails": []
+      },
+      "flag": null
+    },
+    "TADAWUL:3080": {
+      "status": "compliant",
+      "label": "COMPLIANT",
+      "asOf": null,
+      "source": "muslimxchange",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.18,
+        "cashRatio": 0.178,
+        "ratioFails": []
+      },
+      "flag": null
+    },
+    "TADAWUL:3090": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "January 2026",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.004,
+        "cashRatio": 0.004,
+        "ratioFails": []
+      },
+      "flag": null
+    },
+    "TADAWUL:3002": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "December 2025",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.27,
+        "cashRatio": 0.01,
+        "ratioFails": []
+      },
+      "flag": null
+    },
+    "TADAWUL:3101": {
+      "status": "non_compliant",
+      "label": "NOT COMPLIANT",
+      "asOf": null,
+      "source": "muslimxchange",
+      "financial": false,
+      "ratios": null,
+      "flag": null
+    },
+    "TADAWUL:2110": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "January 2026",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.085,
+        "cashRatio": 0.017,
+        "ratioFails": []
+      },
+      "flag": null
+    },
+    "TADAWUL:2120": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "December 2025",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.155,
+        "cashRatio": 0.331,
+        "ratioFails": [
+          "cash"
+        ]
+      },
+      "flag": "Musaffa says compliant but computed cash ratio >30% — verify"
+    },
+    "TADAWUL:2170": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "December 2025",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.14,
+        "cashRatio": 0.282,
+        "ratioFails": []
+      },
+      "flag": null
+    },
+    "TADAWUL:4031": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "December 2025",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.03,
+        "cashRatio": 0.148,
+        "ratioFails": []
+      },
+      "flag": null
+    },
+    "TADAWUL:8010": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "March 2026",
+      "source": "musaffa",
+      "financial": true,
+      "ratios": null,
+      "flag": null
+    },
+    "TADAWUL:8020": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "March 2026",
+      "source": "musaffa",
+      "financial": true,
+      "ratios": null,
+      "flag": null
+    },
+    "TADAWUL:8230": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "March 2026",
+      "source": "musaffa",
+      "financial": true,
+      "ratios": null,
+      "flag": null
+    },
+    "TADAWUL:8160": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "January 2026",
+      "source": "musaffa",
+      "financial": true,
+      "ratios": null,
+      "flag": null
+    },
+    "TADAWUL:8250": {
+      "status": "non_compliant",
+      "label": "NOT HALAL",
+      "asOf": "March 2026",
+      "source": "musaffa",
+      "financial": true,
+      "ratios": null,
+      "flag": null
+    },
+    "TADAWUL:4291": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "March 2026",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.079,
+        "cashRatio": 0.005,
+        "ratioFails": []
+      },
+      "flag": null
+    },
+    "TADAWUL:1820": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "December 2025",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 1.87,
+        "cashRatio": 0.069,
+        "ratioFails": [
+          "debt"
+        ]
+      },
+      "flag": "Musaffa says compliant but computed debt ratio >30% — verify"
+    },
+    "TADAWUL:2080": {
+      "status": "compliant",
+      "label": "COMPLIANT",
+      "asOf": null,
+      "source": "muslimxchange",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.013,
+        "cashRatio": 0.039,
+        "ratioFails": []
+      },
+      "flag": null
+    },
+    "TADAWUL:2083": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "March 2026",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 1.361,
+        "cashRatio": 0.163,
+        "ratioFails": [
+          "debt"
+        ]
+      },
+      "flag": "Musaffa says compliant but computed debt ratio >30% — verify"
+    },
+    "TADAWUL:2381": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "December 2025",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.353,
+        "cashRatio": 0.07,
+        "ratioFails": [
+          "debt"
+        ]
+      },
+      "flag": "Musaffa says compliant but computed debt ratio >30% — verify"
+    },
+    "TADAWUL:2382": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "December 2025",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.998,
+        "cashRatio": 0.119,
+        "ratioFails": [
+          "debt"
+        ]
+      },
+      "flag": "Musaffa says compliant but computed debt ratio >30% — verify"
+    },
+    "TADAWUL:1301": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "January 2026",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.007,
+        "cashRatio": 0.09,
+        "ratioFails": []
+      },
+      "flag": null
+    },
+    "TADAWUL:1304": {
+      "status": "compliant",
+      "label": "COMPLIANT",
+      "asOf": null,
+      "source": "muslimxchange",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.592,
+        "cashRatio": 0.037,
+        "ratioFails": [
+          "debt"
+        ]
+      },
+      "flag": "Musaffa says compliant but computed debt ratio >30% — verify"
+    },
+    "TADAWUL:1321": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "March 2026",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.003,
+        "cashRatio": 0.101,
+        "ratioFails": []
+      },
+      "flag": null
+    },
+    "TADAWUL:2090": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "January 2026",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.08,
+        "cashRatio": 0.009,
+        "ratioFails": []
+      },
+      "flag": null
+    },
+    "TADAWUL:2150": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "December 2025",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.027,
+        "cashRatio": 0.031,
+        "ratioFails": []
+      },
+      "flag": null
+    },
+    "TADAWUL:2180": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "January 2026",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.226,
+        "cashRatio": 0.011,
+        "ratioFails": []
+      },
+      "flag": null
+    },
+    "TADAWUL:2200": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "March 2026",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.117,
+        "cashRatio": 0.044,
+        "ratioFails": []
+      },
+      "flag": null
+    },
+    "TADAWUL:2210": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "January 2026",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 1.382,
+        "cashRatio": 0.001,
+        "ratioFails": [
+          "debt"
+        ]
+      },
+      "flag": "Musaffa says compliant but computed debt ratio >30% — verify"
+    },
+    "TADAWUL:2223": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "March 2026",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.048,
+        "cashRatio": 0.071,
+        "ratioFails": []
+      },
+      "flag": null
+    },
+    "TADAWUL:2300": {
+      "status": "compliant",
+      "label": "COMPLIANT",
+      "asOf": null,
+      "source": "muslimxchange",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.278,
+        "cashRatio": 0.041,
+        "ratioFails": []
+      },
+      "flag": null
+    },
+    "TADAWUL:2360": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "January 2026",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.123,
+        "cashRatio": 0.004,
+        "ratioFails": []
+      },
+      "flag": null
+    },
+    "TADAWUL:3001": {
+      "status": "compliant",
+      "label": "COMPLIANT",
+      "asOf": null,
+      "source": "muslimxchange",
+      "financial": false,
+      "ratios": null,
+      "flag": null
+    },
+    "TADAWUL:3003": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "December 2025",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.001,
+        "cashRatio": 0.336,
+        "ratioFails": [
+          "cash"
+        ]
+      },
+      "flag": "Musaffa says compliant but computed cash ratio >30% — verify"
+    },
+    "TADAWUL:3004": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "December 2025",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.918,
+        "cashRatio": 0.034,
+        "ratioFails": [
+          "debt"
+        ]
+      },
+      "flag": "Musaffa says compliant but computed debt ratio >30% — verify"
+    },
+    "TADAWUL:3091": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "January 2026",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 1.296,
+        "cashRatio": 0.001,
+        "ratioFails": [
+          "debt"
+        ]
+      },
+      "flag": "Musaffa says compliant but computed debt ratio >30% — verify"
+    },
+    "TADAWUL:3092": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "December 2025",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0,
+        "cashRatio": 0.04,
+        "ratioFails": []
+      },
+      "flag": null
+    },
+    "TADAWUL:1212": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "March 2026",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.048,
+        "cashRatio": 0.049,
+        "ratioFails": []
+      },
+      "flag": null
+    },
+    "TADAWUL:1214": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "March 2026",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.482,
+        "cashRatio": 0.09,
+        "ratioFails": [
+          "debt"
+        ]
+      },
+      "flag": "Musaffa says compliant but computed debt ratio >30% — verify"
+    },
+    "TADAWUL:1302": {
+      "status": "compliant",
+      "label": "COMPLIANT",
+      "asOf": null,
+      "source": "muslimxchange",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.536,
+        "cashRatio": 0.068,
+        "ratioFails": [
+          "debt"
+        ]
+      },
+      "flag": "Musaffa says compliant but computed debt ratio >30% — verify"
+    },
+    "TADAWUL:2040": {
+      "status": "compliant",
+      "label": "COMPLIANT",
+      "asOf": null,
+      "source": "muslimxchange",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.328,
+        "cashRatio": 0.012,
+        "ratioFails": [
+          "debt"
+        ]
+      },
+      "flag": "Musaffa says compliant but computed debt ratio >30% — verify"
+    },
+    "TADAWUL:2320": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "December 2025",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.151,
+        "cashRatio": 0.024,
+        "ratioFails": []
+      },
+      "flag": null
+    },
+    "TADAWUL:4030": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "March 2026",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.402,
+        "cashRatio": 0.136,
+        "ratioFails": [
+          "debt"
+        ]
+      },
+      "flag": "Musaffa says compliant but computed debt ratio >30% — verify"
+    },
+    "TADAWUL:4142": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "April 2026",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.038,
+        "cashRatio": 0.016,
+        "ratioFails": []
+      },
+      "flag": null
+    },
+    "TADAWUL:4040": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "January 2026",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.888,
+        "cashRatio": 0.176,
+        "ratioFails": [
+          "debt"
+        ]
+      },
+      "flag": "Musaffa says compliant but computed debt ratio >30% — verify"
+    },
+    "TADAWUL:4261": {
+      "status": "compliant",
+      "label": "COMPLIANT",
+      "asOf": null,
+      "source": "muslimxchange",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 1.241,
+        "cashRatio": 0.014,
+        "ratioFails": [
+          "debt"
+        ]
+      },
+      "flag": "Musaffa says compliant but computed debt ratio >30% — verify"
+    },
+    "TADAWUL:4262": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "March 2026",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.854,
+        "cashRatio": 0.014,
+        "ratioFails": [
+          "debt"
+        ]
+      },
+      "flag": "Musaffa says compliant but computed debt ratio >30% — verify"
+    },
+    "TADAWUL:4263": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "March 2026",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.178,
+        "cashRatio": 0.181,
+        "ratioFails": []
+      },
+      "flag": null
+    },
+    "TADAWUL:4264": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "December 2025",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.725,
+        "cashRatio": 0.416,
+        "ratioFails": [
+          "debt",
+          "cash"
+        ]
+      },
+      "flag": "Musaffa says compliant but computed debt+cash ratio >30% — verify"
+    },
+    "TADAWUL:1810": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "December 2025",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.398,
+        "cashRatio": 0.23,
+        "ratioFails": [
+          "debt"
+        ]
+      },
+      "flag": "Musaffa says compliant but computed debt ratio >30% — verify"
+    },
+    "TADAWUL:1830": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "March 2026",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.476,
+        "cashRatio": 0.038,
+        "ratioFails": [
+          "debt"
+        ]
+      },
+      "flag": "Musaffa says compliant but computed debt ratio >30% — verify"
+    },
+    "TADAWUL:4001": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "December 2025",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.497,
+        "cashRatio": 0.02,
+        "ratioFails": [
+          "debt"
+        ]
+      },
+      "flag": "Musaffa says compliant but computed debt ratio >30% — verify"
+    },
+    "TADAWUL:4006": {
+      "status": "non_compliant",
+      "label": "NOT HALAL",
+      "asOf": "January 2026",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 2.426,
+        "cashRatio": 0.056,
+        "ratioFails": [
+          "debt"
+        ]
+      },
+      "flag": null
+    },
+    "TADAWUL:4050": {
+      "status": "non_compliant",
+      "label": "NOT HALAL",
+      "asOf": "December 2025",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 1.332,
+        "cashRatio": 0.079,
+        "ratioFails": [
+          "debt"
+        ]
+      },
+      "flag": null
+    },
+    "TADAWUL:4051": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "January 2026",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.026,
+        "cashRatio": 0.075,
+        "ratioFails": []
+      },
+      "flag": null
+    },
+    "TADAWUL:4163": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "December 2025",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": null,
+        "cashRatio": null,
+        "ratioFails": []
+      },
+      "flag": null
+    },
+    "TADAWUL:4240": {
+      "status": "compliant",
+      "label": "COMPLIANT",
+      "asOf": null,
+      "source": "muslimxchange",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 2.613,
+        "cashRatio": 0.122,
+        "ratioFails": [
+          "debt"
+        ]
+      },
+      "flag": "Musaffa says compliant but computed debt ratio >30% — verify"
+    },
+    "TADAWUL:2100": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "January 2026",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.019,
+        "cashRatio": 0.017,
+        "ratioFails": []
+      },
+      "flag": null
+    },
+    "TADAWUL:2282": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "January 2026",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.003,
+        "cashRatio": 0.065,
+        "ratioFails": []
+      },
+      "flag": null
+    },
+    "TADAWUL:2283": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "December 2025",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.455,
+        "cashRatio": 0.069,
+        "ratioFails": [
+          "debt"
+        ]
+      },
+      "flag": "Musaffa says compliant but computed debt ratio >30% — verify"
+    },
+    "TADAWUL:2284": {
+      "status": "compliant",
+      "label": "COMPLIANT",
+      "asOf": null,
+      "source": "muslimxchange",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.331,
+        "cashRatio": 0.042,
+        "ratioFails": [
+          "debt"
+        ]
+      },
+      "flag": "Musaffa says compliant but computed debt ratio >30% — verify"
+    },
+    "TADAWUL:6001": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "March 2026",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.155,
+        "cashRatio": 0.038,
+        "ratioFails": []
+      },
+      "flag": null
+    },
+    "TADAWUL:6010": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "March 2026",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.116,
+        "cashRatio": 0.322,
+        "ratioFails": [
+          "cash"
+        ]
+      },
+      "flag": "Musaffa says compliant but computed cash ratio >30% — verify"
+    },
+    "TADAWUL:6014": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "December 2025",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.154,
+        "cashRatio": 0.04,
+        "ratioFails": []
+      },
+      "flag": null
+    },
+    "TADAWUL:6015": {
+      "status": "compliant",
+      "label": "COMPLIANT",
+      "asOf": null,
+      "source": "muslimxchange",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.141,
+        "cashRatio": 0.1,
+        "ratioFails": []
+      },
+      "flag": null
+    },
+    "TADAWUL:6017": {
+      "status": "compliant",
+      "label": "COMPLIANT",
+      "asOf": null,
+      "source": "muslimxchange",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.167,
+        "cashRatio": 0.172,
+        "ratioFails": []
+      },
+      "flag": null
+    },
+    "TADAWUL:6040": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "January 2026",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.334,
+        "cashRatio": 0.055,
+        "ratioFails": [
+          "debt"
+        ]
+      },
+      "flag": "Musaffa says compliant but computed debt ratio >30% — verify"
+    },
+    "TADAWUL:6090": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "January 2026",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.109,
+        "cashRatio": 0.024,
+        "ratioFails": []
+      },
+      "flag": null
+    },
+    "TADAWUL:4015": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "March 2026",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.002,
+        "cashRatio": 0.018,
+        "ratioFails": []
+      },
+      "flag": null
+    },
+    "TADAWUL:4016": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "March 2026",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.038,
+        "cashRatio": 0.009,
+        "ratioFails": []
+      },
+      "flag": null
+    },
+    "TADAWUL:4018": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "December 2025",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.178,
+        "cashRatio": 0.014,
+        "ratioFails": []
+      },
+      "flag": null
+    },
+    "TADAWUL:4019": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "March 2026",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.195,
+        "cashRatio": 0.026,
+        "ratioFails": []
+      },
+      "flag": null
+    },
+    "TADAWUL:4021": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "March 2026",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.021,
+        "cashRatio": 0.075,
+        "ratioFails": []
+      },
+      "flag": null
+    },
+    "TADAWUL:4024": {
+      "status": "unknown",
+      "label": null,
+      "asOf": null,
+      "source": "musaffa",
+      "financial": false,
+      "ratios": null,
+      "flag": null
+    },
+    "TADAWUL:1111": {
+      "status": "review",
+      "label": "DOUBTFUL",
+      "asOf": "March 2026",
+      "source": "musaffa",
+      "financial": true,
+      "ratios": null,
+      "flag": null
+    },
+    "TADAWUL:4081": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "March 2026",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.637,
+        "cashRatio": 0.264,
+        "ratioFails": [
+          "debt"
+        ]
+      },
+      "flag": "Musaffa says compliant but computed debt ratio >30% — verify"
+    },
+    "TADAWUL:4084": {
+      "status": "review",
+      "label": "DOUBTFUL",
+      "asOf": "January 2026",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.003,
+        "cashRatio": 0.075,
+        "ratioFails": []
+      },
+      "flag": null
+    },
+    "TADAWUL:4130": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "March 2026",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.018,
+        "cashRatio": 0.006,
+        "ratioFails": []
+      },
+      "flag": null
+    },
+    "TADAWUL:4280": {
+      "status": "non_compliant",
+      "label": "NOT HALAL",
+      "asOf": "March 2026",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.269,
+        "cashRatio": 0.061,
+        "ratioFails": []
+      },
+      "flag": null
+    },
+    "TADAWUL:8030": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "December 2025",
+      "source": "musaffa",
+      "financial": true,
+      "ratios": null,
+      "flag": null
+    },
+    "TADAWUL:8050": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "January 2026",
+      "source": "musaffa",
+      "financial": true,
+      "ratios": null,
+      "flag": null
+    },
+    "TADAWUL:8060": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "December 2025",
+      "source": "musaffa",
+      "financial": true,
+      "ratios": null,
+      "flag": null
+    },
+    "TADAWUL:8070": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "January 2026",
+      "source": "musaffa",
+      "financial": true,
+      "ratios": null,
+      "flag": null
+    },
+    "TADAWUL:8100": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "January 2026",
+      "source": "musaffa",
+      "financial": true,
+      "ratios": null,
+      "flag": null
+    },
+    "TADAWUL:8120": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "March 2026",
+      "source": "musaffa",
+      "financial": true,
+      "ratios": null,
+      "flag": null
+    },
+    "TADAWUL:8150": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "May 2026",
+      "source": "musaffa",
+      "financial": true,
+      "ratios": null,
+      "flag": null
+    },
+    "TADAWUL:8170": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "January 2026",
+      "source": "musaffa",
+      "financial": true,
+      "ratios": null,
+      "flag": null
+    },
+    "TADAWUL:8180": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "January 2026",
+      "source": "musaffa",
+      "financial": true,
+      "ratios": null,
+      "flag": null
+    },
+    "TADAWUL:8190": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "January 2026",
+      "source": "musaffa",
+      "financial": true,
+      "ratios": null,
+      "flag": null
+    },
+    "TADAWUL:8200": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "March 2026",
+      "source": "musaffa",
+      "financial": true,
+      "ratios": null,
+      "flag": null
+    },
+    "TADAWUL:8240": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "December 2025",
+      "source": "musaffa",
+      "financial": true,
+      "ratios": null,
+      "flag": null
+    },
+    "TADAWUL:8260": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "January 2026",
+      "source": "musaffa",
+      "financial": true,
+      "ratios": null,
+      "flag": null
+    },
+    "TADAWUL:8270": {
+      "status": "non_compliant",
+      "label": "NOT HALAL",
+      "asOf": "July 2025",
+      "source": "musaffa",
+      "financial": true,
+      "ratios": null,
+      "flag": null
+    },
+    "TADAWUL:8300": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "April 2026",
+      "source": "musaffa",
+      "financial": true,
+      "ratios": null,
+      "flag": null
+    },
+    "TADAWUL:8310": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "January 2026",
+      "source": "musaffa",
+      "financial": true,
+      "ratios": null,
+      "flag": null
+    },
+    "TADAWUL:4020": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "December 2025",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.519,
+        "cashRatio": 0.254,
+        "ratioFails": [
+          "debt"
+        ]
+      },
+      "flag": "Musaffa says compliant but computed debt ratio >30% — verify"
+    },
+    "TADAWUL:4090": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "March 2026",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.216,
+        "cashRatio": 0.036,
+        "ratioFails": []
+      },
+      "flag": null
+    },
+    "TADAWUL:4100": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "December 2025",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.056,
+        "cashRatio": 0.007,
+        "ratioFails": []
+      },
+      "flag": null
+    },
+    "TADAWUL:4220": {
+      "status": "non_compliant",
+      "label": "NOT HALAL",
+      "asOf": "December 2025",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.512,
+        "cashRatio": 0.041,
+        "ratioFails": [
+          "debt"
+        ]
+      },
+      "flag": null
+    },
+    "TADAWUL:4250": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "March 2026",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.558,
+        "cashRatio": 0.09,
+        "ratioFails": [
+          "debt"
+        ]
+      },
+      "flag": "Musaffa says compliant but computed debt ratio >30% — verify"
+    },
+    "TADAWUL:4320": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "December 2025",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.71,
+        "cashRatio": 0.051,
+        "ratioFails": [
+          "debt"
+        ]
+      },
+      "flag": "Musaffa says compliant but computed debt ratio >30% — verify"
+    },
+    "TADAWUL:4321": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "December 2025",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 2.143,
+        "cashRatio": 0.133,
+        "ratioFails": [
+          "debt"
+        ]
+      },
+      "flag": "Musaffa says compliant but computed debt ratio >30% — verify"
+    },
+    "TADAWUL:4322": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "December 2025",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.282,
+        "cashRatio": 0.132,
+        "ratioFails": []
+      },
+      "flag": null
+    },
+    "TADAWUL:4324": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "March 2026",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.225,
+        "cashRatio": 0.091,
+        "ratioFails": []
+      },
+      "flag": null
+    },
+    "TADAWUL:4325": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "December 2025",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.305,
+        "cashRatio": 0.014,
+        "ratioFails": [
+          "debt"
+        ]
+      },
+      "flag": "Musaffa says compliant but computed debt ratio >30% — verify"
+    },
+    "TADAWUL:4330": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "October 2025",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 1.607,
+        "cashRatio": 0.087,
+        "ratioFails": [
+          "debt"
+        ]
+      },
+      "flag": "Musaffa says compliant but computed debt ratio >30% — verify"
+    },
+    "TADAWUL:4331": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "November 2025",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0,
+        "cashRatio": 0.016,
+        "ratioFails": []
+      },
+      "flag": null
+    },
+    "TADAWUL:4332": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "April 2025",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.652,
+        "cashRatio": 0.131,
+        "ratioFails": [
+          "debt"
+        ]
+      },
+      "flag": "Musaffa says compliant but computed debt ratio >30% — verify"
+    },
+    "TADAWUL:4333": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "October 2025",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.548,
+        "cashRatio": 0.021,
+        "ratioFails": [
+          "debt"
+        ]
+      },
+      "flag": "Musaffa says compliant but computed debt ratio >30% — verify"
+    },
+    "TADAWUL:4334": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "April 2026",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.361,
+        "cashRatio": 0.07,
+        "ratioFails": [
+          "debt"
+        ]
+      },
+      "flag": "Musaffa says compliant but computed debt ratio >30% — verify"
+    },
+    "TADAWUL:4335": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "October 2025",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 2.228,
+        "cashRatio": 0.082,
+        "ratioFails": [
+          "debt"
+        ]
+      },
+      "flag": "Musaffa says compliant but computed debt ratio >30% — verify"
+    },
+    "TADAWUL:4336": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "October 2025",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 1.5,
+        "cashRatio": 0.036,
+        "ratioFails": [
+          "debt"
+        ]
+      },
+      "flag": "Musaffa says compliant but computed debt ratio >30% — verify"
+    },
+    "TADAWUL:4339": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "October 2025",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 1.03,
+        "cashRatio": 0.023,
+        "ratioFails": [
+          "debt"
+        ]
+      },
+      "flag": "Musaffa says compliant but computed debt ratio >30% — verify"
+    },
+    "TADAWUL:4340": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "September 2025",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.397,
+        "cashRatio": 0.053,
+        "ratioFails": [
+          "debt"
+        ]
+      },
+      "flag": "Musaffa says compliant but computed debt ratio >30% — verify"
+    },
+    "TADAWUL:4342": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "May 2026",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.261,
+        "cashRatio": 0.036,
+        "ratioFails": []
+      },
+      "flag": null
+    },
+    "TADAWUL:4344": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "October 2025",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 1.25,
+        "cashRatio": 0.125,
+        "ratioFails": [
+          "debt"
+        ]
+      },
+      "flag": "Musaffa says compliant but computed debt ratio >30% — verify"
+    },
+    "TADAWUL:4345": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "October 2025",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 1.158,
+        "cashRatio": 0.065,
+        "ratioFails": [
+          "debt"
+        ]
+      },
+      "flag": "Musaffa says compliant but computed debt ratio >30% — verify"
+    },
+    "TADAWUL:4346": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "October 2025",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 1.544,
+        "cashRatio": 0.002,
+        "ratioFails": [
+          "debt"
+        ]
+      },
+      "flag": "Musaffa says compliant but computed debt ratio >30% — verify"
+    },
+    "TADAWUL:4347": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "October 2025",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.389,
+        "cashRatio": 0.039,
+        "ratioFails": [
+          "debt"
+        ]
+      },
+      "flag": "Musaffa says compliant but computed debt ratio >30% — verify"
+    },
+    "TADAWUL:4348": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "October 2025",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.745,
+        "cashRatio": 0.037,
+        "ratioFails": [
+          "debt"
+        ]
+      },
+      "flag": "Musaffa says compliant but computed debt ratio >30% — verify"
+    },
+    "TADAWUL:4072": {
+      "status": "review",
+      "label": "DOUBTFUL",
+      "asOf": "December 2025",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.005,
+        "cashRatio": 0.135,
+        "ratioFails": []
+      },
+      "flag": null
+    },
+    "TADAWUL:4210": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "December 2025",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.184,
+        "cashRatio": 0.085,
+        "ratioFails": []
+      },
+      "flag": null
+    },
+    "TADAWUL:7040": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "March 2026",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": null,
+        "cashRatio": null,
+        "ratioFails": []
+      },
+      "flag": null
+    },
+    "TADAWUL:7202": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "March 2026",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.039,
+        "cashRatio": 0.096,
+        "ratioFails": []
+      },
+      "flag": null
+    },
+    "TADAWUL:7204": {
+      "status": "compliant",
+      "label": "COMPLIANT",
+      "asOf": null,
+      "source": "muslimxchange",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.326,
+        "cashRatio": 0.023,
+        "ratioFails": [
+          "debt"
+        ]
+      },
+      "flag": "Musaffa says compliant but computed debt ratio >30% — verify"
+    },
+    "TADAWUL:7211": {
+      "status": "compliant",
+      "label": "HALAL",
+      "asOf": "March 2026",
+      "source": "musaffa",
+      "financial": false,
+      "ratios": {
+        "debtRatio": 0.019,
+        "cashRatio": 0.092,
+        "ratioFails": []
+      },
+      "flag": null
+    }
+  }
+}

@@ -1,0 +1,173 @@
+//@version=6
+// ============================================================
+// Multi-Market Trend Strategy v1
+// Markets: US Equities | Tadawul | BTC | XRP
+// Timeframe: Daily / 4H
+// Core: EMA Stack + RSI Regime + MACD Momentum + ATR Risk
+// ============================================================
+strategy("Multi-Market Trend Strategy v1", overlay=true, default_qty_type=strategy.percent_of_equity, default_qty_value=10, commission_type=strategy.commission.percent, commission_value=0.1, slippage=2, calc_on_every_tick=false)
+
+// ── MARKET PRESET ────────────────────────────────────────────
+market = input.string("CRYPTO_XRP", "Market Preset", options=["US_EQUITY","TADAWUL","CRYPTO_BTC","CRYPTO_XRP"])
+
+// ── EMA LENGTHS (preset per market) ──────────────────────────
+// US_EQUITY  : 9/21/50/200
+// TADAWUL    : 13/34/89/200 (Fibonacci)
+// CRYPTO_BTC : 8/21/55/200 (Fibonacci)
+// CRYPTO_XRP : 8/21/50/200
+fast_len = market == "US_EQUITY" ? 9 : market == "TADAWUL" ? 13 : 8
+mid_len  = market == "US_EQUITY" ? 21 : market == "TADAWUL" ? 34 : 21
+slow_len = market == "US_EQUITY" ? 50 : market == "TADAWUL" ? 89 : market == "CRYPTO_BTC" ? 55 : 50
+base_len = 200
+
+// ── RSI THRESHOLDS ───────────────────────────────────────────
+rsi_len  = 14
+rsi_bull = market == "US_EQUITY" ? 52.0 : market == "TADAWUL" ? 52.0 : 50.0
+rsi_bear = market == "US_EQUITY" ? 48.0 : market == "TADAWUL" ? 48.0 : 50.0
+rsi_ob   = market == "CRYPTO_BTC" ? 80.0 : market == "CRYPTO_XRP" ? 78.0 : 72.0
+rsi_os   = market == "CRYPTO_BTC" ? 20.0 : market == "CRYPTO_XRP" ? 22.0 : 28.0
+
+// ── ATR RISK ─────────────────────────────────────────────────
+atr_len = 14
+sl_atr  = market == "CRYPTO_XRP" ? 1.5 : 2.0
+tp_atr  = market == "CRYPTO_XRP" ? 3.0 : market == "CRYPTO_BTC" ? 4.0 : 3.0
+
+// ── VOLUME FILTER ────────────────────────────────────────────
+vol_mult = market == "TADAWUL" ? 1.2 : 1.0
+
+// ── VWAP FILTER ──────────────────────────────────────────────
+use_vwap_filter = input.bool(true, "Use Monthly VWAP Filter", tooltip="Require price > monthly VWAP for longs (< for shorts)")
+
+// ══════════════════════════════════════════════════════════════
+// INDICATORS
+// ══════════════════════════════════════════════════════════════
+ema_fast = ta.ema(close, fast_len)
+ema_mid  = ta.ema(close, mid_len)
+ema_slow = ta.ema(close, slow_len)
+ema_base = ta.ema(close, base_len)
+
+rsi = ta.rsi(close, rsi_len)
+[macd_line, sig_line, hist] = ta.macd(close, 12, 26, 9)
+atr     = ta.atr(atr_len)
+vol_sma = ta.sma(volume, 20)
+
+// VWAP anchored to the start of each week / month
+weekly_vwap  = ta.vwap(hlc3, timeframe.change("W"))
+monthly_vwap = ta.vwap(hlc3, timeframe.change("M"))
+
+// ATR percentile rank — where is today's ATR in its 252-day history?
+// Low = compressed/coiling. High = expanded/risky to enter.
+atr_rank = math.round(ta.percentrank(ta.atr(atr_len), 252))
+
+// ── TREND STATE ──────────────────────────────────────────────
+bull_stack = ema_fast > ema_mid and ema_mid > ema_slow
+bear_stack = ema_fast < ema_mid and ema_mid < ema_slow
+in_bull    = bull_stack and close > ema_base
+in_bear    = bear_stack and close < ema_base
+
+// ── CONFIRMATIONS ────────────────────────────────────────────
+macd_long  = macd_line > sig_line and hist > 0
+macd_short = macd_line < sig_line and hist < 0
+vol_ok     = volume > vol_sma * vol_mult
+
+rsi_long_ok  = rsi > rsi_bull and rsi < rsi_ob
+rsi_short_ok = rsi < rsi_bear and rsi > rsi_os
+
+// ══════════════════════════════════════════════════════════════
+// ENTRY SIGNALS
+// ══════════════════════════════════════════════════════════════
+long_cross  = ta.crossover(ema_fast, ema_mid)
+short_cross = ta.crossunder(ema_fast, ema_mid)
+
+// Pullback entry: price bounces off mid EMA while trend intact
+price_cross_mid_up   = ta.crossover(close, ema_mid)
+price_cross_mid_down = ta.crossunder(close, ema_mid)
+bounce_long  = in_bull and price_cross_mid_up   and rsi > 45 and rsi < 65 and macd_long
+bounce_short = in_bear and price_cross_mid_down and rsi < 55 and rsi > 35 and macd_short
+
+// na(monthly_vwap) → symbol has no volume (some indices/FX); treat as pass so the
+// filter never silently suppresses every entry on a volume-less market.
+vwap_long_ok  = not use_vwap_filter or na(monthly_vwap) or close > monthly_vwap
+vwap_short_ok = not use_vwap_filter or na(monthly_vwap) or close < monthly_vwap
+
+long_entry  = (long_cross  and in_bull and rsi_long_ok  and macd_long  and vol_ok and vwap_long_ok ) or bounce_long
+short_entry = (short_cross and in_bear and rsi_short_ok and macd_short and vol_ok and vwap_short_ok) or bounce_short
+
+// ══════════════════════════════════════════════════════════════
+// EXITS
+// ══════════════════════════════════════════════════════════════
+long_sl  = strategy.position_avg_price - sl_atr * atr
+long_tp  = strategy.position_avg_price + tp_atr * atr
+short_sl = strategy.position_avg_price + sl_atr * atr
+short_tp = strategy.position_avg_price - tp_atr * atr
+
+trail_exit_long  = ta.crossunder(ema_fast, ema_mid) and strategy.position_size > 0
+trail_exit_short = ta.crossover(ema_fast, ema_mid)  and strategy.position_size < 0
+
+// ══════════════════════════════════════════════════════════════
+// EXECUTION
+// ══════════════════════════════════════════════════════════════
+if long_entry and strategy.position_size <= 0
+    strategy.entry("Long", strategy.long)
+
+if short_entry and strategy.position_size >= 0
+    strategy.entry("Short", strategy.short)
+
+if strategy.position_size > 0
+    strategy.exit("Long SL/TP", "Long", stop=long_sl, limit=long_tp)
+    if trail_exit_long
+        strategy.close("Long", comment="Trail Exit")
+
+if strategy.position_size < 0
+    strategy.exit("Short SL/TP", "Short", stop=short_sl, limit=short_tp)
+    if trail_exit_short
+        strategy.close("Short", comment="Trail Exit")
+
+// ══════════════════════════════════════════════════════════════
+// VISUALS
+// ══════════════════════════════════════════════════════════════
+col_fast = in_bull ? color.new(color.lime, 0)   : in_bear ? color.new(color.red, 0)    : color.new(color.gray, 40)
+col_mid  = in_bull ? color.new(color.green, 0)  : in_bear ? color.new(color.maroon, 0) : color.new(color.gray, 60)
+
+p_fast = plot(ema_fast, "EMA Fast", color=col_fast, linewidth=1)
+p_mid  = plot(ema_mid,  "EMA Mid",  color=col_mid,  linewidth=2)
+plot(ema_slow, "EMA Slow", color=color.new(color.purple, 20), linewidth=2)
+plot(ema_base, "EMA 200",  color=color.new(color.orange, 10), linewidth=3)
+fill(p_fast, p_mid, color=in_bull ? color.new(color.green, 88) : in_bear ? color.new(color.red, 88) : na)
+
+plot(weekly_vwap,  "VWAP Week",  color=color.new(color.aqua,   20), linewidth=1, style=plot.style_circles)
+plot(monthly_vwap, "VWAP Month", color=color.new(color.yellow, 20), linewidth=2, style=plot.style_circles)
+
+plotshape(long_entry,  title="Long",  style=shape.triangleup,   location=location.belowbar, color=color.new(color.lime, 0), size=size.normal)
+plotshape(short_entry, title="Short", style=shape.triangledown, location=location.abovebar, color=color.new(color.red, 0),  size=size.normal)
+
+// Info table
+var table info = table.new(position.top_right, 2, 9, bgcolor=color.new(color.black, 80), border_width=1)
+if barstate.islast
+    table.cell(info, 0, 0, "Market",   text_color=color.gray,  text_size=size.small)
+    table.cell(info, 1, 0, market,     text_color=color.white, text_size=size.small)
+    table.cell(info, 0, 1, "Regime",   text_color=color.gray,  text_size=size.small)
+    regime_txt   = in_bull ? "BULL" : in_bear ? "BEAR" : "NEUTRAL"
+    regime_color = in_bull ? color.lime : in_bear ? color.red : color.yellow
+    table.cell(info, 1, 1, regime_txt, text_color=regime_color, text_size=size.small)
+    table.cell(info, 0, 2, "RSI",      text_color=color.gray,  text_size=size.small)
+    rsi_color = rsi > rsi_ob ? color.red : rsi < rsi_os ? color.lime : color.white
+    table.cell(info, 1, 2, str.tostring(math.round(rsi, 1)), text_color=rsi_color, text_size=size.small)
+    table.cell(info, 0, 3, "MACD",     text_color=color.gray,  text_size=size.small)
+    table.cell(info, 1, 3, hist > 0 ? "▲ Bullish" : "▼ Bearish", text_color=hist > 0 ? color.lime : color.red, text_size=size.small)
+    table.cell(info, 0, 4, "VWAP W",   text_color=color.gray,  text_size=size.small)
+    vwap_w_col = close > weekly_vwap ? color.aqua : color.red
+    table.cell(info, 1, 4, close > weekly_vwap ? "▲ Above" : "▼ Below", text_color=vwap_w_col, text_size=size.small)
+    table.cell(info, 0, 5, "VWAP M",   text_color=color.gray,  text_size=size.small)
+    vwap_m_col = close > monthly_vwap ? color.yellow : color.red
+    table.cell(info, 1, 5, close > monthly_vwap ? "▲ Above" : "▼ Below", text_color=vwap_m_col, text_size=size.small)
+    table.cell(info, 0, 6, "ATR Rank", text_color=color.gray,  text_size=size.small)
+    atr_rank_col = atr_rank >= 80 ? color.red : atr_rank <= 20 ? color.lime : color.white
+    atr_rank_txt = atr_rank >= 80 ? str.tostring(atr_rank) + "% — Expanded" : atr_rank <= 20 ? str.tostring(atr_rank) + "% — Coiling" : str.tostring(atr_rank) + "%"
+    table.cell(info, 1, 6, atr_rank_txt, text_color=atr_rank_col, text_size=size.small)
+    table.cell(info, 0, 7, "SL/TP",    text_color=color.gray,  text_size=size.small)
+    table.cell(info, 1, 7, str.tostring(sl_atr) + "x / " + str.tostring(tp_atr) + "x", text_color=color.white, text_size=size.small)
+    table.cell(info, 0, 8, "Position", text_color=color.gray,  text_size=size.small)
+    pos_txt   = strategy.position_size > 0 ? "LONG ▲" : strategy.position_size < 0 ? "SHORT ▼" : "FLAT"
+    pos_color = strategy.position_size > 0 ? color.lime : strategy.position_size < 0 ? color.red : color.gray
+    table.cell(info, 1, 8, pos_txt, text_color=pos_color, text_size=size.small)

@@ -1,0 +1,126 @@
+<!doctype html><html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Mawjah · Terminal direction</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#07090c; --panel:#0a0d12; --panel2:#0d1118; --line:#161c27; --line2:#202838;
+  --txt:#d6dae9; --txt2:#7d869e; --txt3:#4a5268;
+  --up:#3ddc84; --down:#ff4d4d; --amber:#ffb020; --cyan:#36c5d4;
+}
+*{box-sizing:border-box;margin:0}
+body{background:var(--bg);color:var(--txt);font-family:"IBM Plex Sans",system-ui,sans-serif;font-size:13px;line-height:1.4;
+  background-image:repeating-linear-gradient(0deg,transparent,transparent 27px,rgba(255,255,255,.012) 27px,rgba(255,255,255,.012) 28px);}
+.mono{font-family:"JetBrains Mono",monospace;font-variant-numeric:tabular-nums}
+.wrap{max-width:1240px;margin:0 auto;padding:0 16px}
+/* top bar */
+.top{display:flex;align-items:center;gap:14px;height:46px;border-bottom:1px solid var(--line);padding:0 16px;background:var(--panel)}
+.logo{font-weight:700;letter-spacing:.04em;font-size:14px;display:flex;align-items:center;gap:8px}
+.logo b{color:var(--up)}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--up);box-shadow:0 0 8px var(--up)}
+.top .mono{color:var(--txt2);font-size:11px}
+.spacer{flex:1}
+.chip{font-family:"JetBrains Mono",monospace;font-size:10.5px;text-transform:uppercase;letter-spacing:.07em;color:var(--txt2);border:1px solid var(--line2);padding:4px 9px;border-radius:2px}
+.chip.live{color:var(--up);border-color:rgba(61,220,132,.4)}
+/* stat strip */
+.strip{display:grid;grid-template-columns:repeat(5,1fr);border-bottom:1px solid var(--line);background:var(--panel)}
+.stat{padding:14px 16px;border-right:1px solid var(--line)}
+.stat:last-child{border-right:0}
+.stat .lbl{font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--txt3);font-weight:600}
+.stat .num{font-family:"JetBrains Mono",monospace;font-size:30px;font-weight:600;margin-top:6px;line-height:1}
+.stat .meta{font-size:10.5px;color:var(--txt2);margin-top:5px;font-family:"JetBrains Mono",monospace}
+.stat.up .num{color:var(--up)} .stat.mid .num{color:var(--amber)} .stat.dn .num{color:var(--down)} .stat.tot .num{color:var(--cyan)}
+/* toolbar */
+.bar{display:flex;align-items:center;gap:2px;height:38px;border-bottom:1px solid var(--line);padding:0 12px;background:var(--panel2)}
+.seg{font-family:"JetBrains Mono",monospace;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--txt2);padding:6px 12px;cursor:pointer;border-bottom:2px solid transparent}
+.seg.on{color:var(--txt);border-bottom-color:var(--amber)}
+.bar .spacer{flex:1}
+.bar .note{font-size:10.5px;color:var(--txt3);font-family:"JetBrains Mono",monospace}
+/* table */
+table{width:100%;border-collapse:collapse}
+thead th{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--txt3);font-weight:600;text-align:right;padding:9px 16px;border-bottom:1px solid var(--line2);background:var(--panel)}
+thead th:first-child,thead th:nth-child(2){text-align:left}
+tbody td{padding:10px 16px;border-bottom:1px solid var(--line);text-align:right}
+tbody td:first-child,tbody td:nth-child(2){text-align:left}
+tbody tr:hover{background:rgba(255,255,255,.02)}
+.rank{font-family:"JetBrains Mono",monospace;color:var(--txt3);font-size:11px;width:36px}
+.tkr{font-family:"JetBrains Mono",monospace;font-weight:600;color:var(--cyan)}
+.nm{color:var(--txt2);font-size:12px}
+.state{font-size:10px;text-transform:uppercase;letter-spacing:.06em;font-weight:600;padding:2px 7px;border:1px solid;border-radius:2px;font-family:"JetBrains Mono",monospace}
+.state.su{color:var(--up);border-color:rgba(61,220,132,.4);background:rgba(61,220,132,.07)}
+.pos{color:var(--up)} .price{font-family:"JetBrains Mono",monospace;color:var(--txt);font-weight:500}
+/* mini sparkline bar */
+.spark{display:inline-flex;align-items:flex-end;gap:1.5px;height:18px}
+.spark i{width:3px;background:var(--up);opacity:.55;display:inline-block}
+/* card */
+.cols{display:grid;grid-template-columns:1fr 320px;gap:0;border-bottom:1px solid var(--line)}
+.right{border-left:1px solid var(--line);background:var(--panel)}
+.pick{padding:16px}
+.pick .hd{font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--amber);font-weight:700;margin-bottom:12px}
+.pick .big{font-family:"JetBrains Mono",monospace;font-size:13px;color:var(--cyan);font-weight:600}
+.kv{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--line);font-size:12px}
+.kv .k{color:var(--txt2)} .kv .v{font-family:"JetBrains Mono",monospace;font-weight:500}
+.tradeplan{margin-top:14px;border:1px solid var(--line2);border-radius:2px}
+.tp-row{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;text-align:center}
+.tp-row>div{padding:9px 4px;border-right:1px solid var(--line)}
+.tp-row>div:last-child{border-right:0}
+.tp-row .tl{font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--txt3)}
+.tp-row .tv{font-family:"JetBrains Mono",monospace;font-size:13px;margin-top:3px}
+.foot{padding:10px 16px;font-size:10.5px;color:var(--txt3);font-family:"JetBrains Mono",monospace}
+.back{position:fixed;top:10px;right:14px;font-size:11px;color:var(--txt2);text-decoration:none;border:1px solid var(--line2);padding:5px 10px;border-radius:2px;font-family:"JetBrains Mono",monospace;z-index:5}
+</style></head><body>
+<a class="back" href="index.html">← directions</a>
+<div class="top">
+  <span class="logo"><span class="dot"></span>MAW<b>JAH</b></span>
+  <span class="mono">TASI · 11,842.31 ▲0.62%</span>
+  <span class="spacer"></span>
+  <span class="chip live">● LIVE</span><span class="chip">SHARIA ✓</span><span class="chip">NEXT SCAN 10:15</span>
+</div>
+<div class="strip">
+  <div class="stat up"><div class="lbl">Strong Uptrend</div><div class="num mono">45</div><div class="meta">7–8 criteria</div></div>
+  <div class="stat up"><div class="lbl">Uptrend</div><div class="num mono">43</div><div class="meta">5–6 criteria</div></div>
+  <div class="stat mid"><div class="lbl">Building</div><div class="num mono">13</div><div class="meta">3–4 criteria</div></div>
+  <div class="stat dn"><div class="lbl">Strong Downtrend</div><div class="num mono">35</div><div class="meta">7–8 bearish</div></div>
+  <div class="stat tot"><div class="lbl">Scanned</div><div class="num mono">209</div><div class="meta">01:03:39</div></div>
+</div>
+<div class="bar">
+  <span class="seg on">MOMENTUM BUY-LIST</span><span class="seg">SCREENER</span><span class="seg">SIGNALS</span><span class="seg">MARKETS</span><span class="seg">LAB</span>
+  <span class="spacer"></span><span class="note">RANKED: 6MO-MOM × 52WK-HIGH COMBO · t 3.38 · NEXT REBALANCE 2026-07-01</span>
+</div>
+<div class="cols">
+  <div>
+    <table>
+      <thead><tr><th></th><th>Symbol</th><th>State</th><th>6M Mom</th><th>52W Hi</th><th>Trend</th><th>Price</th></tr></thead>
+      <tbody>
+        <tr><td class="rank">#1</td><td><span class="tkr">1321</span> <span class="nm">East Pipes</span></td><td><span class="state su">▲ Strong Up</span></td><td class="pos mono">+40.9%</td><td class="mono">99.7%</td><td><span class="spark"><i style="height:30%"></i><i style="height:45%"></i><i style="height:40%"></i><i style="height:65%"></i><i style="height:80%"></i><i style="height:100%"></i></span></td><td class="price">222.40</td></tr>
+        <tr><td class="rank">#2</td><td><span class="tkr">1304</span> <span class="nm">Al Yamamah Steel</span></td><td><span class="state su">▲ Strong Up</span></td><td class="pos mono">+20.7%</td><td class="mono">98.3%</td><td><span class="spark"><i style="height:40%"></i><i style="height:35%"></i><i style="height:55%"></i><i style="height:60%"></i><i style="height:75%"></i><i style="height:92%"></i></span></td><td class="price">41.20</td></tr>
+        <tr><td class="rank">#3</td><td><span class="tkr">2200</span> <span class="nm">APC</span></td><td><span class="state su">▲ Strong Up</span></td><td class="pos mono">+40.8%</td><td class="mono">94.8%</td><td><span class="spark"><i style="height:25%"></i><i style="height:50%"></i><i style="height:48%"></i><i style="height:70%"></i><i style="height:68%"></i><i style="height:88%"></i></span></td><td class="price">7.40</td></tr>
+        <tr><td class="rank">#4</td><td><span class="tkr">8010</span> <span class="nm">Tawuniya</span></td><td><span class="state su">▲ Strong Up</span></td><td class="pos mono">+33.1%</td><td class="mono">96.2%</td><td><span class="spark"><i style="height:45%"></i><i style="height:42%"></i><i style="height:60%"></i><i style="height:58%"></i><i style="height:82%"></i><i style="height:95%"></i></span></td><td class="price">160.40</td></tr>
+        <tr><td class="rank">#5</td><td><span class="tkr">7010</span> <span class="nm">STC</span></td><td><span class="state su">▲ Strong Up</span></td><td class="pos mono">+12.4%</td><td class="mono">99.1%</td><td><span class="spark"><i style="height:50%"></i><i style="height:55%"></i><i style="height:52%"></i><i style="height:68%"></i><i style="height:78%"></i><i style="height:90%"></i></span></td><td class="price">44.66</td></tr>
+      </tbody>
+    </table>
+    <div class="foot">5 OF 9 HOLDINGS · 77 LIQUID SHARIA NAMES SCREENED · EQUAL-WEIGHT ~11% EACH · DERAYAH 0.11% RT</div>
+  </div>
+  <div class="right">
+    <div class="pick">
+      <div class="hd">▲ Top of buy-list · #1</div>
+      <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:4px"><span class="big" style="font-size:16px">1321</span><span class="nm">East Pipes Co.</span></div>
+      <div class="mono" style="font-size:22px;font-weight:600">222.40 <span style="font-size:11px;color:var(--up)">▲ +1.8%</span></div>
+      <div class="kv"><span class="k">6-month momentum</span><span class="v pos">+40.9%</span></div>
+      <div class="kv"><span class="k">52-week-high proximity</span><span class="v">99.7%</span></div>
+      <div class="kv"><span class="k">Combo rank</span><span class="v">#1 / 77</span></div>
+      <div class="kv"><span class="k">Sharia</span><span class="v" style="color:var(--up)">✓ compliant</span></div>
+      <div class="tradeplan">
+        <div class="tp-row">
+          <div><div class="tl">Entry</div><div class="tv">222.40</div></div>
+          <div><div class="tl">Stop</div><div class="tv" style="color:var(--down)">211.76</div></div>
+          <div><div class="tl">T1</div><div class="tv" style="color:var(--up)">233.0</div></div>
+          <div><div class="tl">T2</div><div class="tv" style="color:var(--up)">243.7</div></div>
+        </div>
+      </div>
+      <div style="font-size:10.5px;color:var(--txt3);margin-top:10px;line-height:1.5;font-family:'JetBrains Mono',monospace">ILLUSTRATIVE LEVELS — VALIDATED BUY-LIST IS THIS SCREEN. BUY AT NEXT MONTHLY REBALANCE.</div>
+    </div>
+  </div>
+</div>
+</body></html>
