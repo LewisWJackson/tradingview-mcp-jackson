@@ -131,7 +131,11 @@ export async function run(argv) {
 async function execute(handler, values, positionals) {
   try {
     const result = await handler(values, positionals);
-    console.log(JSON.stringify(result, null, 2));
+    if (typeof result === "string") {
+      console.log(result);
+    } else {
+      console.log(JSON.stringify(result, null, 2));
+    }
     process.exit(0);
   } catch (err) {
     handleError(err);

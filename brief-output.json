@@ -1,0 +1,3246 @@
+﻿{
+  "success": true,
+  "generated_at": "2026-04-27T06:21:33.878Z",
+  "rules_loaded_from": "C:\\Users\\wmdcta\\tradingview-mcp-jackson\\rules.json",
+  "rules": {
+    "bias_criteria": {
+      "bullish": [
+        "Pivot Supertrend in Up Trend mode AND price > trail level",
+        "7-Star Confluence ≥ 6",
+        "Laguerre RSI < 0.15 (oversold) OR fresh cross-up from below 0.15 OR Long Entry flag = 1.0",
+        "Hurst Smooth ≥ 0.6 (trending regime confirmed)",
+        "Choppiness < 0.4 (clean trend, not sideways)",
+        "STRONG BUY = all 5 conditions met. NORMAL BUY = 4/5 with Conf ≥ 6 mandatory."
+      ],
+      "bearish": [
+        "Pivot Supertrend in Down Trend mode AND price < trail level",
+        "7-Star Confluence ≥ 6",
+        "Laguerre RSI > 0.85 (overbought) OR fresh cross-down from above 0.85 OR Short Entry flag = 1.0",
+        "Hurst Smooth ≥ 0.6",
+        "Choppiness < 0.4",
+        "STRONG SELL/SHORT = all 5 conditions met. NORMAL SELL = 4/5 with Conf ≥ 6 mandatory."
+      ],
+      "neutral": [
+        "7-Star Confluence ≤ 4 (no conviction)",
+        "OR Choppiness > 0.5 (sideways market — trend signals untrustworthy)",
+        "OR Laguerre RSI in mid-zone 0.15-0.85 with no fresh cross",
+        "OR Pivot Supertrend just flipped within last 1-2 bars (wait for confirmation)",
+        "Action: stand aside, no new positions"
+      ],
+      "avoid_chasing": [
+        "Long: do NOT enter if Laguerre RSI > 0.80 even with strong trend — wait for pullback to <0.15",
+        "Short: do NOT enter if Laguerre RSI < 0.20 even with strong downtrend — wait for bounce to >0.85",
+        "Reason: entering at extreme RSI = buying tops / selling bottoms"
+      ]
+    },
+    "risk_rules": [
+      "Risk per trade: max 1% of account equity",
+      "Maximum concurrent positions: 3 (across all sectors)",
+      "Sector cap: max 2 positions in same SET sector (BANK, ENERGY, RETAIL, etc.)",
+      "Daily loss limit: -2% of account → stop trading rest of day",
+      "Weekly loss limit: -5% → reduce size by half next week",
+      "After 3 consecutive losses: skip next signal regardless of setup quality",
+      "Position sizing: size = (account × 1%) / (entry - stop), round down to lot"
+    ],
+    "notes": "Universe = SET100 + my core watchlist. Default TF = Daily (swing). Indicators are the SET-tuned set: Pivot Point Supertrend [SET], 7-Star Confluence Dashboard, Laguerre RSI Ehlers [SET], Hurst Choppiness [SET] Regime. CPR Camarilla used as discretionary support/resistance overlay on focus names. Brief output format: per symbol → BIAS | SETUP STAGE (waiting/triggered/in-trade/exit) | KEY LEVEL | TRIGGER | INVALIDATION. End with SET regime read + top 3 actionable setups."
+  },
+  "symbols_scanned": [
+    {
+      "symbol": "SET:PTTEP",
+      "timeframe": "1D",
+      "state": {
+        "success": true,
+        "symbol": "SET_DLY:PTTEP",
+        "resolution": "1D",
+        "chartType": 1,
+        "studies": [
+          {
+            "id": "PJf7A9",
+            "name": "Position Cost Distribution SET"
+          },
+          {
+            "id": "za1vSK",
+            "name": "CPR Weekly Camarilla SET"
+          },
+          {
+            "id": "KTtKxP",
+            "name": "Pivot Point Supertrend [SET]"
+          },
+          {
+            "id": "FuKb0u",
+            "name": "SET Swing Dashboard [7-Star Confluence]"
+          },
+          {
+            "id": "jFgf2I",
+            "name": "Laguerre RSI Ehlers [SET]"
+          },
+          {
+            "id": "I78FBT",
+            "name": "Hurst Choppiness [SET] Regime"
+          }
+        ]
+      },
+      "indicators": {
+        "success": true,
+        "study_count": 5,
+        "studies": [
+          {
+            "name": "Pivot Point Supertrend [SET]",
+            "values": {
+              "Up Trend": "146.6",
+              "Buy": "0.00",
+              "Sell": "0.00"
+            }
+          },
+          {
+            "name": "Position Cost Distribution SET",
+            "values": {
+              "Peak Cost Zone": "143.0"
+            }
+          },
+          {
+            "name": "SET Swing Dashboard [7-Star Confluence]",
+            "values": {
+              "Confluence Score": "6.00"
+            }
+          },
+          {
+            "name": "Laguerre RSI Ehlers [SET]",
+            "values": {
+              "Laguerre RSI": "0.160",
+              "Long Entry": "0.000",
+              "Short Entry": "0.000",
+              "Mid Up": "0.000",
+              "Mid Down": "0.000"
+            }
+          },
+          {
+            "name": "Hurst Choppiness [SET] Regime",
+            "values": {
+              "Hurst Smooth": "0.826",
+              "Hurst Raw": "0.826",
+              "Choppiness (norm)": "0.183"
+            }
+          }
+        ]
+      },
+      "quote": {
+        "success": true,
+        "symbol": "SET_DLY:PTTEP",
+        "time": 1777255200,
+        "open": 151,
+        "high": 151,
+        "low": 147.5,
+        "close": 149,
+        "last": 149,
+        "volume": 8880181,
+        "description": "PTT Exploration & Production Plc",
+        "exchange": "SET",
+        "type": "stock"
+      }
+    },
+    {
+      "symbol": "SET:PTT",
+      "timeframe": "1D",
+      "state": {
+        "success": true,
+        "symbol": "SET_DLY:PTT",
+        "resolution": "1D",
+        "chartType": 1,
+        "studies": [
+          {
+            "id": "PJf7A9",
+            "name": "Position Cost Distribution SET"
+          },
+          {
+            "id": "za1vSK",
+            "name": "CPR Weekly Camarilla SET"
+          },
+          {
+            "id": "KTtKxP",
+            "name": "Pivot Point Supertrend [SET]"
+          },
+          {
+            "id": "FuKb0u",
+            "name": "SET Swing Dashboard [7-Star Confluence]"
+          },
+          {
+            "id": "jFgf2I",
+            "name": "Laguerre RSI Ehlers [SET]"
+          },
+          {
+            "id": "I78FBT",
+            "name": "Hurst Choppiness [SET] Regime"
+          }
+        ]
+      },
+      "indicators": {
+        "success": true,
+        "study_count": 5,
+        "studies": [
+          {
+            "name": "Pivot Point Supertrend [SET]",
+            "values": {
+              "Down Trend": "36.51",
+              "Buy": "0.00",
+              "Sell": "0.00"
+            }
+          },
+          {
+            "name": "Position Cost Distribution SET",
+            "values": {
+              "Peak Cost Zone": "34.67"
+            }
+          },
+          {
+            "name": "SET Swing Dashboard [7-Star Confluence]",
+            "values": {
+              "Confluence Score": "6.00"
+            }
+          },
+          {
+            "name": "Laguerre RSI Ehlers [SET]",
+            "values": {
+              "Laguerre RSI": "0.505",
+              "Long Entry": "1.000",
+              "Short Entry": "0.000",
+              "Mid Up": "1.000",
+              "Mid Down": "0.000"
+            }
+          },
+          {
+            "name": "Hurst Choppiness [SET] Regime",
+            "values": {
+              "Hurst Smooth": "0.810",
+              "Hurst Raw": "0.807",
+              "Choppiness (norm)": "0.729"
+            }
+          }
+        ]
+      },
+      "quote": {
+        "success": true,
+        "symbol": "SET_DLY:PTT",
+        "time": 1777255200,
+        "open": 35,
+        "high": 35.5,
+        "low": 35,
+        "close": 35.25,
+        "last": 35.25,
+        "volume": 31117275,
+        "description": "PTT Public Co., Ltd.",
+        "exchange": "SET",
+        "type": "stock"
+      }
+    },
+    {
+      "symbol": "SET:GULF",
+      "timeframe": "1D",
+      "state": {
+        "success": true,
+        "symbol": "SET_DLY:GULF",
+        "resolution": "1D",
+        "chartType": 1,
+        "studies": [
+          {
+            "id": "PJf7A9",
+            "name": "Position Cost Distribution SET"
+          },
+          {
+            "id": "za1vSK",
+            "name": "CPR Weekly Camarilla SET"
+          },
+          {
+            "id": "KTtKxP",
+            "name": "Pivot Point Supertrend [SET]"
+          },
+          {
+            "id": "FuKb0u",
+            "name": "SET Swing Dashboard [7-Star Confluence]"
+          },
+          {
+            "id": "jFgf2I",
+            "name": "Laguerre RSI Ehlers [SET]"
+          },
+          {
+            "id": "I78FBT",
+            "name": "Hurst Choppiness [SET] Regime"
+          }
+        ]
+      },
+      "indicators": {
+        "success": true,
+        "study_count": 5,
+        "studies": [
+          {
+            "name": "Pivot Point Supertrend [SET]",
+            "values": {
+              "Down Trend": "61.14",
+              "Buy": "0.00",
+              "Sell": "0.00"
+            }
+          },
+          {
+            "name": "Position Cost Distribution SET",
+            "values": {
+              "Peak Cost Zone": "56.49"
+            }
+          },
+          {
+            "name": "SET Swing Dashboard [7-Star Confluence]",
+            "values": {
+              "Confluence Score": "6.00"
+            }
+          },
+          {
+            "name": "Laguerre RSI Ehlers [SET]",
+            "values": {
+              "Laguerre RSI": "0.209",
+              "Long Entry": "0.000",
+              "Short Entry": "0.000",
+              "Mid Up": "0.000",
+              "Mid Down": "0.000"
+            }
+          },
+          {
+            "name": "Hurst Choppiness [SET] Regime",
+            "values": {
+              "Hurst Smooth": "0.836",
+              "Hurst Raw": "0.836",
+              "Choppiness (norm)": "0.266"
+            }
+          }
+        ]
+      },
+      "quote": {
+        "success": true,
+        "symbol": "SET_DLY:GULF",
+        "time": 1777255200,
+        "open": 56.5,
+        "high": 57.5,
+        "low": 56.5,
+        "close": 57.25,
+        "last": 57.25,
+        "volume": 13019420,
+        "description": "Gulf Development Public Company Limited",
+        "exchange": "SET",
+        "type": "stock"
+      }
+    },
+    {
+      "symbol": "SET:DELTA",
+      "timeframe": "1D",
+      "state": {
+        "success": true,
+        "symbol": "SET_DLY:DELTA",
+        "resolution": "1D",
+        "chartType": 1,
+        "studies": [
+          {
+            "id": "PJf7A9",
+            "name": "Position Cost Distribution SET"
+          },
+          {
+            "id": "za1vSK",
+            "name": "CPR Weekly Camarilla SET"
+          },
+          {
+            "id": "KTtKxP",
+            "name": "Pivot Point Supertrend [SET]"
+          },
+          {
+            "id": "FuKb0u",
+            "name": "SET Swing Dashboard [7-Star Confluence]"
+          },
+          {
+            "id": "jFgf2I",
+            "name": "Laguerre RSI Ehlers [SET]"
+          },
+          {
+            "id": "I78FBT",
+            "name": "Hurst Choppiness [SET] Regime"
+          }
+        ]
+      },
+      "indicators": {
+        "success": true,
+        "study_count": 5,
+        "studies": [
+          {
+            "name": "Pivot Point Supertrend [SET]",
+            "values": {
+              "Up Trend": "269",
+              "Buy": "0.00",
+              "Sell": "0.00"
+            }
+          },
+          {
+            "name": "Position Cost Distribution SET",
+            "values": {
+              "Peak Cost Zone": "289"
+            }
+          },
+          {
+            "name": "SET Swing Dashboard [7-Star Confluence]",
+            "values": {
+              "Confluence Score": "6.00"
+            }
+          },
+          {
+            "name": "Laguerre RSI Ehlers [SET]",
+            "values": {
+              "Laguerre RSI": "0.895",
+              "Long Entry": "0.000",
+              "Short Entry": "0.000",
+              "Mid Up": "0.000",
+              "Mid Down": "0.000"
+            }
+          },
+          {
+            "name": "Hurst Choppiness [SET] Regime",
+            "values": {
+              "Hurst Smooth": "0.822",
+              "Hurst Raw": "0.824",
+              "Choppiness (norm)": "0.276"
+            }
+          }
+        ]
+      },
+      "quote": {
+        "success": true,
+        "symbol": "SET_DLY:DELTA",
+        "time": 1777255200,
+        "open": 297,
+        "high": 310,
+        "low": 293,
+        "close": 309,
+        "last": 309,
+        "volume": 8810819,
+        "description": "Delta Electronics (Thailand) Public Co. Ltd.",
+        "exchange": "SET",
+        "type": "stock"
+      }
+    },
+    {
+      "symbol": "SET:KCE",
+      "timeframe": "1D",
+      "state": {
+        "success": true,
+        "symbol": "SET_DLY:KCE",
+        "resolution": "1D",
+        "chartType": 1,
+        "studies": [
+          {
+            "id": "PJf7A9",
+            "name": "Position Cost Distribution SET"
+          },
+          {
+            "id": "za1vSK",
+            "name": "CPR Weekly Camarilla SET"
+          },
+          {
+            "id": "KTtKxP",
+            "name": "Pivot Point Supertrend [SET]"
+          },
+          {
+            "id": "FuKb0u",
+            "name": "SET Swing Dashboard [7-Star Confluence]"
+          },
+          {
+            "id": "jFgf2I",
+            "name": "Laguerre RSI Ehlers [SET]"
+          },
+          {
+            "id": "I78FBT",
+            "name": "Hurst Choppiness [SET] Regime"
+          }
+        ]
+      },
+      "indicators": {
+        "success": true,
+        "study_count": 5,
+        "studies": [
+          {
+            "name": "Pivot Point Supertrend [SET]",
+            "values": {
+              "Up Trend": "19.2",
+              "Buy": "0.00",
+              "Sell": "0.00"
+            }
+          },
+          {
+            "name": "Position Cost Distribution SET",
+            "values": {
+              "Peak Cost Zone": "29.69"
+            }
+          },
+          {
+            "name": "SET Swing Dashboard [7-Star Confluence]",
+            "values": {
+              "Confluence Score": "6.00"
+            }
+          },
+          {
+            "name": "Laguerre RSI Ehlers [SET]",
+            "values": {
+              "Laguerre RSI": "1.000",
+              "Long Entry": "0.000",
+              "Short Entry": "0.000",
+              "Mid Up": "0.000",
+              "Mid Down": "0.000"
+            }
+          },
+          {
+            "name": "Hurst Choppiness [SET] Regime",
+            "values": {
+              "Hurst Smooth": "0.780",
+              "Hurst Raw": "0.773",
+              "Choppiness (norm)": "0.000"
+            }
+          }
+        ]
+      },
+      "quote": {
+        "success": true,
+        "symbol": "SET_DLY:KCE",
+        "time": 1777255200,
+        "open": 29.75,
+        "high": 31.5,
+        "low": 29.5,
+        "close": 31.25,
+        "last": 31.25,
+        "volume": 27693270,
+        "description": "KCE Electronics Public Co., Ltd.",
+        "exchange": "SET",
+        "type": "stock"
+      }
+    },
+    {
+      "symbol": "SET:SCC",
+      "timeframe": "1D",
+      "state": {
+        "success": true,
+        "symbol": "SET_DLY:SCC",
+        "resolution": "1D",
+        "chartType": 1,
+        "studies": [
+          {
+            "id": "PJf7A9",
+            "name": "Position Cost Distribution SET"
+          },
+          {
+            "id": "za1vSK",
+            "name": "CPR Weekly Camarilla SET"
+          },
+          {
+            "id": "KTtKxP",
+            "name": "Pivot Point Supertrend [SET]"
+          },
+          {
+            "id": "FuKb0u",
+            "name": "SET Swing Dashboard [7-Star Confluence]"
+          },
+          {
+            "id": "jFgf2I",
+            "name": "Laguerre RSI Ehlers [SET]"
+          },
+          {
+            "id": "I78FBT",
+            "name": "Hurst Choppiness [SET] Regime"
+          }
+        ]
+      },
+      "indicators": {
+        "success": true,
+        "study_count": 5,
+        "studies": [
+          {
+            "name": "Pivot Point Supertrend [SET]",
+            "values": {
+              "Up Trend": "201",
+              "Buy": "0.00",
+              "Sell": "0.00"
+            }
+          },
+          {
+            "name": "Position Cost Distribution SET",
+            "values": {
+              "Peak Cost Zone": "229"
+            }
+          },
+          {
+            "name": "SET Swing Dashboard [7-Star Confluence]",
+            "values": {
+              "Confluence Score": "6.00"
+            }
+          },
+          {
+            "name": "Laguerre RSI Ehlers [SET]",
+            "values": {
+              "Laguerre RSI": "0.969",
+              "Long Entry": "0.000",
+              "Short Entry": "0.000",
+              "Mid Up": "0.000",
+              "Mid Down": "0.000"
+            }
+          },
+          {
+            "name": "Hurst Choppiness [SET] Regime",
+            "values": {
+              "Hurst Smooth": "0.747",
+              "Hurst Raw": "0.734",
+              "Choppiness (norm)": "0.182"
+            }
+          }
+        ]
+      },
+      "quote": {
+        "success": true,
+        "symbol": "SET_DLY:SCC",
+        "time": 1777255200,
+        "open": 220,
+        "high": 225,
+        "low": 220,
+        "close": 224,
+        "last": 224,
+        "volume": 2645368,
+        "description": "Siam Cement Public Co. Ltd.",
+        "exchange": "SET",
+        "type": "stock"
+      }
+    },
+    {
+      "symbol": "SET:SCB",
+      "timeframe": "1D",
+      "state": {
+        "success": true,
+        "symbol": "SET_DLY:SCB",
+        "resolution": "1D",
+        "chartType": 1,
+        "studies": [
+          {
+            "id": "PJf7A9",
+            "name": "Position Cost Distribution SET"
+          },
+          {
+            "id": "za1vSK",
+            "name": "CPR Weekly Camarilla SET"
+          },
+          {
+            "id": "KTtKxP",
+            "name": "Pivot Point Supertrend [SET]"
+          },
+          {
+            "id": "FuKb0u",
+            "name": "SET Swing Dashboard [7-Star Confluence]"
+          },
+          {
+            "id": "jFgf2I",
+            "name": "Laguerre RSI Ehlers [SET]"
+          },
+          {
+            "id": "I78FBT",
+            "name": "Hurst Choppiness [SET] Regime"
+          }
+        ]
+      },
+      "indicators": {
+        "success": true,
+        "study_count": 5,
+        "studies": [
+          {
+            "name": "Pivot Point Supertrend [SET]",
+            "values": {
+              "Up Trend": "141.6",
+              "Buy": "0.00",
+              "Sell": "0.00"
+            }
+          },
+          {
+            "name": "Position Cost Distribution SET",
+            "values": {
+              "Peak Cost Zone": "145.4"
+            }
+          },
+          {
+            "name": "SET Swing Dashboard [7-Star Confluence]",
+            "values": {
+              "Confluence Score": "3.00"
+            }
+          },
+          {
+            "name": "Laguerre RSI Ehlers [SET]",
+            "values": {
+              "Laguerre RSI": "0.000",
+              "Long Entry": "0.000",
+              "Short Entry": "0.000",
+              "Mid Up": "0.000",
+              "Mid Down": "0.000"
+            }
+          },
+          {
+            "name": "Hurst Choppiness [SET] Regime",
+            "values": {
+              "Hurst Smooth": "0.812",
+              "Hurst Raw": "0.813",
+              "Choppiness (norm)": "0.000"
+            }
+          }
+        ]
+      },
+      "quote": {
+        "success": true,
+        "symbol": "SET_DLY:SCB",
+        "time": 1777255200,
+        "open": 129.5,
+        "high": 132,
+        "low": 129.5,
+        "close": 132,
+        "last": 132,
+        "volume": 14273824,
+        "description": "SCB X Public Company Limited",
+        "exchange": "SET",
+        "type": "stock"
+      }
+    },
+    {
+      "symbol": "SET:KBANK",
+      "timeframe": "1D",
+      "state": {
+        "success": true,
+        "symbol": "SET_DLY:KBANK",
+        "resolution": "1D",
+        "chartType": 1,
+        "studies": [
+          {
+            "id": "PJf7A9",
+            "name": "Position Cost Distribution SET"
+          },
+          {
+            "id": "za1vSK",
+            "name": "CPR Weekly Camarilla SET"
+          },
+          {
+            "id": "KTtKxP",
+            "name": "Pivot Point Supertrend [SET]"
+          },
+          {
+            "id": "FuKb0u",
+            "name": "SET Swing Dashboard [7-Star Confluence]"
+          },
+          {
+            "id": "jFgf2I",
+            "name": "Laguerre RSI Ehlers [SET]"
+          },
+          {
+            "id": "I78FBT",
+            "name": "Hurst Choppiness [SET] Regime"
+          }
+        ]
+      },
+      "indicators": {
+        "success": true,
+        "study_count": 5,
+        "studies": [
+          {
+            "name": "Pivot Point Supertrend [SET]",
+            "values": {
+              "Down Trend": "196.1",
+              "Buy": "0.00",
+              "Sell": "0.00"
+            }
+          },
+          {
+            "name": "Position Cost Distribution SET",
+            "values": {
+              "Peak Cost Zone": "189.5"
+            }
+          },
+          {
+            "name": "SET Swing Dashboard [7-Star Confluence]",
+            "values": {
+              "Confluence Score": "6.00"
+            }
+          },
+          {
+            "name": "Laguerre RSI Ehlers [SET]",
+            "values": {
+              "Laguerre RSI": "0.277",
+              "Long Entry": "1.000",
+              "Short Entry": "0.000",
+              "Mid Up": "0.000",
+              "Mid Down": "0.000"
+            }
+          },
+          {
+            "name": "Hurst Choppiness [SET] Regime",
+            "values": {
+              "Hurst Smooth": "0.723",
+              "Hurst Raw": "0.723",
+              "Choppiness (norm)": "0.220"
+            }
+          }
+        ]
+      },
+      "quote": {
+        "success": true,
+        "symbol": "SET_DLY:KBANK",
+        "time": 1777255200,
+        "open": 190,
+        "high": 191,
+        "low": 189,
+        "close": 191,
+        "last": 191,
+        "volume": 5997904,
+        "description": "Kasikornbank Public Co. Ltd.",
+        "exchange": "SET",
+        "type": "stock"
+      }
+    },
+    {
+      "symbol": "SET:BBL",
+      "timeframe": "1D",
+      "state": {
+        "success": true,
+        "symbol": "SET_DLY:BBL",
+        "resolution": "1D",
+        "chartType": 1,
+        "studies": [
+          {
+            "id": "PJf7A9",
+            "name": "Position Cost Distribution SET"
+          },
+          {
+            "id": "za1vSK",
+            "name": "CPR Weekly Camarilla SET"
+          },
+          {
+            "id": "KTtKxP",
+            "name": "Pivot Point Supertrend [SET]"
+          },
+          {
+            "id": "FuKb0u",
+            "name": "SET Swing Dashboard [7-Star Confluence]"
+          },
+          {
+            "id": "jFgf2I",
+            "name": "Laguerre RSI Ehlers [SET]"
+          },
+          {
+            "id": "I78FBT",
+            "name": "Hurst Choppiness [SET] Regime"
+          }
+        ]
+      },
+      "indicators": {
+        "success": true,
+        "study_count": 5,
+        "studies": [
+          {
+            "name": "Pivot Point Supertrend [SET]",
+            "values": {
+              "Up Trend": "162.8",
+              "Buy": "0.00",
+              "Sell": "0.00"
+            }
+          },
+          {
+            "name": "Position Cost Distribution SET",
+            "values": {
+              "Peak Cost Zone": "166.4"
+            }
+          },
+          {
+            "name": "SET Swing Dashboard [7-Star Confluence]",
+            "values": {
+              "Confluence Score": "4.00"
+            }
+          },
+          {
+            "name": "Laguerre RSI Ehlers [SET]",
+            "values": {
+              "Laguerre RSI": "0.200",
+              "Long Entry": "0.000",
+              "Short Entry": "0.000",
+              "Mid Up": "0.000",
+              "Mid Down": "0.000"
+            }
+          },
+          {
+            "name": "Hurst Choppiness [SET] Regime",
+            "values": {
+              "Hurst Smooth": "0.686",
+              "Hurst Raw": "0.690",
+              "Choppiness (norm)": "0.318"
+            }
+          }
+        ]
+      },
+      "quote": {
+        "success": true,
+        "symbol": "SET_DLY:BBL",
+        "time": 1777255200,
+        "open": 158.5,
+        "high": 161,
+        "low": 158.5,
+        "close": 160.5,
+        "last": 160.5,
+        "volume": 5832397,
+        "description": "Bangkok Bank Public Company Limited",
+        "exchange": "SET",
+        "type": "stock"
+      }
+    },
+    {
+      "symbol": "SET:KTB",
+      "timeframe": "1D",
+      "state": {
+        "success": true,
+        "symbol": "SET_DLY:KTB",
+        "resolution": "1D",
+        "chartType": 1,
+        "studies": [
+          {
+            "id": "PJf7A9",
+            "name": "Position Cost Distribution SET"
+          },
+          {
+            "id": "za1vSK",
+            "name": "CPR Weekly Camarilla SET"
+          },
+          {
+            "id": "KTtKxP",
+            "name": "Pivot Point Supertrend [SET]"
+          },
+          {
+            "id": "FuKb0u",
+            "name": "SET Swing Dashboard [7-Star Confluence]"
+          },
+          {
+            "id": "jFgf2I",
+            "name": "Laguerre RSI Ehlers [SET]"
+          },
+          {
+            "id": "I78FBT",
+            "name": "Hurst Choppiness [SET] Regime"
+          }
+        ]
+      },
+      "indicators": {
+        "success": true,
+        "study_count": 5,
+        "studies": [
+          {
+            "name": "Pivot Point Supertrend [SET]",
+            "values": {
+              "Down Trend": "35.37",
+              "Buy": "0.00",
+              "Sell": "0.00"
+            }
+          },
+          {
+            "name": "Position Cost Distribution SET",
+            "values": {
+              "Peak Cost Zone": "32.83"
+            }
+          },
+          {
+            "name": "SET Swing Dashboard [7-Star Confluence]",
+            "values": {
+              "Confluence Score": "4.00"
+            }
+          },
+          {
+            "name": "Laguerre RSI Ehlers [SET]",
+            "values": {
+              "Laguerre RSI": "0.000",
+              "Long Entry": "0.000",
+              "Short Entry": "0.000",
+              "Mid Up": "0.000",
+              "Mid Down": "0.000"
+            }
+          },
+          {
+            "name": "Hurst Choppiness [SET] Regime",
+            "values": {
+              "Hurst Smooth": "0.834",
+              "Hurst Raw": "0.834",
+              "Choppiness (norm)": "0.161"
+            }
+          }
+        ]
+      },
+      "quote": {
+        "success": true,
+        "symbol": "SET_DLY:KTB",
+        "time": 1777255200,
+        "open": 32.5,
+        "high": 32.75,
+        "low": 32.25,
+        "close": 32.5,
+        "last": 32.5,
+        "volume": 16934863,
+        "description": "Krung Thai Bank Public Co., Ltd.",
+        "exchange": "SET",
+        "type": "stock"
+      }
+    },
+    {
+      "symbol": "SET:CPALL",
+      "timeframe": "1D",
+      "state": {
+        "success": true,
+        "symbol": "SET_DLY:CPALL",
+        "resolution": "1D",
+        "chartType": 1,
+        "studies": [
+          {
+            "id": "PJf7A9",
+            "name": "Position Cost Distribution SET"
+          },
+          {
+            "id": "za1vSK",
+            "name": "CPR Weekly Camarilla SET"
+          },
+          {
+            "id": "KTtKxP",
+            "name": "Pivot Point Supertrend [SET]"
+          },
+          {
+            "id": "FuKb0u",
+            "name": "SET Swing Dashboard [7-Star Confluence]"
+          },
+          {
+            "id": "jFgf2I",
+            "name": "Laguerre RSI Ehlers [SET]"
+          },
+          {
+            "id": "I78FBT",
+            "name": "Hurst Choppiness [SET] Regime"
+          }
+        ]
+      },
+      "indicators": {
+        "success": true,
+        "study_count": 5,
+        "studies": [
+          {
+            "name": "Pivot Point Supertrend [SET]",
+            "values": {
+              "Down Trend": "48.74",
+              "Buy": "0.00",
+              "Sell": "0.00"
+            }
+          },
+          {
+            "name": "Position Cost Distribution SET",
+            "values": {
+              "Peak Cost Zone": "45.87"
+            }
+          },
+          {
+            "name": "SET Swing Dashboard [7-Star Confluence]",
+            "values": {
+              "Confluence Score": "3.00"
+            }
+          },
+          {
+            "name": "Laguerre RSI Ehlers [SET]",
+            "values": {
+              "Laguerre RSI": "0.328",
+              "Long Entry": "0.000",
+              "Short Entry": "0.000",
+              "Mid Up": "0.000",
+              "Mid Down": "0.000"
+            }
+          },
+          {
+            "name": "Hurst Choppiness [SET] Regime",
+            "values": {
+              "Hurst Smooth": "0.779",
+              "Hurst Raw": "0.777",
+              "Choppiness (norm)": "0.242"
+            }
+          }
+        ]
+      },
+      "quote": {
+        "success": true,
+        "symbol": "SET_DLY:CPALL",
+        "time": 1777255200,
+        "open": 44.75,
+        "high": 45,
+        "low": 44.25,
+        "close": 44.5,
+        "last": 44.5,
+        "volume": 12088104,
+        "description": "CP ALL Public Company Limited",
+        "exchange": "SET",
+        "type": "stock"
+      }
+    },
+    {
+      "symbol": "SET:CPAXT",
+      "timeframe": "1D",
+      "state": {
+        "success": true,
+        "symbol": "SET_DLY:CPAXT",
+        "resolution": "1D",
+        "chartType": 1,
+        "studies": [
+          {
+            "id": "PJf7A9",
+            "name": "Position Cost Distribution SET"
+          },
+          {
+            "id": "za1vSK",
+            "name": "CPR Weekly Camarilla SET"
+          },
+          {
+            "id": "KTtKxP",
+            "name": "Pivot Point Supertrend [SET]"
+          },
+          {
+            "id": "FuKb0u",
+            "name": "SET Swing Dashboard [7-Star Confluence]"
+          },
+          {
+            "id": "jFgf2I",
+            "name": "Laguerre RSI Ehlers [SET]"
+          },
+          {
+            "id": "I78FBT",
+            "name": "Hurst Choppiness [SET] Regime"
+          }
+        ]
+      },
+      "indicators": {
+        "success": true,
+        "study_count": 5,
+        "studies": [
+          {
+            "name": "Pivot Point Supertrend [SET]",
+            "values": {
+              "Down Trend": "16.6",
+              "Buy": "0.00",
+              "Sell": "0.00"
+            }
+          },
+          {
+            "name": "Position Cost Distribution SET",
+            "values": {
+              "Peak Cost Zone": "16.0"
+            }
+          },
+          {
+            "name": "SET Swing Dashboard [7-Star Confluence]",
+            "values": {
+              "Confluence Score": "2.00"
+            }
+          },
+          {
+            "name": "Laguerre RSI Ehlers [SET]",
+            "values": {
+              "Laguerre RSI": "0.000",
+              "Long Entry": "0.000",
+              "Short Entry": "0.000",
+              "Mid Up": "0.000",
+              "Mid Down": "0.000"
+            }
+          },
+          {
+            "name": "Hurst Choppiness [SET] Regime",
+            "values": {
+              "Hurst Smooth": "0.683",
+              "Hurst Raw": "0.683",
+              "Choppiness (norm)": "0.205"
+            }
+          }
+        ]
+      },
+      "quote": {
+        "success": true,
+        "symbol": "SET_DLY:CPAXT",
+        "time": 1777255200,
+        "open": 14.7,
+        "high": 14.8,
+        "low": 14.4,
+        "close": 14.5,
+        "last": 14.5,
+        "volume": 14504315,
+        "description": "CP Axtra Public Company Limited",
+        "exchange": "SET",
+        "type": "stock"
+      }
+    },
+    {
+      "symbol": "SET:CPN",
+      "timeframe": "1D",
+      "state": {
+        "success": true,
+        "symbol": "SET_DLY:CPN",
+        "resolution": "1D",
+        "chartType": 1,
+        "studies": [
+          {
+            "id": "PJf7A9",
+            "name": "Position Cost Distribution SET"
+          },
+          {
+            "id": "za1vSK",
+            "name": "CPR Weekly Camarilla SET"
+          },
+          {
+            "id": "KTtKxP",
+            "name": "Pivot Point Supertrend [SET]"
+          },
+          {
+            "id": "FuKb0u",
+            "name": "SET Swing Dashboard [7-Star Confluence]"
+          },
+          {
+            "id": "jFgf2I",
+            "name": "Laguerre RSI Ehlers [SET]"
+          },
+          {
+            "id": "I78FBT",
+            "name": "Hurst Choppiness [SET] Regime"
+          }
+        ]
+      },
+      "indicators": {
+        "success": true,
+        "study_count": 5,
+        "studies": [
+          {
+            "name": "Pivot Point Supertrend [SET]",
+            "values": {
+              "Up Trend": "59.80",
+              "Buy": "0.00",
+              "Sell": "0.00"
+            }
+          },
+          {
+            "name": "Position Cost Distribution SET",
+            "values": {
+              "Peak Cost Zone": "64.41"
+            }
+          },
+          {
+            "name": "SET Swing Dashboard [7-Star Confluence]",
+            "values": {
+              "Confluence Score": "7.00"
+            }
+          },
+          {
+            "name": "Laguerre RSI Ehlers [SET]",
+            "values": {
+              "Laguerre RSI": "0.498",
+              "Long Entry": "0.000",
+              "Short Entry": "0.000",
+              "Mid Up": "0.000",
+              "Mid Down": "1.000"
+            }
+          },
+          {
+            "name": "Hurst Choppiness [SET] Regime",
+            "values": {
+              "Hurst Smooth": "0.828",
+              "Hurst Raw": "0.827",
+              "Choppiness (norm)": "0.470"
+            }
+          }
+        ]
+      },
+      "quote": {
+        "success": true,
+        "symbol": "SET_DLY:CPN",
+        "time": 1777255200,
+        "open": 62.5,
+        "high": 62.75,
+        "low": 61.75,
+        "close": 62.25,
+        "last": 62.25,
+        "volume": 1553785,
+        "description": "Central Pattana Public Co. Ltd.",
+        "exchange": "SET",
+        "type": "stock"
+      }
+    },
+    {
+      "symbol": "SET:ADVANC",
+      "timeframe": "1D",
+      "state": {
+        "success": true,
+        "symbol": "SET_DLY:ADVANC",
+        "resolution": "1D",
+        "chartType": 1,
+        "studies": [
+          {
+            "id": "PJf7A9",
+            "name": "Position Cost Distribution SET"
+          },
+          {
+            "id": "za1vSK",
+            "name": "CPR Weekly Camarilla SET"
+          },
+          {
+            "id": "KTtKxP",
+            "name": "Pivot Point Supertrend [SET]"
+          },
+          {
+            "id": "FuKb0u",
+            "name": "SET Swing Dashboard [7-Star Confluence]"
+          },
+          {
+            "id": "jFgf2I",
+            "name": "Laguerre RSI Ehlers [SET]"
+          },
+          {
+            "id": "I78FBT",
+            "name": "Hurst Choppiness [SET] Regime"
+          }
+        ]
+      },
+      "indicators": {
+        "success": true,
+        "study_count": 5,
+        "studies": [
+          {
+            "name": "Pivot Point Supertrend [SET]",
+            "values": {
+              "Down Trend": "377",
+              "Buy": "0.00",
+              "Sell": "0.00"
+            }
+          },
+          {
+            "name": "Position Cost Distribution SET",
+            "values": {
+              "Peak Cost Zone": "363"
+            }
+          },
+          {
+            "name": "SET Swing Dashboard [7-Star Confluence]",
+            "values": {
+              "Confluence Score": "4.00"
+            }
+          },
+          {
+            "name": "Laguerre RSI Ehlers [SET]",
+            "values": {
+              "Laguerre RSI": "0.000",
+              "Long Entry": "0.000",
+              "Short Entry": "0.000",
+              "Mid Up": "0.000",
+              "Mid Down": "0.000"
+            }
+          },
+          {
+            "name": "Hurst Choppiness [SET] Regime",
+            "values": {
+              "Hurst Smooth": "0.817",
+              "Hurst Raw": "0.813",
+              "Choppiness (norm)": "0.179"
+            }
+          }
+        ]
+      },
+      "quote": {
+        "success": true,
+        "symbol": "SET_DLY:ADVANC",
+        "time": 1777255200,
+        "open": 350,
+        "high": 351,
+        "low": 349,
+        "close": 351,
+        "last": 351,
+        "volume": 965284,
+        "description": "Advanced Info Service Public Co., Ltd.",
+        "exchange": "SET",
+        "type": "stock"
+      }
+    },
+    {
+      "symbol": "SET:AOT",
+      "timeframe": "1D",
+      "state": {
+        "success": true,
+        "symbol": "SET_DLY:AOT",
+        "resolution": "1D",
+        "chartType": 1,
+        "studies": [
+          {
+            "id": "PJf7A9",
+            "name": "Position Cost Distribution SET"
+          },
+          {
+            "id": "za1vSK",
+            "name": "CPR Weekly Camarilla SET"
+          },
+          {
+            "id": "KTtKxP",
+            "name": "Pivot Point Supertrend [SET]"
+          },
+          {
+            "id": "FuKb0u",
+            "name": "SET Swing Dashboard [7-Star Confluence]"
+          },
+          {
+            "id": "jFgf2I",
+            "name": "Laguerre RSI Ehlers [SET]"
+          },
+          {
+            "id": "I78FBT",
+            "name": "Hurst Choppiness [SET] Regime"
+          }
+        ]
+      },
+      "indicators": {
+        "success": true,
+        "study_count": 5,
+        "studies": [
+          {
+            "name": "Pivot Point Supertrend [SET]",
+            "values": {
+              "Up Trend": "50.75",
+              "Buy": "0.00",
+              "Sell": "0.00"
+            }
+          },
+          {
+            "name": "Position Cost Distribution SET",
+            "values": {
+              "Peak Cost Zone": "54.72"
+            }
+          },
+          {
+            "name": "SET Swing Dashboard [7-Star Confluence]",
+            "values": {
+              "Confluence Score": "7.00"
+            }
+          },
+          {
+            "name": "Laguerre RSI Ehlers [SET]",
+            "values": {
+              "Laguerre RSI": "0.812",
+              "Long Entry": "0.000",
+              "Short Entry": "0.000",
+              "Mid Up": "0.000",
+              "Mid Down": "0.000"
+            }
+          },
+          {
+            "name": "Hurst Choppiness [SET] Regime",
+            "values": {
+              "Hurst Smooth": "0.692",
+              "Hurst Raw": "0.673",
+              "Choppiness (norm)": "0.404"
+            }
+          }
+        ]
+      },
+      "quote": {
+        "success": true,
+        "symbol": "SET_DLY:AOT",
+        "time": 1777255200,
+        "open": 54.5,
+        "high": 54.75,
+        "low": 54,
+        "close": 54,
+        "last": 54,
+        "volume": 4649800,
+        "description": "Airports of Thailand Public Co Ltd",
+        "exchange": "SET",
+        "type": "stock"
+      }
+    },
+    {
+      "symbol": "SET:BDMS",
+      "timeframe": "1D",
+      "state": {
+        "success": true,
+        "symbol": "SET_DLY:BDMS",
+        "resolution": "1D",
+        "chartType": 1,
+        "studies": [
+          {
+            "id": "PJf7A9",
+            "name": "Position Cost Distribution SET"
+          },
+          {
+            "id": "za1vSK",
+            "name": "CPR Weekly Camarilla SET"
+          },
+          {
+            "id": "KTtKxP",
+            "name": "Pivot Point Supertrend [SET]"
+          },
+          {
+            "id": "FuKb0u",
+            "name": "SET Swing Dashboard [7-Star Confluence]"
+          },
+          {
+            "id": "jFgf2I",
+            "name": "Laguerre RSI Ehlers [SET]"
+          },
+          {
+            "id": "I78FBT",
+            "name": "Hurst Choppiness [SET] Regime"
+          }
+        ]
+      },
+      "indicators": {
+        "success": true,
+        "study_count": 5,
+        "studies": [
+          {
+            "name": "Pivot Point Supertrend [SET]",
+            "values": {
+              "Down Trend": "19.5",
+              "Buy": "0.00",
+              "Sell": "0.00"
+            }
+          },
+          {
+            "name": "Position Cost Distribution SET",
+            "values": {
+              "Peak Cost Zone": "18.5"
+            }
+          },
+          {
+            "name": "SET Swing Dashboard [7-Star Confluence]",
+            "values": {
+              "Confluence Score": "3.00"
+            }
+          },
+          {
+            "name": "Laguerre RSI Ehlers [SET]",
+            "values": {
+              "Laguerre RSI": "0.000",
+              "Long Entry": "0.000",
+              "Short Entry": "0.000",
+              "Mid Up": "0.000",
+              "Mid Down": "0.000"
+            }
+          },
+          {
+            "name": "Hurst Choppiness [SET] Regime",
+            "values": {
+              "Hurst Smooth": "0.789",
+              "Hurst Raw": "0.789",
+              "Choppiness (norm)": "0.360"
+            }
+          }
+        ]
+      },
+      "quote": {
+        "success": true,
+        "symbol": "SET_DLY:BDMS",
+        "time": 1777255200,
+        "open": 18.5,
+        "high": 18.5,
+        "low": 18.3,
+        "close": 18.4,
+        "last": 18.4,
+        "volume": 20151356,
+        "description": "Bangkok Dusit Medical Services Public Co. Ltd.",
+        "exchange": "SET",
+        "type": "stock"
+      }
+    },
+    {
+      "symbol": "SET:BH",
+      "timeframe": "1D",
+      "state": {
+        "success": true,
+        "symbol": "SET_DLY:BH",
+        "resolution": "1D",
+        "chartType": 1,
+        "studies": [
+          {
+            "id": "PJf7A9",
+            "name": "Position Cost Distribution SET"
+          },
+          {
+            "id": "za1vSK",
+            "name": "CPR Weekly Camarilla SET"
+          },
+          {
+            "id": "KTtKxP",
+            "name": "Pivot Point Supertrend [SET]"
+          },
+          {
+            "id": "FuKb0u",
+            "name": "SET Swing Dashboard [7-Star Confluence]"
+          },
+          {
+            "id": "jFgf2I",
+            "name": "Laguerre RSI Ehlers [SET]"
+          },
+          {
+            "id": "I78FBT",
+            "name": "Hurst Choppiness [SET] Regime"
+          }
+        ]
+      },
+      "indicators": {
+        "success": true,
+        "study_count": 5,
+        "studies": [
+          {
+            "name": "Pivot Point Supertrend [SET]",
+            "values": {
+              "Down Trend": "181.9",
+              "Buy": "0.00",
+              "Sell": "0.00"
+            }
+          },
+          {
+            "name": "Position Cost Distribution SET",
+            "values": {
+              "Peak Cost Zone": "171.1"
+            }
+          },
+          {
+            "name": "SET Swing Dashboard [7-Star Confluence]",
+            "values": {
+              "Confluence Score": "5.00"
+            }
+          },
+          {
+            "name": "Laguerre RSI Ehlers [SET]",
+            "values": {
+              "Laguerre RSI": "0.664",
+              "Long Entry": "0.000",
+              "Short Entry": "1.000",
+              "Mid Up": "0.000",
+              "Mid Down": "0.000"
+            }
+          },
+          {
+            "name": "Hurst Choppiness [SET] Regime",
+            "values": {
+              "Hurst Smooth": "0.751",
+              "Hurst Raw": "0.752",
+              "Choppiness (norm)": "0.380"
+            }
+          }
+        ]
+      },
+      "quote": {
+        "success": true,
+        "symbol": "SET_DLY:BH",
+        "time": 1777255200,
+        "open": 169.5,
+        "high": 171,
+        "low": 168.5,
+        "close": 169.5,
+        "last": 169.5,
+        "volume": 1567351,
+        "description": "Bumrungrad Hospital Public Co., Ltd.",
+        "exchange": "SET",
+        "type": "stock"
+      }
+    },
+    {
+      "symbol": "SET:BCH",
+      "timeframe": "1D",
+      "state": {
+        "success": true,
+        "symbol": "SET_DLY:BCH",
+        "resolution": "1D",
+        "chartType": 1,
+        "studies": [
+          {
+            "id": "PJf7A9",
+            "name": "Position Cost Distribution SET"
+          },
+          {
+            "id": "za1vSK",
+            "name": "CPR Weekly Camarilla SET"
+          },
+          {
+            "id": "KTtKxP",
+            "name": "Pivot Point Supertrend [SET]"
+          },
+          {
+            "id": "FuKb0u",
+            "name": "SET Swing Dashboard [7-Star Confluence]"
+          },
+          {
+            "id": "jFgf2I",
+            "name": "Laguerre RSI Ehlers [SET]"
+          },
+          {
+            "id": "I78FBT",
+            "name": "Hurst Choppiness [SET] Regime"
+          }
+        ]
+      },
+      "indicators": {
+        "success": true,
+        "study_count": 5,
+        "studies": [
+          {
+            "name": "Pivot Point Supertrend [SET]",
+            "values": {
+              "Down Trend": "10.4",
+              "Buy": "0.00",
+              "Sell": "0.00"
+            }
+          },
+          {
+            "name": "Position Cost Distribution SET",
+            "values": {
+              "Peak Cost Zone": "9.82"
+            }
+          },
+          {
+            "name": "SET Swing Dashboard [7-Star Confluence]",
+            "values": {
+              "Confluence Score": "4.00"
+            }
+          },
+          {
+            "name": "Laguerre RSI Ehlers [SET]",
+            "values": {
+              "Laguerre RSI": "0.602",
+              "Long Entry": "0.000",
+              "Short Entry": "0.000",
+              "Mid Up": "0.000",
+              "Mid Down": "0.000"
+            }
+          },
+          {
+            "name": "Hurst Choppiness [SET] Regime",
+            "values": {
+              "Hurst Smooth": "0.728",
+              "Hurst Raw": "0.731",
+              "Choppiness (norm)": "0.655"
+            }
+          }
+        ]
+      },
+      "quote": {
+        "success": true,
+        "symbol": "SET_DLY:BCH",
+        "time": 1777255200,
+        "open": 9.8,
+        "high": 9.85,
+        "low": 9.75,
+        "close": 9.85,
+        "last": 9.85,
+        "volume": 1380975,
+        "description": "Bangkok Chain Hospital Public Co., Ltd.",
+        "exchange": "SET",
+        "type": "stock"
+      }
+    },
+    {
+      "symbol": "SET:OR",
+      "timeframe": "1D",
+      "state": {
+        "success": true,
+        "symbol": "SET_DLY:OR",
+        "resolution": "1D",
+        "chartType": 1,
+        "studies": [
+          {
+            "id": "PJf7A9",
+            "name": "Position Cost Distribution SET"
+          },
+          {
+            "id": "za1vSK",
+            "name": "CPR Weekly Camarilla SET"
+          },
+          {
+            "id": "KTtKxP",
+            "name": "Pivot Point Supertrend [SET]"
+          },
+          {
+            "id": "FuKb0u",
+            "name": "SET Swing Dashboard [7-Star Confluence]"
+          },
+          {
+            "id": "jFgf2I",
+            "name": "Laguerre RSI Ehlers [SET]"
+          },
+          {
+            "id": "I78FBT",
+            "name": "Hurst Choppiness [SET] Regime"
+          }
+        ]
+      },
+      "indicators": {
+        "success": true,
+        "study_count": 5,
+        "studies": [
+          {
+            "name": "Pivot Point Supertrend [SET]",
+            "values": {
+              "Up Trend": "11.5",
+              "Buy": "0.00",
+              "Sell": "0.00"
+            }
+          },
+          {
+            "name": "Position Cost Distribution SET",
+            "values": {
+              "Peak Cost Zone": "12.2"
+            }
+          },
+          {
+            "name": "SET Swing Dashboard [7-Star Confluence]",
+            "values": {
+              "Confluence Score": "4.00"
+            }
+          },
+          {
+            "name": "Laguerre RSI Ehlers [SET]",
+            "values": {
+              "Laguerre RSI": "0.000",
+              "Long Entry": "0.000",
+              "Short Entry": "0.000",
+              "Mid Up": "0.000",
+              "Mid Down": "0.000"
+            }
+          },
+          {
+            "name": "Hurst Choppiness [SET] Regime",
+            "values": {
+              "Hurst Smooth": "0.797",
+              "Hurst Raw": "0.802",
+              "Choppiness (norm)": "0.375"
+            }
+          }
+        ]
+      },
+      "quote": {
+        "success": true,
+        "symbol": "SET_DLY:OR",
+        "time": 1777255200,
+        "open": 11.9,
+        "high": 12.3,
+        "low": 11.9,
+        "close": 12.2,
+        "last": 12.2,
+        "volume": 24298199,
+        "description": "PTT Oil and Retail Business Public Co Limited",
+        "exchange": "SET",
+        "type": "stock"
+      }
+    },
+    {
+      "symbol": "SET:OSP",
+      "timeframe": "1D",
+      "state": {
+        "success": true,
+        "symbol": "SET_DLY:OSP",
+        "resolution": "1D",
+        "chartType": 1,
+        "studies": [
+          {
+            "id": "PJf7A9",
+            "name": "Position Cost Distribution SET"
+          },
+          {
+            "id": "za1vSK",
+            "name": "CPR Weekly Camarilla SET"
+          },
+          {
+            "id": "KTtKxP",
+            "name": "Pivot Point Supertrend [SET]"
+          },
+          {
+            "id": "FuKb0u",
+            "name": "SET Swing Dashboard [7-Star Confluence]"
+          },
+          {
+            "id": "jFgf2I",
+            "name": "Laguerre RSI Ehlers [SET]"
+          },
+          {
+            "id": "I78FBT",
+            "name": "Hurst Choppiness [SET] Regime"
+          }
+        ]
+      },
+      "indicators": {
+        "success": true,
+        "study_count": 5,
+        "studies": [
+          {
+            "name": "Pivot Point Supertrend [SET]",
+            "values": {
+              "Down Trend": "15.7",
+              "Buy": "0.00",
+              "Sell": "0.00"
+            }
+          },
+          {
+            "name": "Position Cost Distribution SET",
+            "values": {
+              "Peak Cost Zone": "15.2"
+            }
+          },
+          {
+            "name": "SET Swing Dashboard [7-Star Confluence]",
+            "values": {
+              "Confluence Score": "3.00"
+            }
+          },
+          {
+            "name": "Laguerre RSI Ehlers [SET]",
+            "values": {
+              "Laguerre RSI": "0.897",
+              "Long Entry": "0.000",
+              "Short Entry": "0.000",
+              "Mid Up": "0.000",
+              "Mid Down": "0.000"
+            }
+          },
+          {
+            "name": "Hurst Choppiness [SET] Regime",
+            "values": {
+              "Hurst Smooth": "0.812",
+              "Hurst Raw": "0.812",
+              "Choppiness (norm)": "0.390"
+            }
+          }
+        ]
+      },
+      "quote": {
+        "success": true,
+        "symbol": "SET_DLY:OSP",
+        "time": 1777255200,
+        "open": 15.4,
+        "high": 15.8,
+        "low": 15.3,
+        "close": 15.6,
+        "last": 15.6,
+        "volume": 8002504,
+        "description": "Osotspa Public Co. Ltd.",
+        "exchange": "SET",
+        "type": "stock"
+      }
+    },
+    {
+      "symbol": "SET:MEGA",
+      "timeframe": "1D",
+      "state": {
+        "success": true,
+        "symbol": "SET_DLY:MEGA",
+        "resolution": "1D",
+        "chartType": 1,
+        "studies": [
+          {
+            "id": "PJf7A9",
+            "name": "Position Cost Distribution SET"
+          },
+          {
+            "id": "za1vSK",
+            "name": "CPR Weekly Camarilla SET"
+          },
+          {
+            "id": "KTtKxP",
+            "name": "Pivot Point Supertrend [SET]"
+          },
+          {
+            "id": "FuKb0u",
+            "name": "SET Swing Dashboard [7-Star Confluence]"
+          },
+          {
+            "id": "jFgf2I",
+            "name": "Laguerre RSI Ehlers [SET]"
+          },
+          {
+            "id": "I78FBT",
+            "name": "Hurst Choppiness [SET] Regime"
+          }
+        ]
+      },
+      "indicators": {
+        "success": true,
+        "study_count": 5,
+        "studies": [
+          {
+            "name": "Pivot Point Supertrend [SET]",
+            "values": {
+              "Down Trend": "35.95",
+              "Buy": "0.00",
+              "Sell": "0.00"
+            }
+          },
+          {
+            "name": "Position Cost Distribution SET",
+            "values": {
+              "Peak Cost Zone": "33.67"
+            }
+          },
+          {
+            "name": "SET Swing Dashboard [7-Star Confluence]",
+            "values": {
+              "Confluence Score": "6.00"
+            }
+          },
+          {
+            "name": "Laguerre RSI Ehlers [SET]",
+            "values": {
+              "Laguerre RSI": "0.741",
+              "Long Entry": "0.000",
+              "Short Entry": "0.000",
+              "Mid Up": "1.000",
+              "Mid Down": "0.000"
+            }
+          },
+          {
+            "name": "Hurst Choppiness [SET] Regime",
+            "values": {
+              "Hurst Smooth": "0.800",
+              "Hurst Raw": "0.800",
+              "Choppiness (norm)": "0.643"
+            }
+          }
+        ]
+      },
+      "quote": {
+        "success": true,
+        "symbol": "SET_DLY:MEGA",
+        "time": 1777255200,
+        "open": 33.25,
+        "high": 34.5,
+        "low": 33.25,
+        "close": 34.5,
+        "last": 34.5,
+        "volume": 458190,
+        "description": "Mega Lifesciences Public Co. Ltd.",
+        "exchange": "SET",
+        "type": "stock"
+      }
+    },
+    {
+      "symbol": "SET:WHA",
+      "timeframe": "1D",
+      "state": {
+        "success": true,
+        "symbol": "SET_DLY:WHA",
+        "resolution": "1D",
+        "chartType": 1,
+        "studies": [
+          {
+            "id": "PJf7A9",
+            "name": "Position Cost Distribution SET"
+          },
+          {
+            "id": "za1vSK",
+            "name": "CPR Weekly Camarilla SET"
+          },
+          {
+            "id": "KTtKxP",
+            "name": "Pivot Point Supertrend [SET]"
+          },
+          {
+            "id": "FuKb0u",
+            "name": "SET Swing Dashboard [7-Star Confluence]"
+          },
+          {
+            "id": "jFgf2I",
+            "name": "Laguerre RSI Ehlers [SET]"
+          },
+          {
+            "id": "I78FBT",
+            "name": "Hurst Choppiness [SET] Regime"
+          }
+        ]
+      },
+      "indicators": {
+        "success": true,
+        "study_count": 5,
+        "studies": [
+          {
+            "name": "Pivot Point Supertrend [SET]",
+            "values": {
+              "Up Trend": "4.10",
+              "Buy": "1.00",
+              "Sell": "0.00"
+            }
+          },
+          {
+            "name": "Position Cost Distribution SET",
+            "values": {
+              "Peak Cost Zone": "4.42"
+            }
+          },
+          {
+            "name": "SET Swing Dashboard [7-Star Confluence]",
+            "values": {
+              "Confluence Score": "6.00"
+            }
+          },
+          {
+            "name": "Laguerre RSI Ehlers [SET]",
+            "values": {
+              "Laguerre RSI": "1.000",
+              "Long Entry": "0.000",
+              "Short Entry": "0.000",
+              "Mid Up": "0.000",
+              "Mid Down": "0.000"
+            }
+          },
+          {
+            "name": "Hurst Choppiness [SET] Regime",
+            "values": {
+              "Hurst Smooth": "0.840",
+              "Hurst Raw": "0.840",
+              "Choppiness (norm)": "0.329"
+            }
+          }
+        ]
+      },
+      "quote": {
+        "success": true,
+        "symbol": "SET_DLY:WHA",
+        "time": 1777255200,
+        "open": 4.4,
+        "high": 4.44,
+        "low": 4.38,
+        "close": 4.42,
+        "last": 4.42,
+        "volume": 28719028,
+        "description": "WHA Corporation Public Company Limited",
+        "exchange": "SET",
+        "type": "stock"
+      }
+    },
+    {
+      "symbol": "SET:HMPRO",
+      "timeframe": "1D",
+      "state": {
+        "success": true,
+        "symbol": "SET_DLY:HMPRO",
+        "resolution": "1D",
+        "chartType": 1,
+        "studies": [
+          {
+            "id": "PJf7A9",
+            "name": "Position Cost Distribution SET"
+          },
+          {
+            "id": "za1vSK",
+            "name": "CPR Weekly Camarilla SET"
+          },
+          {
+            "id": "KTtKxP",
+            "name": "Pivot Point Supertrend [SET]"
+          },
+          {
+            "id": "FuKb0u",
+            "name": "SET Swing Dashboard [7-Star Confluence]"
+          },
+          {
+            "id": "jFgf2I",
+            "name": "Laguerre RSI Ehlers [SET]"
+          },
+          {
+            "id": "I78FBT",
+            "name": "Hurst Choppiness [SET] Regime"
+          }
+        ]
+      },
+      "indicators": {
+        "success": true,
+        "study_count": 5,
+        "studies": [
+          {
+            "name": "Pivot Point Supertrend [SET]",
+            "values": {
+              "Down Trend": "6.69",
+              "Buy": "0.00",
+              "Sell": "0.00"
+            }
+          },
+          {
+            "name": "Position Cost Distribution SET",
+            "values": {
+              "Peak Cost Zone": "6.14"
+            }
+          },
+          {
+            "name": "SET Swing Dashboard [7-Star Confluence]",
+            "values": {
+              "Confluence Score": "4.00"
+            }
+          },
+          {
+            "name": "Laguerre RSI Ehlers [SET]",
+            "values": {
+              "Laguerre RSI": "0.361",
+              "Long Entry": "0.000",
+              "Short Entry": "0.000",
+              "Mid Up": "0.000",
+              "Mid Down": "0.000"
+            }
+          },
+          {
+            "name": "Hurst Choppiness [SET] Regime",
+            "values": {
+              "Hurst Smooth": "0.800",
+              "Hurst Raw": "0.800",
+              "Choppiness (norm)": "0.516"
+            }
+          }
+        ]
+      },
+      "quote": {
+        "success": true,
+        "symbol": "SET_DLY:HMPRO",
+        "time": 1777255200,
+        "open": 6.1,
+        "high": 6.15,
+        "low": 6.1,
+        "close": 6.1,
+        "last": 6.1,
+        "volume": 2894395,
+        "description": "Home Product Center Public Co., Ltd.",
+        "exchange": "SET",
+        "type": "stock"
+      }
+    },
+    {
+      "symbol": "SET:GLOBAL",
+      "timeframe": "1D",
+      "state": {
+        "success": true,
+        "symbol": "SET_DLY:GLOBAL",
+        "resolution": "1D",
+        "chartType": 1,
+        "studies": [
+          {
+            "id": "PJf7A9",
+            "name": "Position Cost Distribution SET"
+          },
+          {
+            "id": "za1vSK",
+            "name": "CPR Weekly Camarilla SET"
+          },
+          {
+            "id": "KTtKxP",
+            "name": "Pivot Point Supertrend [SET]"
+          },
+          {
+            "id": "FuKb0u",
+            "name": "SET Swing Dashboard [7-Star Confluence]"
+          },
+          {
+            "id": "jFgf2I",
+            "name": "Laguerre RSI Ehlers [SET]"
+          },
+          {
+            "id": "I78FBT",
+            "name": "Hurst Choppiness [SET] Regime"
+          }
+        ]
+      },
+      "indicators": {
+        "success": true,
+        "study_count": 5,
+        "studies": [
+          {
+            "name": "Pivot Point Supertrend [SET]",
+            "values": {
+              "Down Trend": "6.57",
+              "Buy": "0.00",
+              "Sell": "0.00"
+            }
+          },
+          {
+            "name": "Position Cost Distribution SET",
+            "values": {
+              "Peak Cost Zone": "6.52"
+            }
+          },
+          {
+            "name": "SET Swing Dashboard [7-Star Confluence]",
+            "values": {
+              "Confluence Score": "5.00"
+            }
+          },
+          {
+            "name": "Laguerre RSI Ehlers [SET]",
+            "values": {
+              "Laguerre RSI": "1.000",
+              "Long Entry": "0.000",
+              "Short Entry": "0.000",
+              "Mid Up": "0.000",
+              "Mid Down": "0.000"
+            }
+          },
+          {
+            "name": "Hurst Choppiness [SET] Regime",
+            "values": {
+              "Hurst Smooth": "0.788",
+              "Hurst Raw": "0.785",
+              "Choppiness (norm)": "0.251"
+            }
+          }
+        ]
+      },
+      "quote": {
+        "success": true,
+        "symbol": "SET_DLY:GLOBAL",
+        "time": 1777255200,
+        "open": 6.7,
+        "high": 6.75,
+        "low": 6.6,
+        "close": 6.7,
+        "last": 6.7,
+        "volume": 4653441,
+        "description": "Siam Global House Public Co., Ltd.",
+        "exchange": "SET",
+        "type": "stock"
+      }
+    },
+    {
+      "symbol": "SET:MINT",
+      "timeframe": "1D",
+      "state": {
+        "success": true,
+        "symbol": "SET_DLY:MINT",
+        "resolution": "1D",
+        "chartType": 1,
+        "studies": [
+          {
+            "id": "PJf7A9",
+            "name": "Position Cost Distribution SET"
+          },
+          {
+            "id": "za1vSK",
+            "name": "CPR Weekly Camarilla SET"
+          },
+          {
+            "id": "KTtKxP",
+            "name": "Pivot Point Supertrend [SET]"
+          },
+          {
+            "id": "FuKb0u",
+            "name": "SET Swing Dashboard [7-Star Confluence]"
+          },
+          {
+            "id": "jFgf2I",
+            "name": "Laguerre RSI Ehlers [SET]"
+          },
+          {
+            "id": "I78FBT",
+            "name": "Hurst Choppiness [SET] Regime"
+          }
+        ]
+      },
+      "indicators": {
+        "success": true,
+        "study_count": 5,
+        "studies": [
+          {
+            "name": "Pivot Point Supertrend [SET]",
+            "values": {
+              "Down Trend": "24.1",
+              "Buy": "0.00",
+              "Sell": "0.00"
+            }
+          },
+          {
+            "name": "Position Cost Distribution SET",
+            "values": {
+              "Peak Cost Zone": "22.4"
+            }
+          },
+          {
+            "name": "SET Swing Dashboard [7-Star Confluence]",
+            "values": {
+              "Confluence Score": "4.00"
+            }
+          },
+          {
+            "name": "Laguerre RSI Ehlers [SET]",
+            "values": {
+              "Laguerre RSI": "0.331",
+              "Long Entry": "0.000",
+              "Short Entry": "0.000",
+              "Mid Up": "0.000",
+              "Mid Down": "0.000"
+            }
+          },
+          {
+            "name": "Hurst Choppiness [SET] Regime",
+            "values": {
+              "Hurst Smooth": "0.788",
+              "Hurst Raw": "0.788",
+              "Choppiness (norm)": "0.335"
+            }
+          }
+        ]
+      },
+      "quote": {
+        "success": true,
+        "symbol": "SET_DLY:MINT",
+        "time": 1777255200,
+        "open": 21.6,
+        "high": 21.8,
+        "low": 21.4,
+        "close": 21.6,
+        "last": 21.6,
+        "volume": 3741305,
+        "description": "Minor International Public Co., Ltd.",
+        "exchange": "SET",
+        "type": "stock"
+      }
+    },
+    {
+      "symbol": "SET:CRC",
+      "timeframe": "1D",
+      "state": {
+        "success": true,
+        "symbol": "SET_DLY:CRC",
+        "resolution": "1D",
+        "chartType": 1,
+        "studies": [
+          {
+            "id": "PJf7A9",
+            "name": "Position Cost Distribution SET"
+          },
+          {
+            "id": "za1vSK",
+            "name": "CPR Weekly Camarilla SET"
+          },
+          {
+            "id": "KTtKxP",
+            "name": "Pivot Point Supertrend [SET]"
+          },
+          {
+            "id": "FuKb0u",
+            "name": "SET Swing Dashboard [7-Star Confluence]"
+          },
+          {
+            "id": "jFgf2I",
+            "name": "Laguerre RSI Ehlers [SET]"
+          },
+          {
+            "id": "I78FBT",
+            "name": "Hurst Choppiness [SET] Regime"
+          }
+        ]
+      },
+      "indicators": {
+        "success": true,
+        "study_count": 5,
+        "studies": [
+          {
+            "name": "Pivot Point Supertrend [SET]",
+            "values": {
+              "Down Trend": "20.5",
+              "Buy": "0.00",
+              "Sell": "0.00"
+            }
+          },
+          {
+            "name": "Position Cost Distribution SET",
+            "values": {
+              "Peak Cost Zone": "18.5"
+            }
+          },
+          {
+            "name": "SET Swing Dashboard [7-Star Confluence]",
+            "values": {
+              "Confluence Score": "3.00"
+            }
+          },
+          {
+            "name": "Laguerre RSI Ehlers [SET]",
+            "values": {
+              "Laguerre RSI": "0.314",
+              "Long Entry": "0.000",
+              "Short Entry": "0.000",
+              "Mid Up": "0.000",
+              "Mid Down": "0.000"
+            }
+          },
+          {
+            "name": "Hurst Choppiness [SET] Regime",
+            "values": {
+              "Hurst Smooth": "0.751",
+              "Hurst Raw": "0.753",
+              "Choppiness (norm)": "0.235"
+            }
+          }
+        ]
+      },
+      "quote": {
+        "success": true,
+        "symbol": "SET_DLY:CRC",
+        "time": 1777255200,
+        "open": 18.6,
+        "high": 18.7,
+        "low": 18.4,
+        "close": 18.4,
+        "last": 18.4,
+        "volume": 2939301,
+        "description": "Central Retail Corporation Public Company Limited",
+        "exchange": "SET",
+        "type": "stock"
+      }
+    },
+    {
+      "symbol": "SET:LH",
+      "timeframe": "1D",
+      "state": {
+        "success": true,
+        "symbol": "SET_DLY:LH",
+        "resolution": "1D",
+        "chartType": 1,
+        "studies": [
+          {
+            "id": "PJf7A9",
+            "name": "Position Cost Distribution SET"
+          },
+          {
+            "id": "za1vSK",
+            "name": "CPR Weekly Camarilla SET"
+          },
+          {
+            "id": "KTtKxP",
+            "name": "Pivot Point Supertrend [SET]"
+          },
+          {
+            "id": "FuKb0u",
+            "name": "SET Swing Dashboard [7-Star Confluence]"
+          },
+          {
+            "id": "jFgf2I",
+            "name": "Laguerre RSI Ehlers [SET]"
+          },
+          {
+            "id": "I78FBT",
+            "name": "Hurst Choppiness [SET] Regime"
+          }
+        ]
+      },
+      "indicators": {
+        "success": true,
+        "study_count": 5,
+        "studies": [
+          {
+            "name": "Pivot Point Supertrend [SET]",
+            "values": {
+              "Down Trend": "3.97",
+              "Buy": "0.00",
+              "Sell": "0.00"
+            }
+          },
+          {
+            "name": "Position Cost Distribution SET",
+            "values": {
+              "Peak Cost Zone": "3.79"
+            }
+          },
+          {
+            "name": "SET Swing Dashboard [7-Star Confluence]",
+            "values": {
+              "Confluence Score": "4.00"
+            }
+          },
+          {
+            "name": "Laguerre RSI Ehlers [SET]",
+            "values": {
+              "Laguerre RSI": "0.740",
+              "Long Entry": "0.000",
+              "Short Entry": "1.000",
+              "Mid Up": "0.000",
+              "Mid Down": "0.000"
+            }
+          },
+          {
+            "name": "Hurst Choppiness [SET] Regime",
+            "values": {
+              "Hurst Smooth": "0.783",
+              "Hurst Raw": "0.783",
+              "Choppiness (norm)": "0.632"
+            }
+          }
+        ]
+      },
+      "quote": {
+        "success": true,
+        "symbol": "SET_DLY:LH",
+        "time": 1777255200,
+        "open": 3.8,
+        "high": 3.82,
+        "low": 3.76,
+        "close": 3.78,
+        "last": 3.78,
+        "volume": 11160445,
+        "description": "Land & Houses Public Co., Ltd.",
+        "exchange": "SET",
+        "type": "stock"
+      }
+    },
+    {
+      "symbol": "SET:SPALI",
+      "timeframe": "1D",
+      "state": {
+        "success": true,
+        "symbol": "SET_DLY:SPALI",
+        "resolution": "1D",
+        "chartType": 1,
+        "studies": [
+          {
+            "id": "PJf7A9",
+            "name": "Position Cost Distribution SET"
+          },
+          {
+            "id": "za1vSK",
+            "name": "CPR Weekly Camarilla SET"
+          },
+          {
+            "id": "KTtKxP",
+            "name": "Pivot Point Supertrend [SET]"
+          },
+          {
+            "id": "FuKb0u",
+            "name": "SET Swing Dashboard [7-Star Confluence]"
+          },
+          {
+            "id": "jFgf2I",
+            "name": "Laguerre RSI Ehlers [SET]"
+          },
+          {
+            "id": "I78FBT",
+            "name": "Hurst Choppiness [SET] Regime"
+          }
+        ]
+      },
+      "indicators": {
+        "success": true,
+        "study_count": 5,
+        "studies": [
+          {
+            "name": "Pivot Point Supertrend [SET]",
+            "values": {
+              "Down Trend": "17.4",
+              "Buy": "0.00",
+              "Sell": "0.00"
+            }
+          },
+          {
+            "name": "Position Cost Distribution SET",
+            "values": {
+              "Peak Cost Zone": "16.6"
+            }
+          },
+          {
+            "name": "SET Swing Dashboard [7-Star Confluence]",
+            "values": {
+              "Confluence Score": "3.00"
+            }
+          },
+          {
+            "name": "Laguerre RSI Ehlers [SET]",
+            "values": {
+              "Laguerre RSI": "1.000",
+              "Long Entry": "0.000",
+              "Short Entry": "0.000",
+              "Mid Up": "0.000",
+              "Mid Down": "0.000"
+            }
+          },
+          {
+            "name": "Hurst Choppiness [SET] Regime",
+            "values": {
+              "Hurst Smooth": "0.786",
+              "Hurst Raw": "0.786",
+              "Choppiness (norm)": "0.601"
+            }
+          }
+        ]
+      },
+      "quote": {
+        "success": true,
+        "symbol": "SET_DLY:SPALI",
+        "time": 1777255200,
+        "open": 16.6,
+        "high": 16.8,
+        "low": 16.6,
+        "close": 16.7,
+        "last": 16.7,
+        "volume": 2363466,
+        "description": "Supalai Public Co., Ltd.",
+        "exchange": "SET",
+        "type": "stock"
+      }
+    },
+    {
+      "symbol": "SET:EGCO",
+      "timeframe": "1D",
+      "state": {
+        "success": true,
+        "symbol": "SET_DLY:EGCO",
+        "resolution": "1D",
+        "chartType": 1,
+        "studies": [
+          {
+            "id": "PJf7A9",
+            "name": "Position Cost Distribution SET"
+          },
+          {
+            "id": "za1vSK",
+            "name": "CPR Weekly Camarilla SET"
+          },
+          {
+            "id": "KTtKxP",
+            "name": "Pivot Point Supertrend [SET]"
+          },
+          {
+            "id": "FuKb0u",
+            "name": "SET Swing Dashboard [7-Star Confluence]"
+          },
+          {
+            "id": "jFgf2I",
+            "name": "Laguerre RSI Ehlers [SET]"
+          },
+          {
+            "id": "I78FBT",
+            "name": "Hurst Choppiness [SET] Regime"
+          }
+        ]
+      },
+      "indicators": {
+        "success": true,
+        "study_count": 5,
+        "studies": [
+          {
+            "name": "Pivot Point Supertrend [SET]",
+            "values": {
+              "Down Trend": "116.2",
+              "Buy": "0.00",
+              "Sell": "0.00"
+            }
+          },
+          {
+            "name": "Position Cost Distribution SET",
+            "values": {
+              "Peak Cost Zone": "110.2"
+            }
+          },
+          {
+            "name": "SET Swing Dashboard [7-Star Confluence]",
+            "values": {
+              "Confluence Score": "3.00"
+            }
+          },
+          {
+            "name": "Laguerre RSI Ehlers [SET]",
+            "values": {
+              "Laguerre RSI": "0.000",
+              "Long Entry": "0.000",
+              "Short Entry": "0.000",
+              "Mid Up": "0.000",
+              "Mid Down": "0.000"
+            }
+          },
+          {
+            "name": "Hurst Choppiness [SET] Regime",
+            "values": {
+              "Hurst Smooth": "0.791",
+              "Hurst Raw": "0.793",
+              "Choppiness (norm)": "0.502"
+            }
+          }
+        ]
+      },
+      "quote": {
+        "success": true,
+        "symbol": "SET_DLY:EGCO",
+        "time": 1777255200,
+        "open": 111,
+        "high": 111.5,
+        "low": 110.5,
+        "close": 110.5,
+        "last": 110.5,
+        "volume": 139252,
+        "description": "Electricity Generating Public Co., Ltd.",
+        "exchange": "SET",
+        "type": "stock"
+      }
+    },
+    {
+      "symbol": "SET:RATCH",
+      "timeframe": "1D",
+      "state": {
+        "success": true,
+        "symbol": "SET_DLY:RATCH",
+        "resolution": "1D",
+        "chartType": 1,
+        "studies": [
+          {
+            "id": "PJf7A9",
+            "name": "Position Cost Distribution SET"
+          },
+          {
+            "id": "za1vSK",
+            "name": "CPR Weekly Camarilla SET"
+          },
+          {
+            "id": "KTtKxP",
+            "name": "Pivot Point Supertrend [SET]"
+          },
+          {
+            "id": "FuKb0u",
+            "name": "SET Swing Dashboard [7-Star Confluence]"
+          },
+          {
+            "id": "jFgf2I",
+            "name": "Laguerre RSI Ehlers [SET]"
+          },
+          {
+            "id": "I78FBT",
+            "name": "Hurst Choppiness [SET] Regime"
+          }
+        ]
+      },
+      "indicators": {
+        "success": true,
+        "study_count": 5,
+        "studies": [
+          {
+            "name": "Pivot Point Supertrend [SET]",
+            "values": {
+              "Down Trend": "30.78",
+              "Buy": "0.00",
+              "Sell": "0.00"
+            }
+          },
+          {
+            "name": "Position Cost Distribution SET",
+            "values": {
+              "Peak Cost Zone": "29.20"
+            }
+          },
+          {
+            "name": "SET Swing Dashboard [7-Star Confluence]",
+            "values": {
+              "Confluence Score": "5.00"
+            }
+          },
+          {
+            "name": "Laguerre RSI Ehlers [SET]",
+            "values": {
+              "Laguerre RSI": "0.000",
+              "Long Entry": "0.000",
+              "Short Entry": "0.000",
+              "Mid Up": "0.000",
+              "Mid Down": "0.000"
+            }
+          },
+          {
+            "name": "Hurst Choppiness [SET] Regime",
+            "values": {
+              "Hurst Smooth": "0.793",
+              "Hurst Raw": "0.793",
+              "Choppiness (norm)": "0.419"
+            }
+          }
+        ]
+      },
+      "quote": {
+        "success": true,
+        "symbol": "SET_DLY:RATCH",
+        "time": 1777255200,
+        "open": 29.25,
+        "high": 29.75,
+        "low": 29.25,
+        "close": 29.25,
+        "last": 29.25,
+        "volume": 1508991,
+        "description": "Ratch Group Public Co. Ltd.",
+        "exchange": "SET",
+        "type": "stock"
+      }
+    },
+    {
+      "symbol": "SET:TIDLOR",
+      "timeframe": "1D",
+      "state": {
+        "success": true,
+        "symbol": "SET_DLY:TIDLOR",
+        "resolution": "1D",
+        "chartType": 1,
+        "studies": [
+          {
+            "id": "PJf7A9",
+            "name": "Position Cost Distribution SET"
+          },
+          {
+            "id": "za1vSK",
+            "name": "CPR Weekly Camarilla SET"
+          },
+          {
+            "id": "KTtKxP",
+            "name": "Pivot Point Supertrend [SET]"
+          },
+          {
+            "id": "FuKb0u",
+            "name": "SET Swing Dashboard [7-Star Confluence]"
+          },
+          {
+            "id": "jFgf2I",
+            "name": "Laguerre RSI Ehlers [SET]"
+          },
+          {
+            "id": "I78FBT",
+            "name": "Hurst Choppiness [SET] Regime"
+          }
+        ]
+      },
+      "indicators": {
+        "success": true,
+        "study_count": 5,
+        "studies": [
+          {
+            "name": "Pivot Point Supertrend [SET]",
+            "values": {
+              "Down Trend": "16.5",
+              "Buy": "0.00",
+              "Sell": "0.00"
+            }
+          },
+          {
+            "name": "Position Cost Distribution SET",
+            "values": {
+              "Peak Cost Zone": "16.6"
+            }
+          },
+          {
+            "name": "SET Swing Dashboard [7-Star Confluence]",
+            "values": {
+              "Confluence Score": "3.00"
+            }
+          },
+          {
+            "name": "Laguerre RSI Ehlers [SET]",
+            "values": {
+              "Laguerre RSI": "0.990",
+              "Long Entry": "0.000",
+              "Short Entry": "0.000",
+              "Mid Up": "0.000",
+              "Mid Down": "0.000"
+            }
+          },
+          {
+            "name": "Hurst Choppiness [SET] Regime",
+            "values": {
+              "Hurst Smooth": "0.744",
+              "Hurst Raw": "0.746",
+              "Choppiness (norm)": "0.040"
+            }
+          }
+        ]
+      },
+      "quote": {
+        "success": true,
+        "symbol": "SET_DLY:TIDLOR",
+        "time": 1777255200,
+        "open": 17.5,
+        "high": 17.9,
+        "low": 17.4,
+        "close": 17.5,
+        "last": 17.5,
+        "volume": 16078892,
+        "description": "TIDLOR Holdings PCL",
+        "exchange": "SET",
+        "type": "stock"
+      }
+    },
+    {
+      "symbol": "SET:TTB",
+      "timeframe": "1D",
+      "state": {
+        "success": true,
+        "symbol": "SET_DLY:TTB",
+        "resolution": "1D",
+        "chartType": 1,
+        "studies": [
+          {
+            "id": "PJf7A9",
+            "name": "Position Cost Distribution SET"
+          },
+          {
+            "id": "za1vSK",
+            "name": "CPR Weekly Camarilla SET"
+          },
+          {
+            "id": "KTtKxP",
+            "name": "Pivot Point Supertrend [SET]"
+          },
+          {
+            "id": "FuKb0u",
+            "name": "SET Swing Dashboard [7-Star Confluence]"
+          },
+          {
+            "id": "jFgf2I",
+            "name": "Laguerre RSI Ehlers [SET]"
+          },
+          {
+            "id": "I78FBT",
+            "name": "Hurst Choppiness [SET] Regime"
+          }
+        ]
+      },
+      "indicators": {
+        "success": true,
+        "study_count": 5,
+        "studies": [
+          {
+            "name": "Pivot Point Supertrend [SET]",
+            "values": {
+              "Up Trend": "2.15",
+              "Buy": "0.00",
+              "Sell": "0.00"
+            }
+          },
+          {
+            "name": "Position Cost Distribution SET",
+            "values": {
+              "Peak Cost Zone": "2.24"
+            }
+          },
+          {
+            "name": "SET Swing Dashboard [7-Star Confluence]",
+            "values": {
+              "Confluence Score": "5.00"
+            }
+          },
+          {
+            "name": "Laguerre RSI Ehlers [SET]",
+            "values": {
+              "Laguerre RSI": "0.000",
+              "Long Entry": "0.000",
+              "Short Entry": "0.000",
+              "Mid Up": "0.000",
+              "Mid Down": "0.000"
+            }
+          },
+          {
+            "name": "Hurst Choppiness [SET] Regime",
+            "values": {
+              "Hurst Smooth": "0.833",
+              "Hurst Raw": "0.835",
+              "Choppiness (norm)": "0.299"
+            }
+          }
+        ]
+      },
+      "quote": {
+        "success": true,
+        "symbol": "SET_DLY:TTB",
+        "time": 1777255200,
+        "open": 2.2,
+        "high": 2.22,
+        "low": 2.18,
+        "close": 2.18,
+        "last": 2.18,
+        "volume": 120792542,
+        "description": "TMBThanachart Bank Public Company Limited",
+        "exchange": "SET",
+        "type": "stock"
+      }
+    },
+    {
+      "symbol": "SET:BANPU",
+      "timeframe": "1D",
+      "state": {
+        "success": true,
+        "symbol": "SET_DLY:BANPU",
+        "resolution": "1D",
+        "chartType": 1,
+        "studies": [
+          {
+            "id": "PJf7A9",
+            "name": "Position Cost Distribution SET"
+          },
+          {
+            "id": "za1vSK",
+            "name": "CPR Weekly Camarilla SET"
+          },
+          {
+            "id": "KTtKxP",
+            "name": "Pivot Point Supertrend [SET]"
+          },
+          {
+            "id": "FuKb0u",
+            "name": "SET Swing Dashboard [7-Star Confluence]"
+          },
+          {
+            "id": "jFgf2I",
+            "name": "Laguerre RSI Ehlers [SET]"
+          },
+          {
+            "id": "I78FBT",
+            "name": "Hurst Choppiness [SET] Regime"
+          }
+        ]
+      },
+      "indicators": {
+        "success": true,
+        "study_count": 5,
+        "studies": [
+          {
+            "name": "Pivot Point Supertrend [SET]",
+            "values": {
+              "Up Trend": "5.43",
+              "Buy": "0.00",
+              "Sell": "0.00"
+            }
+          },
+          {
+            "name": "Position Cost Distribution SET",
+            "values": {
+              "Peak Cost Zone": "5.95"
+            }
+          },
+          {
+            "name": "SET Swing Dashboard [7-Star Confluence]",
+            "values": {
+              "Confluence Score": "5.00"
+            }
+          },
+          {
+            "name": "Laguerre RSI Ehlers [SET]",
+            "values": {
+              "Laguerre RSI": "0.040",
+              "Long Entry": "0.000",
+              "Short Entry": "0.000",
+              "Mid Up": "0.000",
+              "Mid Down": "0.000"
+            }
+          },
+          {
+            "name": "Hurst Choppiness [SET] Regime",
+            "values": {
+              "Hurst Smooth": "0.807",
+              "Hurst Raw": "0.805",
+              "Choppiness (norm)": "0.208"
+            }
+          }
+        ]
+      },
+      "quote": {
+        "success": true,
+        "symbol": "SET_DLY:BANPU",
+        "time": 1777255200,
+        "open": 5.55,
+        "high": 5.6,
+        "low": 5.45,
+        "close": 5.55,
+        "last": 5.55,
+        "volume": 7417997,
+        "description": "Banpu Public Co. Ltd.",
+        "exchange": "SET",
+        "type": "stock"
+      }
+    },
+    {
+      "symbol": "SET:SET",
+      "timeframe": "1D",
+      "state": {
+        "success": true,
+        "symbol": "SET_DLY:SET",
+        "resolution": "1D",
+        "chartType": 1,
+        "studies": [
+          {
+            "id": "PJf7A9",
+            "name": "Position Cost Distribution SET"
+          },
+          {
+            "id": "za1vSK",
+            "name": "CPR Weekly Camarilla SET"
+          },
+          {
+            "id": "KTtKxP",
+            "name": "Pivot Point Supertrend [SET]"
+          },
+          {
+            "id": "FuKb0u",
+            "name": "SET Swing Dashboard [7-Star Confluence]"
+          },
+          {
+            "id": "jFgf2I",
+            "name": "Laguerre RSI Ehlers [SET]"
+          },
+          {
+            "id": "I78FBT",
+            "name": "Hurst Choppiness [SET] Regime"
+          }
+        ]
+      },
+      "indicators": {
+        "success": true,
+        "study_count": 5,
+        "studies": [
+          {
+            "name": "Pivot Point Supertrend [SET]",
+            "values": {
+              "Up Trend": "1,431.74",
+              "Buy": "0.00",
+              "Sell": "0.00"
+            }
+          },
+          {
+            "name": "Position Cost Distribution SET",
+            "values": {
+              "Peak Cost Zone": "1,237.62"
+            }
+          },
+          {
+            "name": "SET Swing Dashboard [7-Star Confluence]",
+            "values": {
+              "Confluence Score": "7.00"
+            }
+          },
+          {
+            "name": "Laguerre RSI Ehlers [SET]",
+            "values": {
+              "Laguerre RSI": "0.599",
+              "Long Entry": "0.000",
+              "Short Entry": "0.000",
+              "Mid Up": "0.000",
+              "Mid Down": "0.000"
+            }
+          },
+          {
+            "name": "Hurst Choppiness [SET] Regime",
+            "values": {
+              "Hurst Smooth": "0.833",
+              "Hurst Raw": "0.833",
+              "Choppiness (norm)": "0.320"
+            }
+          }
+        ]
+      },
+      "quote": {
+        "success": true,
+        "symbol": "SET_DLY:SET",
+        "time": 1777255200,
+        "open": 1466.24,
+        "high": 1483.14,
+        "low": 1463,
+        "close": 1480.51,
+        "last": 1480.51,
+        "volume": 0,
+        "description": "SET Index",
+        "exchange": "SET",
+        "type": "index"
+      }
+    }
+  ],
+  "instruction": "For each symbol in symbols_scanned, apply the bias_criteria from rules to the indicator readings. Output one line per symbol: SYMBOL | BIAS: [bullish/bearish/neutral] | KEY LEVEL: [price] | WATCH: [what to monitor] End with a one-sentence overall market read. Be direct. No preamble."
+}

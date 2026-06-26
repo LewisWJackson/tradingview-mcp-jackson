@@ -1,0 +1,98 @@
+{
+  "watchlist": [
+    "SET:PTTEP", "SET:PTT", "SET:GULF", "SET:DELTA", "SET:KCE",
+    "SET:SCC", "SET:SCB", "SET:KBANK", "SET:BBL", "SET:KTB",
+    "SET:CPALL", "SET:CPAXT", "SET:CPN", "SET:ADVANC", "SET:AOT",
+    "SET:BDMS", "SET:BH", "SET:BCH", "SET:OR", "SET:OSP",
+    "SET:MEGA", "SET:WHA", "SET:HMPRO", "SET:GLOBAL", "SET:MINT",
+    "SET:CRC", "SET:LH", "SET:SPALI", "SET:EGCO", "SET:RATCH",
+    "SET:TIDLOR", "SET:TTB", "SET:BANPU", "SET:SET"
+  ],
+  "default_timeframe": "1D",
+
+  "indicator_legend": {
+    "Pivot_Supertrend": "Trail-stop trend filter. 'Up Trend' value = support trail (price above = bullish). 'Down Trend' value = resistance trail (price below = bearish). Flip = trend change.",
+    "7-Star_Confluence": "Composite score 0-7. ≥6 = strong directional conviction. 5 = developing. ≤4 = weak/no edge.",
+    "Laguerre_RSI": "0-1 range. <0.15 = oversold (long entry zone). >0.85 = overbought (short entry zone / no-chase). 0.15-0.85 = mid-zone, wait. Long Entry / Short Entry flags = 1.0 means signal triggered this bar.",
+    "Hurst_Smooth": ">0.6 = persistent trending regime. 0.4-0.6 = neutral. <0.4 = mean-reverting. Higher = stronger trend memory.",
+    "Choppiness_norm": "<0.3 = clean trending market. 0.3-0.5 = mixed. >0.5 = sideways/choppy — trend signals unreliable, skip."
+  },
+
+  "bias_criteria": {
+    "bullish": [
+      "Pivot Supertrend in Up Trend mode AND price > trail level",
+      "7-Star Confluence ≥ 6",
+      "Laguerre RSI < 0.15 (oversold) OR fresh cross-up from below 0.15 OR Long Entry flag = 1.0",
+      "Hurst Smooth ≥ 0.6 (trending regime confirmed)",
+      "Choppiness < 0.4 (clean trend, not sideways)",
+      "STRONG BUY = all 5 conditions met. NORMAL BUY = 4/5 with Conf ≥ 6 mandatory."
+    ],
+    "bearish": [
+      "Pivot Supertrend in Down Trend mode AND price < trail level",
+      "7-Star Confluence ≥ 6",
+      "Laguerre RSI > 0.85 (overbought) OR fresh cross-down from above 0.85 OR Short Entry flag = 1.0",
+      "Hurst Smooth ≥ 0.6",
+      "Choppiness < 0.4",
+      "STRONG SELL/SHORT = all 5 conditions met. NORMAL SELL = 4/5 with Conf ≥ 6 mandatory."
+    ],
+    "neutral": [
+      "7-Star Confluence ≤ 4 (no conviction)",
+      "OR Choppiness > 0.5 (sideways market — trend signals untrustworthy)",
+      "OR Laguerre RSI in mid-zone 0.15-0.85 with no fresh cross",
+      "OR Pivot Supertrend just flipped within last 1-2 bars (wait for confirmation)",
+      "Action: stand aside, no new positions"
+    ],
+    "avoid_chasing": [
+      "Long: do NOT enter if Laguerre RSI > 0.80 even with strong trend — wait for pullback to <0.15",
+      "Short: do NOT enter if Laguerre RSI < 0.20 even with strong downtrend — wait for bounce to >0.85",
+      "Reason: entering at extreme RSI = buying tops / selling bottoms"
+    ]
+  },
+
+  "entry_rules": {
+    "long_setup": [
+      "ENTRY: Lag RSI crosses up through 0.15 with Conf ≥6, in Up Trend, Hurst >0.6, Chop <0.4",
+      "STOP: just below Pivot Supertrend trail level (Up Trend value)",
+      "TARGET 1: previous swing high (1R minimum)",
+      "TARGET 2: trail with Pivot Supertrend until flip"
+    ],
+    "short_setup": [
+      "ENTRY: Lag RSI crosses down through 0.85 with Conf ≥6, in Down Trend, Hurst >0.6, Chop <0.4",
+      "STOP: just above Pivot Supertrend trail level (Down Trend value)",
+      "TARGET 1: previous swing low",
+      "TARGET 2: trail with Pivot Supertrend until flip"
+    ],
+    "minimum_RR": "1:2 measured to Target 1",
+    "skip_if": [
+      "Choppiness > 0.5",
+      "Confluence < 5",
+      "Spread between price and Supertrend trail < 0.5 ATR (stop too tight)",
+      "Daily volume < 30-day average × 0.5 (illiquid)"
+    ]
+  },
+
+  "exit_rules": [
+    "Hard stop: Pivot Supertrend flip (close beyond trail line) — exit full position",
+    "Trail stop: ratchet stop to Supertrend trail as it advances, never loosen",
+    "Partial profit: take 50% at Target 1, let 50% trail",
+    "Time stop: if no progress after 5 bars at default_timeframe, close at breakeven",
+    "Confluence break: if Conf drops from ≥6 to ≤4 while in trade, tighten stop"
+  ],
+
+  "risk_rules": [
+    "Risk per trade: max 1% of account equity",
+    "Maximum concurrent positions: 3 (across all sectors)",
+    "Sector cap: max 2 positions in same SET sector (BANK, ENERGY, RETAIL, etc.)",
+    "Daily loss limit: -2% of account → stop trading rest of day",
+    "Weekly loss limit: -5% → reduce size by half next week",
+    "After 3 consecutive losses: skip next signal regardless of setup quality",
+    "Position sizing: size = (account × 1%) / (entry - stop), round down to lot"
+  ],
+
+  "regime_filter": {
+    "SET_index_check": "Before any single-name long, check SET on same timeframe. If SET Pivot Supertrend = Down Trend AND Hurst >0.6, only take longs with Conf = 7/7. Reverse for shorts.",
+    "macro_overlay": "If SETHD/SETWB diverge from SET by >2% over 5 days, prefer the stronger basket — reduce conviction on laggards"
+  },
+
+  "notes": "Universe = SET100 + core watchlist. Default TF = Daily (swing). Indicators: Pivot Point Supertrend [SET], 7-Star Confluence Dashboard, Laguerre RSI Ehlers [SET], Hurst Choppiness [SET] Regime. CPR Camarilla used as discretionary support/resistance overlay. Run `tv analyze brief-output.json` to interpret scan results offline."
+}
