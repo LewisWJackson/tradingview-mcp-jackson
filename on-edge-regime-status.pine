@@ -1,0 +1,49 @@
+//@version=6
+// Companion to ON-EDGE [Options] — shows BOTH entry gates and why it's flat.
+// Independent overlay: does not touch ON-EDGE. Reads the DAILY bar so it works
+// on any chart timeframe and matches ON-EDGE's logic exactly.
+//   Gate 1: IBS today >= 0.7   (close near the day's high)
+//   Gate 2: NIFTY > 200-day SMA (uptrend regime)
+// Signal fires only when BOTH pass.
+indicator("ON-EDGE — Regime + IBS Status", overlay = true)
+
+ibsThresh = input.float(0.7, "IBS threshold (need >=)")
+
+// Daily values regardless of chart timeframe (current day updates intrabar)
+dH      = request.security(syminfo.tickerid, "D", high)
+dL      = request.security(syminfo.tickerid, "D", low)
+dC      = request.security(syminfo.tickerid, "D", close)
+sma200D = request.security(syminfo.tickerid, "D", ta.sma(close, 200))
+
+ibs   = (dC - dL) / (dH - dL == 0 ? 1 : dH - dL)
+dist  = (dC - sma200D) / sma200D * 100.0
+ibsOK   = ibs >= ibsThresh
+trendOK = dC > sma200D
+fire    = ibsOK and trendOK
+
+// Direction from IBS + regime:
+//   CALL  = strong, verified edge (IBS>=0.7 & uptrend)   → 73% win, PF 3.6
+//   PUT   = weak, low-confidence (IBS<=0.3 & downtrend)   → 50% win, PF 1.7
+callSig = ibs >= 0.7 and trendOK
+putSig  = ibs <= 0.3 and not trendOK
+dirTxt  = callSig ? "🟢 CALL (deep-ITM)" : putSig ? "🔴 PUT (weak — small size)" : "— none"
+dirCol  = callSig ? color.new(color.green, 60) : putSig ? color.new(color.orange, 50) : color.new(color.gray, 60)
+
+// ── Status table ────────────────────────────────────────────────────
+var table t = table.new(position.bottom_left, 2, 5, border_color = color.gray, border_width = 1)
+okC(cond) => cond ? color.new(color.green, 70) : color.new(color.red, 70)
+if barstate.islast
+    hdr = color.new(color.gray, 55)
+    table.cell(t, 0, 0, "ON-EDGE tonight",   text_color = color.white, bgcolor = hdr, text_size = size.small)
+    table.cell(t, 1, 0, fire ? "🎫 SIGNAL" : "— FLAT", text_color = color.white, bgcolor = okC(fire), text_size = size.small)
+    table.cell(t, 0, 1, "Direction (IBS)",   text_color = color.white, bgcolor = hdr, text_size = size.small)
+    table.cell(t, 1, 1, dirTxt,              text_color = color.white, bgcolor = dirCol, text_size = size.small)
+    table.cell(t, 0, 2, "IBS today",         text_color = color.white, bgcolor = hdr, text_size = size.small)
+    table.cell(t, 1, 2, str.tostring(ibs, "0.00") + (ibsOK ? " ✅" : " ❌ (need " + str.tostring(ibsThresh, "0.0") + ")"), text_color = color.white, bgcolor = okC(ibsOK), text_size = size.small)
+    table.cell(t, 0, 3, "Trend vs SMA200(D)", text_color = color.white, bgcolor = hdr, text_size = size.small)
+    table.cell(t, 1, 3, (dist >= 0 ? "+" : "") + str.tostring(dist, "0.0") + "%" + (trendOK ? " ✅" : " ❌"), text_color = color.white, bgcolor = okC(trendOK), text_size = size.small)
+    table.cell(t, 0, 4, "Resume when",        text_color = color.white, bgcolor = hdr, text_size = size.small)
+    table.cell(t, 1, 4, trendOK ? "regime OK — wait IBS" : "NIFTY > " + str.tostring(sma200D, "0"), text_color = color.white, bgcolor = hdr, text_size = size.small)
+
+// Reclaim line on the chart
+plot(sma200D, "SMA200 (D)", color = color.new(color.orange, 0), linewidth = 2)
