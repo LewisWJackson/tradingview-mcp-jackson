@@ -169,7 +169,13 @@ export async function placeOrder({
     return { s: "ok", dryRun: true, order: body };
   }
   // /orders/sync blocks until the exchange responds with an order id.
-  return request("POST", "/orders/sync", body);
+  // Return a broker rejection as data (not a throw) so the strategy runner can
+  // log it and continue/retry instead of crashing mid-position.
+  try {
+    return await request("POST", "/orders/sync", body);
+  } catch (err) {
+    return { s: "error", message: err.message };
+  }
 }
 
 export async function cancelOrder(id) {

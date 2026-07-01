@@ -265,9 +265,16 @@ async function main() {
         px = q.d?.[0]?.v?.lp ?? entryPrice;
       } catch {}
     }
-    await flatten(px, "end-of-run square-off");
-    holding = false;
-    entryPrice = 0;
+    const squared = await flatten(px, "end-of-run square-off");
+    if (squared) {
+      holding = false;
+      entryPrice = 0;
+    } else {
+      console.log(
+        `\n  🚨 SQUARE-OFF FAILED — you may still hold ${QTY} ${SYMBOL}.` +
+        `\n     Close it manually in Fyers now (broker auto-squares MIS ~15:15 IST, but don't rely on it).`,
+      );
+    }
   }
 
   // Report
