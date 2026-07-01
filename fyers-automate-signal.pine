@@ -10,8 +10,16 @@ rsiLen = input.int(3,  "RSI length")
 rsiOB  = input.float(70, "RSI overbought — block BUY above")
 rsiOS  = input.float(30, "RSI oversold — block SELL below")
 qty    = input.int(1,  "Order quantity")
-sym    = input.string("NSE:AXISBANK-EQ", "Fyers symbol")
 secret = input.string("changeme", "Webhook secret / passphrase")
+
+// Symbol: auto-derive from the chart so the order always matches what you're
+// watching. TradingView gives "NSE:AXISBANK"; Fyers wants "NSE:AXISBANK-EQ",
+// so we append a suffix. For indices/F&O (different mapping) turn auto OFF
+// and type the exact Fyers symbol.
+autoSym   = input.bool(true, "Use chart symbol automatically")
+fyrSuffix = input.string("-EQ", "Fyers suffix for equities")
+manualSym = input.string("NSE:NIFTY50-INDEX", "Manual Fyers symbol (if auto OFF)")
+sym = autoSym ? syminfo.tickerid + fyrSuffix : manualSym
 
 // ── Indicators (identical logic to the JS scalper) ─────────────────
 ema8 = ta.ema(close, emaLen)
