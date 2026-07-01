@@ -23,7 +23,9 @@ import {
 } from "./fyers-client.js";
 
 const SYMBOL = process.env.FYERS_SYMBOL || "NSE:SBIN-EQ";
-const QTY = parseInt(process.env.FYERS_QTY || "1", 10); // shares per trade
+// Hard safety cap: never trade more than 1 share, whatever FYERS_QTY says.
+const MAX_QTY = 1;
+const QTY = Math.min(parseInt(process.env.FYERS_QTY || "1", 10) || 1, MAX_QTY);
 const BASE_INTERVAL_MS = 10_000; // 10 seconds between checks
 const BASE_TICKS = parseInt(process.env.FYERS_TICKS || "6", 10);
 // Hard stop-loss: exit immediately if price falls this % below entry. 0 disables.
