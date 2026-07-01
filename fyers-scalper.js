@@ -30,6 +30,9 @@ const BASE_INTERVAL_MS = 10_000; // 10 seconds between checks
 const BASE_TICKS = parseInt(process.env.FYERS_TICKS || "6", 10);
 // Hard stop-loss: exit immediately if price falls this % below entry. 0 disables.
 const STOP_LOSS_PCT = parseFloat(process.env.FYERS_SL_PCT || "0.5") / 100;
+// RSI(3) sanity bounds for the momentum filter (see getSignal).
+const RSI_OVERBOUGHT = parseFloat(process.env.FYERS_RSI_OB || "70");
+const RSI_OVERSOLD = parseFloat(process.env.FYERS_RSI_OS || "30");
 
 // --simulate: feed a scripted price path to prove the buy → stop-loss →
 // square-off branches fire, without touching the exchange or live data.
@@ -93,9 +96,12 @@ function getSignal(candles) {
   const bullBias = last > vwap && last > ema8;
   const bearBias = last < vwap && last < ema8;
 
+  // Momentum with an RSI sanity filter: go WITH the trend unless RSI says the
+  // move is exhausted. Buy an uptrend while RSI is below overbought; sell a
+  // downtrend while RSI is above oversold. Thresholds are configurable.
   let signal = "flat";
-  if (bullBias && rsi3 < 30) signal = "buy";
-  else if (bearBias && rsi3 > 70) signal = "sell";
+  if (bullBias && rsi3 < RSI_OVERBOUGHT) signal = "buy";
+  else if (bearBias && rsi3 > RSI_OVERSOLD) signal = "sell";
 
   return { signal, last, ema8, rsi3, vwap };
 }
