@@ -1,0 +1,50 @@
+//@version=6
+// Fyers Automate signal — mirrors fyers-scalper.js (VWAP + RSI(3) + EMA(8)).
+// Fires webhook-ready JSON alerts that FYERS Automate consumes via TradingView.
+// Long-only: BUY to enter, SELL to square off. Same tuned momentum+RSI filter.
+indicator("Fyers Automate — VWAP+RSI(3)+EMA(8)", overlay=true)
+
+// ── Inputs (match your .env / scalper config) ──────────────────────
+emaLen = input.int(8,  "EMA length")
+rsiLen = input.int(3,  "RSI length")
+rsiOB  = input.float(70, "RSI overbought — block BUY above")
+rsiOS  = input.float(30, "RSI oversold — block SELL below")
+qty    = input.int(1,  "Order quantity")
+sym    = input.string("NSE:AXISBANK-EQ", "Fyers symbol")
+secret = input.string("changeme", "Webhook secret / passphrase")
+
+// ── Indicators (identical logic to the JS scalper) ─────────────────
+ema8 = ta.ema(close, emaLen)
+rsi3 = ta.rsi(close, rsiLen)
+vwap = ta.vwap(hlc3)                 // session-anchored, resets each day
+
+bull = close > vwap and close > ema8
+bear = close < vwap and close < ema8
+
+buySig  = bull and rsi3 < rsiOB
+sellSig = bear and rsi3 > rsiOS
+
+// Fire only on the transition into a signal (avoids repeat spam while it holds)
+buyTrigger  = buySig  and not buySig[1]
+sellTrigger = sellSig and not sellSig[1]
+
+// ── Visuals ────────────────────────────────────────────────────────
+plot(ema8, "EMA8", color.orange)
+plot(vwap, "VWAP", color.blue)
+plotshape(buyTrigger,  "BUY",  shape.triangleup,   location.belowbar, color.green, size = size.small)
+plotshape(sellTrigger, "SELL", shape.triangledown, location.abovebar, color.red,   size = size.small)
+
+// ── Webhook JSON for FYERS Automate ────────────────────────────────
+// NOTE: confirm these key names against your Automate webhook trigger config
+// and rename to match. offlineOrder MUST be false under the new SEBI rules.
+buyMsg  = '{"secret":"'  + secret + '","action":"BUY","symbol":"'  + sym + '","qty":' + str.tostring(qty) + ',"productType":"INTRADAY","orderType":"MARKET","offlineOrder":false}'
+sellMsg = '{"secret":"' + secret + '","action":"SELL","symbol":"' + sym + '","qty":' + str.tostring(qty) + ',"productType":"INTRADAY","orderType":"MARKET","offlineOrder":false}'
+
+if buyTrigger
+    alert(buyMsg,  alert.freq_once_per_bar_close)
+if sellTrigger
+    alert(sellMsg, alert.freq_once_per_bar_close)
+
+// Named conditions (optional — show up in the TradingView alert dropdown)
+alertcondition(buyTrigger,  "Fyers BUY",  "BUY signal")
+alertcondition(sellTrigger, "Fyers SELL", "SELL signal")
