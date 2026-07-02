@@ -59,6 +59,15 @@ async function qualifies(stock){
 }
 
 async function entry(){
+  // Self-heal: if a prior night's exit was missed (e.g. expired token at 9:16),
+  // close those positions via candle reconstruction before logging new entries.
+  {
+    const pre = load(); const today = new Date().toISOString().slice(0,10);
+    if (pre.some(t => t.status === "open" && t.entryDate < today)){
+      console.log("Overdue positions found — closing them first…");
+      await exit();
+    }
+  }
   const log = load(); const today = new Date().toISOString().slice(0,10);
   if (log.some(t => t.entryDate === today)){ console.log("Entries already logged for", today); return report(); }
   console.log(`\n📝 ENTRY scan ${today} (expiry ${expiryCode()})\n`);
@@ -78,21 +87,60 @@ async function entry(){
   save(log); console.log(""); report();
 }
 
+// Is "now" inside the intended exit window (just after the 9:15 open, IST)?
+function inOpenWindow(){
+  const ist = new Date(Date.now() + 330 * 60_000);
+  const mins = ist.getUTCHours() * 60 + ist.getUTCMinutes();
+  return mins >= 555 && mins <= 575;                 // 09:15–09:35 IST
+}
+
+// Reconstruct a missed exit: the option's 1-min candle close at ~09:16 IST on
+// the first trading day after entry. Slightly optimistic vs the true bid
+// (candles are traded prices), so the trade is flagged `reconstructed`.
+async function reconstructExit(t){
+  const bars = await getHistory(t.optSymbol, "1", 5);
+  const targets = bars.filter(b => {
+    const ist = new Date((b.ts + 330 * 60) * 1000);
+    const d = ist.toISOString().slice(0, 10);
+    const mins = ist.getUTCHours() * 60 + ist.getUTCMinutes();
+    return d > t.entryDate && mins >= 555 && mins <= 585;   // 09:15–09:45 IST
+  });
+  if (!targets.length) return null;
+  // Prefer the first bar with real volume (thin options often print late).
+  const bar = targets.find(b => b.vol > 0) || targets[0];
+  const ist = new Date((bar.ts + 330 * 60) * 1000);
+  const late = ist.getUTCHours() * 60 + ist.getUTCMinutes() > 560;
+  return { px: bar.close, date: ist.toISOString().slice(0, 10), late };
+}
+
 async function exit(){
   const log = load(); const today = new Date().toISOString().slice(0,10);
-  const open = log.filter(t => t.status === "open");
-  if (!open.length){ console.log("No open positions."); return report(); }
+  const open = log.filter(t => t.status === "open" && t.entryDate < today);
+  const held = log.filter(t => t.status === "open" && t.entryDate === today).length;
+  if (held) console.log(`(${held} position(s) entered today stay open until tomorrow's open)`);
+  if (!open.length){ console.log("No positions due for exit."); return report(); }
   console.log(`\n📝 EXIT ${today}\n`);
+  const live = inOpenWindow();
   for (const t of open){
     try{
-      const q = await getQuotes(t.optSymbol); const v = q.d?.[0]?.v;
-      if (!v || !v.bid){ console.log(`  ${t.stock.padEnd(11)} no quote for ${t.optSymbol}`); continue; }
-      t.exitDate = today; t.exitPrice = v.bid; t.exitSpreadPts = +((v.ask - v.bid)).toFixed(2);
+      if (live){
+        // Normal path: real bid right after the open.
+        const q = await getQuotes(t.optSymbol); const v = q.d?.[0]?.v;
+        if (!v || !v.bid){ console.log(`  ${t.stock.padEnd(11)} no quote for ${t.optSymbol}`); continue; }
+        t.exitDate = today; t.exitPrice = v.bid; t.exitSpreadPts = +((v.ask - v.bid)).toFixed(2);
+      } else {
+        // Missed the open window (e.g. token expired at 9:16) — reconstruct
+        // from the 09:15-ish candle instead of contaminating with a late price.
+        const r = await reconstructExit(t);
+        if (!r){ console.log(`  ${t.stock.padEnd(11)} ⚠️ cannot reconstruct 9:16 price — left open`); continue; }
+        t.exitDate = r.date; t.exitPrice = r.px; t.reconstructed = true;
+        if (r.late) t.lateFirstTrade = true;   // option had no prints in 9:15-20 — liquidity flag
+      }
       t.pnlPts = +(t.exitPrice - t.entryPrice).toFixed(2);
       t.pnlPctPrem = +((t.pnlPts / t.entryPrice) * 100).toFixed(2);
       t.pnlPctUnderlying = +((t.pnlPts / t.spot) * 100).toFixed(3);
       t.status = "closed";
-      console.log(`  ${t.stock.padEnd(11)} SELL @bid ${v.bid}  P&L ${t.pnlPts>=0?"+":""}${t.pnlPts}pt = ${t.pnlPctUnderlying>=0?"+":""}${t.pnlPctUnderlying}% of underlying`);
+      console.log(`  ${t.stock.padEnd(11)} SELL ${t.reconstructed ? "@9:16 candle (reconstructed)" : "@bid"} ${t.exitPrice}  P&L ${t.pnlPts>=0?"+":""}${t.pnlPts}pt = ${t.pnlPctUnderlying>=0?"+":""}${t.pnlPctUnderlying}% of underlying`);
     }catch(e){ console.log(`  ${t.stock.padEnd(11)} err ${e.message.slice(0,30)}`); }
   }
   save(log); console.log(""); report();
