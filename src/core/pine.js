@@ -268,17 +268,79 @@ export async function setSource({ source }) {
   if (!editorReady) throw new Error('Could not open Pine Editor.');
 
   const escaped = JSON.stringify(source);
-  const set = await evaluate(`
+  // As of a TradingView Desktop update observed on 2026-07-03, editor.setValue()
+  // no longer propagates to React's Pine source model — Monaco's view shows the
+  // new content and editor.getValue() reads it back, but the React component
+  // backing the editor keeps the previous source. As a result the Save button
+  // stays in its "Saved" (idle) state and `pine compile` is a no-op, so the
+  // cloud library version never bumps and re-added chart studies keep using
+  // the old defaults.
+  //
+  // `editor.executeEdits()` with a full-range replacement still routes through
+  // Monaco's full edit pipeline, which React observes correctly AND marks the
+  // buffer dirty (Save button flips to its active "Save" state). We keep a
+  // `setValue` fallback for older builds where `executeEdits` returns false
+  // (e.g. some very-large payload edge cases).
+  //
+  // The returned `method` field lets callers detect which path was used and
+  // verify a subsequent Save actually persisted (e.g. by checking the cloud
+  // library version bumped).
+  const result = await evaluate(`
     (function() {
       var m = ${FIND_MONACO};
-      if (!m) return false;
-      m.editor.setValue(${escaped});
-      return true;
+      if (!m) return { ok: false, reason: 'no_monaco' };
+      var ed = m.editor;
+      var model = ed.getModel();
+      if (!model) return { ok: false, reason: 'no_model' };
+
+      function Range(sl, sc, el, ec) {
+        this.startLineNumber = sl; this.startColumn = sc;
+        this.endLineNumber = el;   this.endColumn   = ec;
+      }
+
+      var lineCount = model.getLineCount();
+      var lastLineLen = model.getLineLength(lineCount);
+      var fullRange = new Range(1, 1, lineCount, lastLineLen + 1);
+
+      var ok = false;
+      try {
+        ok = ed.executeEdits('pine_set_source', [{
+          range: fullRange,
+          text: ${escaped},
+          forceMoveMarkers: true,
+        }]);
+        if (model.pushStackElement) model.pushStackElement();
+      } catch (e) {
+        return { ok: false, reason: 'executeEdits_threw: ' + e.message };
+      }
+
+      if (!ok) {
+        // Fallback for older TV builds.
+        ed.setValue(${escaped});
+      }
+
+      var newLineCount = model.getLineCount();
+      return {
+        ok: true,
+        method: ok ? 'executeEdits' : 'setValue_fallback',
+        beforeLines: lineCount,
+        afterLines: newLineCount,
+        firstLine: model.getLineContent(1).slice(0, 60),
+      };
     })()
   `);
 
-  if (!set) throw new Error('Monaco found but setValue() failed.');
-  return { success: true, lines_set: source.split('\n').length };
+  if (!result || !result.ok) {
+    throw new Error('Monaco found but editor update failed: ' + (result?.reason || 'unknown'));
+  }
+  return {
+    success: true,
+    lines_set: source.split('\n').length,
+    method: result.method,
+    before_lines: result.beforeLines,
+    after_lines: result.afterLines,
+    first_line_preview: result.firstLine,
+  };
 }
 
 export async function compile() {
