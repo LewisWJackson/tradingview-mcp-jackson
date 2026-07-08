@@ -24,10 +24,18 @@ export async function waitForChartReady(expectedSymbol = null, expectedTf = null
           barCount = bars.length;
         } catch {}
 
-        // Get current symbol from header
-        var symbolEl = document.querySelector('[data-name="legend-source-title"]')
-          || document.querySelector('[class*="title"] [class*="apply-common-tooltip"]');
-        var currentSymbol = symbolEl ? symbolEl.textContent.trim() : '';
+        // Get current symbol — prefer the chart API (returns e.g. "OANDA:GBPUSD");
+        // the DOM legend shows the instrument DESCRIPTION ("Gold Spot / U.S. Dollar"),
+        // which never matches a ticker and forced every symbol change to time out.
+        var currentSymbol = '';
+        try {
+          currentSymbol = window.TradingViewApi._activeChartWidgetWV.value().symbol() || '';
+        } catch (e) {}
+        if (!currentSymbol) {
+          var symbolEl = document.querySelector('[data-name="legend-source-title"]')
+            || document.querySelector('[class*="title"] [class*="apply-common-tooltip"]');
+          currentSymbol = symbolEl ? symbolEl.textContent.trim() : '';
+        }
 
         return { isLoading: !!isLoading, barCount: barCount, currentSymbol: currentSymbol };
       })()
@@ -45,8 +53,12 @@ export async function waitForChartReady(expectedSymbol = null, expectedTf = null
       continue;
     }
 
-    // Check symbol match if expected
-    if (expectedSymbol && state.currentSymbol && !state.currentSymbol.toUpperCase().includes(expectedSymbol.toUpperCase())) {
+    // Check symbol match if expected. The legend title shows the bare ticker
+    // (e.g. "GBPUSD"), so strip any exchange prefix ("OANDA:GBPUSD") before
+    // comparing — otherwise prefixed symbols never match and we always hit
+    // the full timeout.
+    const expectedBase = expectedSymbol ? expectedSymbol.toUpperCase().split(':').pop() : null;
+    if (expectedBase && state.currentSymbol && !state.currentSymbol.toUpperCase().includes(expectedBase)) {
       stableCount = 0;
       await new Promise(r => setTimeout(r, POLL_INTERVAL));
       continue;
