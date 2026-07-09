@@ -24,22 +24,19 @@ Tell the user: "Open `rules.json` and fill in your watchlist (the symbols you tr
 
 ## Step 3: Add to MCP Config
 
-Add the server to the user's Claude Code MCP configuration. The config file is at `~/.claude/.mcp.json` (global) or `.mcp.json` (project-level).
+Register the server with Claude Code using the supported CLI. This writes to the correct config file (`~/.claude.json`) at user scope and merges with any existing servers automatically — no manual JSON editing, no overwrite risk:
 
-```json
-{
-  "mcpServers": {
-    "tradingview": {
-      "command": "node",
-      "args": ["/Users/YOUR_USERNAME/tradingview-mcp-jackson/src/server.js"]
-    }
-  }
-}
+```bash
+claude mcp add tradingview -s user -- node ~/tradingview-mcp-jackson/src/server.js
 ```
 
-Replace `YOUR_USERNAME` with the user's actual system username. Run `echo $USER` (Mac/Linux) or `echo %USERNAME%` (Windows) to find it.
+Confirm it registered (`claude mcp get tradingview` should report `Status: ✔ Connected`).
 
-If the config file already exists and has other servers, merge the `tradingview` entry into the existing `mcpServers` object. Do not overwrite other servers.
+> **Important:** Claude Code does **not** read `~/.claude/.mcp.json`. It loads MCP servers only from `~/.claude.json` (user/local scope) or a `.mcp.json` file at the **project root** (project scope). To use project scope instead, create `~/tradingview-mcp-jackson/.mcp.json` with (replace `YOUR_USERNAME`):
+>
+> ```json
+> { "mcpServers": { "tradingview": { "command": "node", "args": ["/Users/YOUR_USERNAME/tradingview-mcp-jackson/src/server.js"] } } }
+> ```
 
 ## Step 4: Launch TradingView Desktop
 
@@ -116,7 +113,7 @@ Then `tv status`, `tv quote`, `tv pine compile`, etc. work from anywhere.
 |---------|----------|
 | `cdp_connected: false` | Launch TradingView with `--remote-debugging-port=9222` |
 | `ECONNREFUSED` | TradingView isn't running or port 9222 is blocked |
-| MCP server not showing in Claude Code | Check `~/.claude/.mcp.json` syntax, restart Claude Code |
+| MCP server not showing in Claude Code | Run `claude mcp get tradingview` to check status; if missing, re-run `claude mcp add`, then restart Claude Code |
 | `tv` command not found | Run `npm link` from the project directory |
 | Tools return stale data | TradingView may still be loading — wait a few seconds |
 | Pine Editor tools fail | Open the Pine Editor panel first (`ui_open_panel pine-editor open`) |
