@@ -91,7 +91,9 @@ async function entry(){
 function inOpenWindow(){
   const ist = new Date(Date.now() + 330 * 60_000);
   const mins = ist.getUTCHours() * 60 + ist.getUTCMinutes();
-  return mins >= 555 && mins <= 575;                 // 09:15–09:35 IST
+  // Exit-time study (2026-07-10, 119 nights): holding to ~9:45 beats the open
+  // exit (avg +0.226% vs +0.141%, PF 1.79 vs 1.45); edge decays after 9:45.
+  return mins >= 580 && mins <= 605;                 // 09:40–10:05 IST
 }
 
 // Reconstruct a missed exit: the option's 1-min candle close at ~09:16 IST on
@@ -103,7 +105,7 @@ async function reconstructExit(t){
     const ist = new Date((b.ts + 330 * 60) * 1000);
     const d = ist.toISOString().slice(0, 10);
     const mins = ist.getUTCHours() * 60 + ist.getUTCMinutes();
-    return d > t.entryDate && mins >= 555 && mins <= 585;   // 09:15–09:45 IST
+    return d > t.entryDate && mins >= 585 && mins <= 615;   // 09:45–10:15 IST (matches new exit rule)
   });
   if (!targets.length) return null;
   // Prefer the first bar with real volume (thin options often print late).
