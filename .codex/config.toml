@@ -1,0 +1,3 @@
+[mcp_servers.tradingview]
+command = "node"
+args = ["src/server.js"]
