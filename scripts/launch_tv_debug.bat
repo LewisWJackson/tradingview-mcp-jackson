@@ -16,6 +16,7 @@ REM Check common install locations
 if exist "%LOCALAPPDATA%\TradingView\TradingView.exe" set "TV_EXE=%LOCALAPPDATA%\TradingView\TradingView.exe"
 if exist "%PROGRAMFILES%\TradingView\TradingView.exe" set "TV_EXE=%PROGRAMFILES%\TradingView\TradingView.exe"
 if exist "%PROGRAMFILES(x86)%\TradingView\TradingView.exe" set "TV_EXE=%PROGRAMFILES(x86)%\TradingView\TradingView.exe"
+if exist "%PROGRAMFILES%\WindowsApps\TradingView.Desktop_2.9.4.6649_x64__n534cwy3pjxzj\TradingView.exe" set "TV_EXE=%PROGRAMFILES%\WindowsApps\TradingView.Desktop_2.9.4.6649_x64__n534cwy3pjxzj\TradingView.exe"
 
 REM Check MSIX / Windows Store installs
 if "%TV_EXE%"=="" (
