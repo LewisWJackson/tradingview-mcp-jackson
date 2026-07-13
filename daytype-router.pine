@@ -9,6 +9,8 @@ indicator("DAY-TYPE ROUTER [ORB filter]", overlay = true)
 
 effThresh = input.float(0.6,  "Directional efficiency threshold", step = 0.05)
 atrFrac   = input.float(0.25, "First-45m range vs daily ATR",     step = 0.05)
+tblPos    = input.string("middle_left", "Table position",
+     options = ["top_left", "middle_left", "bottom_left", "top_right", "middle_right", "bottom_right"])
 
 atrD = request.security(syminfo.tickerid, "D", ta.atr(14)[1], lookahead = barmerge.lookahead_on)
 
@@ -45,7 +47,10 @@ plot(orH, "OR High (15m)", color = color.new(color.teal, 0),   style = plot.styl
 plot(orL, "OR Low (15m)",  color = color.new(color.maroon, 0), style = plot.style_linebr)
 bgcolor(dayType == "TREND" ? color.new(color.green, 92) : dayType == "RANGE" ? color.new(color.red, 94) : na)
 
-var table t = table.new(position.top_left, 2, 5, border_color = color.gray, border_width = 1)
+posMap(p) => p == "top_left" ? position.top_left : p == "middle_left" ? position.middle_left :
+     p == "bottom_left" ? position.bottom_left : p == "top_right" ? position.top_right :
+     p == "middle_right" ? position.middle_right : position.bottom_right
+var table t = table.new(posMap(tblPos), 2, 5, border_color = color.gray, border_width = 1)
 if barstate.islast
     hdr = color.new(color.gray, 55)
     vCol = dayType == "TREND" ? color.new(color.green, 60) : dayType == "RANGE" ? color.new(color.red, 60) : color.new(color.gray, 60)
