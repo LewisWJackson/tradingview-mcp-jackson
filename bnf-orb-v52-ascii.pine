@@ -1,0 +1,344 @@
+//@version=6
+// ============================================================
+//  BANKNIFTY ORB Trend - INDICATOR (signals + alerts + dashboard)
+//  Author: Vignesh Radhakrishnan
+//  Market: NSE:BANKNIFTY | Timeframe: 15m
+//  v49: + candle-CLOSE breakout confirmation (kills wick sweeps)
+//  v51: DIRECTIONAL GAP FILTER - big-gap days trade WITH the gap only
+//  v52 (2026-07-13): HONEST FILLS + trendy dashboard.
+//       pEntry = confirming CLOSE (your real fill), not the OR level.
+//       T1/T2 measured from the real fill; SL stays at OR opposite side.
+//       Fixes the 5m-vs-15m "T1 almost hits" illusion (panel used to measure
+//       from a price you never got). Target sweep (224d): rr1 1.0-1.25 optimal;
+//       misses exiting at 15:15 carry most of the profit - hold them.
+// ============================================================
+indicator("BANKNIFTY ORB Trend [Signals]", shorttitle="BNF-ORB-i",
+     overlay=true, max_bars_back=5000, max_lines_count=200, max_labels_count=200)
+
+rr1       = input.float(1.0, "Target 1 (R)", minval=0.5)
+rr2       = input.float(2.5, "Target 2 (R)", minval=1.0)
+minRange  = input.float(120, "Min ORB Range (pts)")
+maxGapPct = input.float(0.8, "Big-gap threshold % (above = trade WITH gap only)")
+useGapF   = input.bool(true, "Use Directional Gap Filter")
+useRngF   = input.bool(true, "Use Min Range Filter")
+useTrend  = input.bool(true, "Trend Filter (VWAP+EMA)")
+emaLen    = input.int(20,    "Trend EMA length")
+useCloseConf = input.bool(true, "Require CLOSE beyond OR (no wick sweep)")
+showSR    = input.bool(true, "Show swing S/R levels", group="S/R")
+srPiv     = input.int(5,     "Swing pivot L/R", group="S/R")
+useADX    = input.bool(true, "Regime Filter (ADX strength)", group="Regime")
+adxLen    = input.int(14,    "ADX length", group="Regime")
+adxMin    = input.float(25,  "ADX min - skip chop/stop-hunt days", group="Regime")
+skipTue   = input.bool(false,"Skip Tuesdays (NIFTY seasonality - optional)")
+useVixF   = input.bool(false,"Use India VIX filter")
+vixMin    = input.float(10,  "VIX min")
+vixMax    = input.float(22,  "VIX max")
+exitHHMM  = input.int(1515,  "Square-off Time (HHMM)")
+showLevels= input.bool(true, "Show entry/stop/target lines")
+showBg    = input.bool(true, "Shade signal/trade background")
+showDash  = input.bool(true, "Show Dashboard")
+dashPos   = input.string("Top Right", "Dashboard Position", options=["Top Right","Top Left","Bottom Right","Bottom Left"])
+
+showPrem  = input.bool(true,  "Show Option Premium section", group="Option Premium")
+optDelta  = input.float(0.58, "Option Delta (ATM~0.5, ITM~0.6)", minval=0.1, maxval=1.0, step=0.01, group="Option Premium")
+premPaid  = input.float(1315.0,"Premium Paid (your buy price)", minval=0.0, group="Option Premium")
+premSLpct = input.float(30,   "Max Premium SL %", minval=5, maxval=90, group="Option Premium")
+lotQty    = input.int(30,     "Lot Qty (BANKNIFTY=30)", minval=1, group="Option Premium")
+lots      = input.int(1,      "Lots traded", minval=1, group="Option Premium")
+
+istNewDay  = ta.change(time("D", session.regular, "Asia/Kolkata")) != 0
+inORWindow = not na(time("15", "0915-0945", "Asia/Kolkata"))
+_h = hour(time, "Asia/Kolkata")
+_m = minute(time, "Asia/Kolkata")
+_t = _h * 100 + _m
+afterOR     = _t >= 945 and _t < exitHHMM
+isSquareOff = _t >= exitHHMM
+
+vwapVal = ta.vwap(close)
+emaVal  = ta.ema(close, emaLen)
+[diPlus, diMinus, adxVal] = ta.dmi(adxLen, adxLen)
+adxOK   = not useADX or adxVal >= adxMin
+ivix    = request.security("NSE:INDIAVIX", "D", close[1], lookahead=barmerge.lookahead_off)
+
+var float orHigh    = na
+var float orLow     = na
+var float dayOpen   = na
+var float prevClose = na
+var bool  tradedToday = false
+var string dayResult  = "Waiting"
+var int   tTotal = 0
+var int   tWin   = 0
+var int   tLoss  = 0
+var int   pDir   = 0
+var float pEntry = na
+var float pStop  = na
+var float pT1    = na
+var float pT2    = na
+
+if istNewDay
+    orHigh := na
+    orLow  := na
+    tradedToday := false
+    dayResult := "Waiting"
+    dayOpen := open
+    pEntry := na
+    pStop := na
+    pT1 := na
+    pT2 := na
+
+if inORWindow
+    orHigh := na(orHigh) ? high : math.max(orHigh, high)
+    orLow  := na(orLow)  ? low  : math.min(orLow, low)
+
+crossUp = useCloseConf ? ta.crossover(close, orHigh) : ta.crossover(high, orHigh)
+crossDn = useCloseConf ? ta.crossunder(close, orLow) : ta.crossunder(low, orLow)
+
+orRange = orHigh - orLow
+rangeOK = useRngF ? (orRange >= minRange) : true
+gapPct  = na(prevClose) ? 0.0 : math.abs(dayOpen - prevClose) / prevClose * 100
+gapUp   = not na(prevClose) and dayOpen > prevClose
+bigGap  = gapPct > maxGapPct
+gapOKLong  = not useGapF or not bigGap or gapUp
+gapOKShort = not useGapF or not bigGap or not gapUp
+dow     = dayofweek(time, "Asia/Kolkata")
+dayOK   = skipTue ? (dow != dayofweek.tuesday) : true
+vixOK   = useVixF ? (not na(ivix) and ivix >= vixMin and ivix <= vixMax) : true
+baseFiltersOK   = rangeOK and dayOK and vixOK and adxOK
+longFiltersOK   = baseFiltersOK and gapOKLong
+shortFiltersOK  = baseFiltersOK and gapOKShort
+filtersOK       = longFiltersOK or shortFiltersOK
+
+longTrendOK  = useTrend ? (close > vwapVal and close > emaVal) : true
+shortTrendOK = useTrend ? (close < vwapVal and close < emaVal) : true
+bias = (close > vwapVal and close > emaVal) ? "LONG" : (close < vwapVal and close < emaVal) ? "SHORT" : "NEUTRAL"
+
+canTradeBase = afterOR and not tradedToday and not na(orHigh) and not na(orLow)
+
+longSig  = canTradeBase and longFiltersOK  and longTrendOK  and crossUp
+shortSig = canTradeBase and shortFiltersOK and shortTrendOK and crossDn and not longSig
+
+// v52: entry = your REAL fill (the confirming close), targets measured from it.
+if longSig
+    tradedToday := true
+    dayResult := "LONG taken"
+    pDir := 1
+    pEntry := close
+    pStop := orLow
+    pT1 := close + (orHigh - orLow) * rr1
+    pT2 := close + (orHigh - orLow) * rr2
+if shortSig
+    tradedToday := true
+    dayResult := "SHORT taken"
+    pDir := -1
+    pEntry := close
+    pStop := orHigh
+    pT1 := close - (orHigh - orLow) * rr1
+    pT2 := close - (orHigh - orLow) * rr2
+
+if pDir == 1 and not (longSig)
+    if low <= pStop
+        tTotal += 1
+        tLoss  += 1
+        pDir := 0
+    else if high >= pT1
+        tTotal += 1
+        tWin   += 1
+        pDir := 0
+if pDir == -1 and not (shortSig)
+    if high >= pStop
+        tTotal += 1
+        tLoss  += 1
+        pDir := 0
+    else if low <= pT1
+        tTotal += 1
+        tWin   += 1
+        pDir := 0
+if isSquareOff and pDir != 0
+    won = pDir == 1 ? close > (pT1 - (pT1 - pStop) * 0.5) : close < (pT1 + (pStop - pT1) * 0.5)
+    tTotal += 1
+    if won
+        tWin += 1
+    else
+        tLoss += 1
+    pDir := 0
+winPct = tTotal > 0 ? tWin / tTotal * 100 : 0.0
+
+inTrade = pDir != 0
+openPnl = pDir == 1 ? close - pEntry : pDir == -1 ? pEntry - close : 0.0
+
+riskPts = (not na(pEntry) and not na(pStop)) ? math.abs(pEntry - pStop) : na
+r1Pts   = (not na(pEntry) and not na(pT1))   ? math.abs(pT1 - pEntry)   : na
+r2Pts   = (not na(pEntry) and not na(pT2))   ? math.abs(pT2 - pEntry)   : na
+premMoveSL = na(riskPts) ? na : riskPts * optDelta
+premMoveT1 = na(r1Pts)   ? na : r1Pts   * optDelta
+premMoveT2 = na(r2Pts)   ? na : r2Pts   * optDelta
+hasPrem    = premPaid > 0
+estT1  = (hasPrem and not na(premMoveT1)) ? premPaid + premMoveT1 : na
+estT2  = (hasPrem and not na(premMoveT2)) ? premPaid + premMoveT2 : na
+capMove  = hasPrem ? premPaid * premSLpct / 100 : na
+estSLcap = (hasPrem and not na(premMoveSL)) ? math.max(premPaid - math.min(premMoveSL, capMove), 0) : na
+qtyAll   = lotQty * lots
+rsT1     = na(premMoveT1) ? na : premMoveT1 * qtyAll
+rsT2     = na(premMoveT2) ? na : premMoveT2 * qtyAll
+rsSL     = na(premMoveSL) ? na : math.min(premMoveSL, nz(capMove, premMoveSL)) * qtyAll
+optType  = pDir == 1 ? "CALL (CE)" : pDir == -1 ? "PUT (PE)" : (bias=="LONG" ? "CALL (CE)" : bias=="SHORT" ? "PUT (PE)" : "-")
+
+beforeOR = _t < 945
+filtersBad = not filtersOK
+verdict = "WAIT"
+vColor = color.new(color.gray, 30)
+if inTrade
+    verdict := pDir == 1 ? "IN LONG" : "IN SHORT"
+    vColor := pDir == 1 ? #089981 : #f23645
+else if tradedToday
+    verdict := "DONE (1/day)"
+    vColor := #7e57c2
+else if isSquareOff
+    verdict := "SESSION OVER"
+    vColor := color.new(color.gray, 20)
+else if beforeOR
+    verdict := "WAIT - range forming"
+    vColor := color.new(color.gray, 20)
+else if not adxOK
+    verdict := "SKIP - chop / low ADX"
+    vColor := #ff9800
+else if filtersBad
+    verdict := "SKIP TODAY"
+    vColor := #f23645
+else if bigGap and useGapF
+    verdict := gapUp ? "GAP-UP: LONGS ONLY > " + str.tostring(orHigh, "#") : "GAP-DN: SHORTS ONLY < " + str.tostring(orLow, "#")
+    vColor := gapUp ? #089981 : #f23645
+    if bias == "NEUTRAL"
+        verdict := verdict + " (wait bias)"
+        vColor := #ff9800
+else if bias == "NEUTRAL"
+    verdict := "WAIT - no bias"
+    vColor := #ff9800
+else
+    missBuf  = (not na(orHigh) and not na(orLow)) ? (orHigh - orLow) * 0.25 : na
+    missLong = bias == "LONG"  and not na(missBuf) and close > orHigh + missBuf
+    missShort= bias == "SHORT" and not na(missBuf) and close < orLow  - missBuf
+    if missLong
+        verdict := "MISSED LONG (ran past " + str.tostring(orHigh, "#") + ")"
+        vColor := #ff9800
+    else if missShort
+        verdict := "MISSED SHORT (ran past " + str.tostring(orLow, "#") + ")"
+        vColor := #ff9800
+    else
+        verdict := bias == "LONG" ? "READY: buy > " + str.tostring(orHigh, "#") : "READY: sell < " + str.tostring(orLow, "#")
+        vColor := bias == "LONG" ? #089981 : #f23645
+
+bgC = showBg ? (longSig ? color.new(color.green,80) : shortSig ? color.new(color.red,80) : (inTrade and pDir==1) ? color.new(color.green,92) : (inTrade and pDir==-1) ? color.new(color.red,92) : na) : na
+bgcolor(bgC, title="Signal/Trade Shade")
+
+plotshape(longSig,  "LONG",  shape.triangleup,   location.belowbar, color.new(color.green,0), size=size.small, text="BUY")
+plotshape(shortSig, "SHORT", shape.triangledown, location.abovebar, color.new(color.red,0),   size=size.small, text="SELL")
+
+if showLevels and (longSig or shortSig)
+    line.new(bar_index, pEntry, bar_index+12, pEntry, color=color.new(color.yellow,0), width=2)
+    line.new(bar_index, pStop,  bar_index+12, pStop,  color=color.red,   style=line.style_dashed)
+    line.new(bar_index, pT1, bar_index+12, pT1, color=color.teal, style=line.style_dotted)
+    line.new(bar_index, pT2, bar_index+12, pT2, color=color.blue, style=line.style_dotted)
+    label.new(bar_index, pT2, "T2 "+str.tostring(pT2,"#"), style=label.style_label_left, color=color.new(color.blue,80), textcolor=color.white, size=size.tiny)
+
+if not na(time("15", "1515-1530", "Asia/Kolkata"))
+    prevClose := close
+
+plot(not na(orHigh) ? orHigh : na, "ORB High", color=color.new(color.green,0), style=plot.style_linebr, linewidth=2)
+plot(not na(orLow)  ? orLow  : na, "ORB Low",  color=color.new(color.red,0),   style=plot.style_linebr, linewidth=2)
+plot(vwapVal, "VWAP", color=color.new(color.blue,40))
+plot(emaVal,  "EMA",  color=color.new(color.orange,40))
+
+srPivHi = ta.pivothigh(high, srPiv, srPiv)
+srPivLo = ta.pivotlow(low,  srPiv, srPiv)
+var line[] srLines = array.new_line()
+if showSR and not na(srPivHi)
+    array.push(srLines, line.new(bar_index[srPiv], srPivHi, bar_index, srPivHi, color=color.new(color.red,30), width=1, extend=extend.right, style=line.style_dotted))
+    if array.size(srLines) > 8
+        line.delete(array.shift(srLines))
+if showSR and not na(srPivLo)
+    array.push(srLines, line.new(bar_index[srPiv], srPivLo, bar_index, srPivLo, color=color.new(color.green,30), width=1, extend=extend.right, style=line.style_dotted))
+    if array.size(srLines) > 8
+        line.delete(array.shift(srLines))
+
+alertcondition(longSig,  "BNF ORB Long",  "BANKNIFTY ORB: LONG breakout (in trend)")
+alertcondition(shortSig, "BNF ORB Short", "BANKNIFTY ORB: SHORT breakout (in trend)")
+if longSig
+    alert("BNF ORB LONG fill " + str.tostring(pEntry, "#") + " SL " + str.tostring(pStop, "#") + " T1 " + str.tostring(pT1, "#") + " T2 " + str.tostring(pT2, "#") + (bigGap ? " (gap-day long)" : ""), alert.freq_once_per_bar)
+if shortSig
+    alert("BNF ORB SHORT fill " + str.tostring(pEntry, "#") + " SL " + str.tostring(pStop, "#") + " T1 " + str.tostring(pT1, "#") + " T2 " + str.tostring(pT2, "#") + (bigGap ? " (gap-day short)" : ""), alert.freq_once_per_bar)
+
+// -- v52 TRENDY DASHBOARD --------------------------------------------
+f_pos(p) =>
+    p == "Top Right" ? position.top_right : p == "Top Left" ? position.top_left : p == "Bottom Right" ? position.bottom_right : position.bottom_left
+f_px(x) => na(x) ? "-" : str.tostring(x, "#.##")
+f_rs(x) => na(x) ? "-" : "Rs." + str.tostring(x, "#,###")
+f_bar(pct, n) =>
+    filled = int(math.round(math.max(math.min(pct, 1.0), 0.0) * n))
+    out = ""
+    for i = 1 to n
+        out += i <= filled ? "#" : "-"
+    out
+
+cBG    = #131722
+cHdr   = #1e222d
+cLbl   = #2a2e39
+cBlue  = #2962ff
+cGreen = #089981
+cRed   = #f23645
+cAmber = #ff9800
+cTxt   = #d1d4dc
+
+var table dash = na
+if showDash
+    dash := table.new(f_pos(dashPos), 2, 20, border_width=1, frame_width=2, frame_color=cHdr, border_color=cBG)
+
+if showDash and barstate.islast
+    table.clear(dash, 0, 0, 1, 19)
+    // -- banner --
+    table.cell(dash, 0, 0, ">> BNF-ORB v52", text_color=color.white, bgcolor=cHdr, text_size=size.normal)
+    table.cell(dash, 1, 0, verdict, text_color=color.white, bgcolor=vColor, text_size=size.normal)
+    // -- market section --
+    table.cell(dash, 0, 1, "MARKET", text_color=cBlue, bgcolor=cBG, text_size=size.tiny)
+    table.cell(dash, 1, 1, syminfo.ticker + " | " + timeframe.period + "m", text_color=cTxt, bgcolor=cBG, text_size=size.tiny)
+    table.cell(dash, 0, 2, "OR zone", text_color=cTxt, bgcolor=cLbl, text_size=size.small)
+    table.cell(dash, 1, 2, f_px(orLow) + " - " + f_px(orHigh) + "  (" + (na(orRange) ? "-" : str.tostring(orRange, "#")) + ")", text_color=color.white, bgcolor=rangeOK ? color.new(cGreen, 55) : color.new(cRed, 55), text_size=size.small)
+    table.cell(dash, 0, 3, "Bias", text_color=cTxt, bgcolor=cLbl, text_size=size.small)
+    table.cell(dash, 1, 3, (bias == "LONG" ? "LONG ^" : bias == "SHORT" ? "SHORT v" : "NEUTRAL ~"), text_color=color.white, bgcolor=bias=="LONG"?color.new(cGreen,45):bias=="SHORT"?color.new(cRed,45):color.new(color.gray,45), text_size=size.small)
+    table.cell(dash, 0, 4, "ADX | VIX", text_color=cTxt, bgcolor=cLbl, text_size=size.small)
+    table.cell(dash, 1, 4, (na(adxVal) ? "-" : str.tostring(adxVal, "#.#")) + (adxOK ? " OK" : " X") + "  |  " + (na(ivix) ? "-" : str.tostring(ivix, "#.##")), text_color=color.white, bgcolor=adxOK ? color.new(cGreen, 60) : color.new(cAmber, 45), text_size=size.small)
+    table.cell(dash, 0, 5, "Gap", text_color=cTxt, bgcolor=cLbl, text_size=size.small)
+    table.cell(dash, 1, 5, str.tostring(gapPct, "#.##") + "%" + (bigGap ? (gapUp ? " up longs only" : " dn shorts only") : " OK"), text_color=color.white, bgcolor=bigGap ? color.new(cAmber, 40) : color.new(cGreen, 60), text_size=size.small)
+    // -- trade section --
+    table.cell(dash, 0, 6, "TRADE", text_color=cBlue, bgcolor=cBG, text_size=size.tiny)
+    table.cell(dash, 1, 6, inTrade ? (pDir == 1 ? "long | real fill" : "short | real fill") : "-", text_color=cTxt, bgcolor=cBG, text_size=size.tiny)
+    table.cell(dash, 0, 7, "Entry (fill)", text_color=cTxt, bgcolor=cLbl, text_size=size.small)
+    table.cell(dash, 1, 7, f_px(pEntry), text_color=color.white, bgcolor=color.new(cBlue, 35), text_size=size.small)
+    table.cell(dash, 0, 8, "Stop", text_color=cTxt, bgcolor=cLbl, text_size=size.small)
+    table.cell(dash, 1, 8, f_px(pStop) + (na(riskPts) ? "" : "  (-" + str.tostring(riskPts, "#") + ")"), text_color=color.white, bgcolor=color.new(cRed, 35), text_size=size.small)
+    tProg = inTrade and not na(pT1) and not na(pEntry) and pT1 != pEntry ? (pDir == 1 ? (close - pEntry) / (pT1 - pEntry) : (pEntry - close) / (pEntry - pT1)) : na
+    table.cell(dash, 0, 9, "T1  " + str.tostring(rr1, "#.##") + "R", text_color=cTxt, bgcolor=cLbl, text_size=size.small)
+    table.cell(dash, 1, 9, f_px(pT1) + (na(tProg) ? "" : "  " + f_bar(tProg, 8)), text_color=color.white, bgcolor=color.new(color.teal, 35), text_size=size.small)
+    table.cell(dash, 0, 10, "T2  " + str.tostring(rr2, "#.##") + "R", text_color=cTxt, bgcolor=cLbl, text_size=size.small)
+    table.cell(dash, 1, 10, f_px(pT2), text_color=color.white, bgcolor=color.new(cGreen, 45), text_size=size.small)
+    table.cell(dash, 0, 11, "Open P&L", text_color=cTxt, bgcolor=cLbl, text_size=size.small)
+    table.cell(dash, 1, 11, inTrade ? (openPnl >= 0 ? "+" : "") + str.tostring(openPnl, "#.#") + " pts" : "flat", text_color=color.white, bgcolor=inTrade ? (openPnl >= 0 ? color.new(cGreen, 30) : color.new(cRed, 30)) : color.new(color.gray, 55), text_size=size.small)
+    // -- stats section --
+    table.cell(dash, 0, 12, "STATS", text_color=cBlue, bgcolor=cBG, text_size=size.tiny)
+    table.cell(dash, 1, 12, dayResult, text_color=cTxt, bgcolor=cBG, text_size=size.tiny)
+    table.cell(dash, 0, 13, "Win% (" + str.tostring(tTotal) + ")", text_color=cTxt, bgcolor=cLbl, text_size=size.small)
+    table.cell(dash, 1, 13, f_bar(winPct / 100, 8) + "  " + str.tostring(winPct, "#.#") + "%", text_color=winPct >= 50 ? cGreen : cAmber, bgcolor=cBG, text_size=size.small)
+    // -- option section --
+    if showPrem
+        table.cell(dash, 0, 14, "OPTION", text_color=cBlue, bgcolor=cBG, text_size=size.tiny)
+        table.cell(dash, 1, 14, "delta " + str.tostring(optDelta, "#.##") + " | " + str.tostring(lots) + "x" + str.tostring(lotQty), text_color=cTxt, bgcolor=cBG, text_size=size.tiny)
+        table.cell(dash, 0, 15, "Buy", text_color=cTxt, bgcolor=cLbl, text_size=size.small)
+        table.cell(dash, 1, 15, optType + (hasPrem ? "  @ " + str.tostring(premPaid, "#.##") : ""), text_color=color.white, bgcolor=optType == "CALL (CE)" ? color.new(cGreen, 40) : optType == "PUT (PE)" ? color.new(cRed, 40) : color.new(color.gray, 55), text_size=size.small)
+        table.cell(dash, 0, 16, "Prem SL cap", text_color=cTxt, bgcolor=cLbl, text_size=size.small)
+        table.cell(dash, 1, 16, f_px(estSLcap) + "  (" + f_rs(rsSL) + ")", text_color=color.white, bgcolor=color.new(cRed, 45), text_size=size.small)
+        table.cell(dash, 0, 17, "Prem T1", text_color=cTxt, bgcolor=cLbl, text_size=size.small)
+        table.cell(dash, 1, 17, f_px(estT1) + "  (+" + f_rs(rsT1) + ")", text_color=color.white, bgcolor=color.new(color.teal, 45), text_size=size.small)
+        table.cell(dash, 0, 18, "Prem T2", text_color=cTxt, bgcolor=cLbl, text_size=size.small)
+        table.cell(dash, 1, 18, f_px(estT2) + "  (+" + f_rs(rsT2) + ")", text_color=color.white, bgcolor=color.new(cGreen, 45), text_size=size.small)
+        table.cell(dash, 0, 19, "Square-off", text_color=cTxt, bgcolor=cLbl, text_size=size.small)
+        table.cell(dash, 1, 19, str.tostring(exitHHMM, "0000") + " IST | hold misses to EOD", text_color=cAmber, bgcolor=cBG, text_size=size.small)
