@@ -1,8 +1,8 @@
 //@version=6
-// DAY-TYPE ROUTER — the 10:00 filter that decides IF today is an ORB day.
+// DAY-TYPE ROUTER - the 10:00 filter that decides IF today is an ORB day.
 // Research (2026-07-13, BANKNIFTY 15m, 249 days, a-priori thresholds):
 //   ORB on TREND days:  n=75  win 76%  avg +92.8pts  PF 2.46
-//   ORB on RANGE days:  n=158 win 49%  avg  -7.8pts  PF 0.93  ← all edge gone
+//   ORB on RANGE days:  n=158 win 49%  avg  -7.8pts  PF 0.93  <- all edge gone
 // Rule: TREND day = trade ORB per its plan. RANGE day = stand down.
 // TREND if first-45-min efficiency >= 0.6 AND (H45-L45) >= 0.25 x ATR14(D).
 indicator("DAY-TYPE ROUTER [ORB filter]", overlay = true)
@@ -40,9 +40,9 @@ if istMin >= 555 and closeMin <= 570
 eff = na(h45) or h45 == l45 ? na : math.abs(c45 - o915) / (h45 - l45)
 if na(dayType) and barstate.isconfirmed and closeMin >= 600 and not na(eff) and not na(atrD)
     dayType := eff >= effThresh and (h45 - l45) >= atrFrac * atrD ? "TREND" : "RANGE"
-    alert("DAY-TYPE " + syminfo.ticker + ": " + dayType + (dayType == "TREND" ? " — ORB ACTIVE (76% win, PF 2.46)" : " — STAND DOWN (ORB PF 0.93 on range days)"), alert.freq_once_per_bar)
+    alert("DAY-TYPE " + syminfo.ticker + ": " + dayType + (dayType == "TREND" ? " - ORB ACTIVE (76% win, PF 2.46)" : " - STAND DOWN (ORB PF 0.93 on range days)"), alert.freq_once_per_bar)
 
-// ── Visuals ─────────────────────────────────────────────────────────
+// -- Visuals ---------------------------------------------------------
 plot(orH, "OR High (15m)", color = color.new(color.teal, 0),   style = plot.style_linebr)
 plot(orL, "OR Low (15m)",  color = color.new(color.maroon, 0), style = plot.style_linebr)
 bgcolor(dayType == "TREND" ? color.new(color.green, 92) : dayType == "RANGE" ? color.new(color.red, 94) : na)
@@ -55,12 +55,12 @@ if barstate.islast
     hdr = color.new(color.gray, 55)
     vCol = dayType == "TREND" ? color.new(color.green, 60) : dayType == "RANGE" ? color.new(color.red, 60) : color.new(color.gray, 60)
     table.cell(t, 0, 0, "DAY-TYPE ROUTER", text_color = color.white, bgcolor = color.new(color.black, 20), text_size = size.small)
-    table.cell(t, 1, 0, na(dayType) ? "…classifying (10:00)" : dayType == "TREND" ? "🔥 TREND — ORB ACTIVE" : "😴 RANGE — STAND DOWN", text_color = color.white, bgcolor = vCol, text_size = size.small)
-    table.cell(t, 0, 1, "Efficiency (need ≥" + str.tostring(effThresh, "0.0") + ")", text_color = color.white, bgcolor = hdr, text_size = size.small)
-    table.cell(t, 1, 1, na(eff) ? "—" : str.tostring(eff, "0.00"), text_color = color.white, bgcolor = na(eff) ? hdr : eff >= effThresh ? color.new(color.green, 70) : color.new(color.red, 70), text_size = size.small)
-    table.cell(t, 0, 2, "45m range vs ATR (need ≥" + str.tostring(atrFrac * 100, "0") + "%)", text_color = color.white, bgcolor = hdr, text_size = size.small)
-    table.cell(t, 1, 2, na(h45) or na(atrD) ? "—" : str.tostring((h45 - l45) / atrD * 100, "0") + "%", text_color = color.white, bgcolor = na(h45) or na(atrD) ? hdr : (h45 - l45) >= atrFrac * atrD ? color.new(color.green, 70) : color.new(color.red, 70), text_size = size.small)
+    table.cell(t, 1, 0, na(dayType) ? "classifying at 10:00..." : dayType == "TREND" ? "TREND >> ORB ACTIVE" : "RANGE >> STAND DOWN", text_color = color.white, bgcolor = vCol, text_size = size.small)
+    table.cell(t, 0, 1, "Efficiency (need >=" + str.tostring(effThresh, "0.0") + ")", text_color = color.white, bgcolor = hdr, text_size = size.small)
+    table.cell(t, 1, 1, na(eff) ? "-" : str.tostring(eff, "0.00"), text_color = color.white, bgcolor = na(eff) ? hdr : eff >= effThresh ? color.new(color.green, 70) : color.new(color.red, 70), text_size = size.small)
+    table.cell(t, 0, 2, "45m range vs ATR (need >=" + str.tostring(atrFrac * 100, "0") + "%)", text_color = color.white, bgcolor = hdr, text_size = size.small)
+    table.cell(t, 1, 2, na(h45) or na(atrD) ? "-" : str.tostring((h45 - l45) / atrD * 100, "0") + "%", text_color = color.white, bgcolor = na(h45) or na(atrD) ? hdr : (h45 - l45) >= atrFrac * atrD ? color.new(color.green, 70) : color.new(color.red, 70), text_size = size.small)
     table.cell(t, 0, 3, "OR levels (ORB entries)", text_color = color.white, bgcolor = hdr, text_size = size.small)
-    table.cell(t, 1, 3, na(orH) ? "—" : str.tostring(orH, format.mintick) + " / " + str.tostring(orL, format.mintick), text_color = color.white, bgcolor = hdr, text_size = size.small)
+    table.cell(t, 1, 3, na(orH) ? "-" : str.tostring(orH, format.mintick) + " / " + str.tostring(orL, format.mintick), text_color = color.white, bgcolor = hdr, text_size = size.small)
     table.cell(t, 0, 4, "Verified (249d)", text_color = color.white, bgcolor = hdr, text_size = size.small)
-    table.cell(t, 1, 4, "TREND: 76% PF 2.46 · RANGE: PF 0.93", text_color = color.new(color.orange, 0), bgcolor = hdr, text_size = size.small)
+    table.cell(t, 1, 4, "TREND: 76% PF 2.46 | RANGE: PF 0.93", text_color = color.new(color.orange, 0), bgcolor = hdr, text_size = size.small)
