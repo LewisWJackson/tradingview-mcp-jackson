@@ -2,6 +2,8 @@
  * Core replay mode logic.
  */
 import { evaluate, getReplayApi } from '../connection.js';
+import * as chart from './chart.js';
+import * as journal from './journal.js';
 
 function wv(path) {
   return `(function(){ var v = ${path}; return (v && typeof v === 'object' && typeof v.value === 'function') ? v.value() : v; })()`;
@@ -76,7 +78,7 @@ export async function stop() {
   return { success: true, action: 'replay_stopped' };
 }
 
-export async function trade({ action }) {
+export async function trade({ action, tag } = {}) {
   const rp = await getReplayApi();
   const started = await evaluate(wv(`${rp}.isReplayStarted()`));
   if (!started) throw new Error('Replay is not started. Use replay_start first.');
@@ -88,7 +90,18 @@ export async function trade({ action }) {
 
   const position = await evaluate(wv(`${rp}.position()`));
   const pnl = await evaluate(wv(`${rp}.realizedPL()`));
-  return { success: true, action, position, realized_pnl: pnl };
+  const currentDate = await evaluate(wv(`${rp}.currentDate()`));
+
+  let journal_entry;
+  if (action === 'buy' || action === 'sell') {
+    const { symbol, resolution } = await chart.getState();
+    journal.recordOpen({ symbol, timeframe: resolution, side: action, currentDate, cumulativePnl: pnl, tag });
+  } else if (action === 'close') {
+    const result = journal.recordClose({ currentDate, cumulativePnl: pnl });
+    if (result.recorded) journal_entry = result.trade;
+  }
+
+  return { success: true, action, position, realized_pnl: pnl, ...(journal_entry ? { journal_entry } : {}) };
 }
 
 export async function status() {

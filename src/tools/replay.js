@@ -27,10 +27,11 @@ export function registerReplayTools(server) {
     catch (err) { return jsonResult({ success: false, error: err.message }, true); }
   });
 
-  server.tool('replay_trade', 'Execute a trade action in replay mode (buy, sell, or close position)', {
+  server.tool('replay_trade', 'Execute a trade action in replay mode (buy, sell, or close position). buy/sell and close auto-log a trade in the journal (see journal_get/journal_stats).', {
     action: z.string().describe('Trade action: buy, sell, or close'),
-  }, async ({ action }) => {
-    try { return jsonResult(await core.trade({ action })); }
+    tag: z.string().optional().describe('Optional label for the setup/bias-criterion behind this trade (e.g. "bullish FVG retest") — stored on the journal entry so journal_stats can compare win rates by tag. Only meaningful on buy/sell.'),
+  }, async ({ action, tag }) => {
+    try { return jsonResult(await core.trade({ action, tag })); }
     catch (err) { return jsonResult({ success: false, error: err.message }, true); }
   });
 

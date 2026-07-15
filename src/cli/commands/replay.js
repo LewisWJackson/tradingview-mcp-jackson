@@ -31,10 +31,13 @@ register('replay', {
       handler: (opts) => core.autoplay({ speed: opts.speed ? Number(opts.speed) : undefined }),
     }],
     ['trade', {
-      description: 'Execute a trade in replay mode (buy, sell, close)',
+      description: 'Execute a trade in replay mode (buy, sell, close). buy/sell/close auto-log to the journal.',
+      options: {
+        tag: { type: 'string', short: 't', description: 'Label for the setup/bias-criterion behind this trade (e.g. "bullish FVG retest")' },
+      },
       handler: (opts, positionals) => {
         if (!positionals[0]) throw new Error('Action required. Usage: tv replay trade buy');
-        return core.trade({ action: positionals[0] });
+        return core.trade({ action: positionals[0], tag: opts.tag });
       },
     }],
   ]),
