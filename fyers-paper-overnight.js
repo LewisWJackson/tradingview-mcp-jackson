@@ -14,7 +14,7 @@ import { getHistory, getQuotes } from "./fyers-client.js";
 
 const MODE = process.argv[2] || "report";
 const LOG  = new URL("./paper-overnight-log.json", import.meta.url);
-const WATCH = (process.env.WATCH || "SBIN,GRASIM,ASIANPAINT,LT,NTPC,AXISBANK,SUNPHARMA,INDUSINDBK,BAJFINANCE,DIVISLAB,ADANIENT").split(",");
+const WATCH = (process.env.WATCH || "SBIN,GRASIM,ASIANPAINT,LT,NTPC,AXISBANK,SUNPHARMA,INDUSINDBK,BAJFINANCE,DIVISLAB,ADANIENT,DIXON").split(",");
 const ITM_FRAC = 0.93;                 // target strike ~7% ITM (delta ~0.85-0.9)
 const MAX_SPREAD_PCT = 0.15;           // skip if option spread > 0.15% of spot (untradeable)
 
