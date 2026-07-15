@@ -1,0 +1,484 @@
+//@version=6
+indicator("ICT Concepts + Doji Scanner [Keagan]", overlay=true, max_lines_count=500, max_boxes_count=500, max_labels_count=500)
+
+// ============================================================
+// INPUTS
+// ============================================================
+grpStruct = "Structure"
+swingLen        = input.int(5, "Swing Lookback (bars each side)", minval=1, group=grpStruct)
+showBias        = input.bool(true, "Show Bias Table", group=grpStruct)
+showBOS         = input.bool(true, "Show Break of Structure", group=grpStruct)
+showSweep       = input.bool(true, "Show Liquidity Sweeps", group=grpStruct)
+showFVG         = input.bool(true, "Show Fair Value Gaps", group=grpStruct)
+showOB          = input.bool(true, "Show Order Blocks", group=grpStruct)
+showEQ          = input.bool(true, "Show Equilibrium / Premium-Discount", group=grpStruct)
+obLookback      = input.int(20, "Order Block Search Lookback (bars)", minval=1, maxval=50, group=grpStruct)
+
+grpDoji = "Doji Patterns"
+showDoji        = input.bool(true, "Show Green/Red Doji", group=grpDoji)
+showLongLegged  = input.bool(true, "Show Long-Legged Doji", group=grpDoji)
+showCross       = input.bool(true, "Show Cross Doji (green) / Inverted Cross Doji (red)", group=grpDoji)
+showDragonfly   = input.bool(true, "Show Green Dragonfly Doji", group=grpDoji)
+showGravestone  = input.bool(true, "Show Red Gravestone Doji", group=grpDoji)
+dojiBodyMaxPct      = input.float(10.0, "Doji Max Body (% of candle range)", minval=0.1, maxval=50, group=grpDoji) / 100
+oppWickMaxPct       = input.float(10.0, "Dragonfly/Gravestone Max Opposite Wick (% of range)", minval=0, maxval=40, group=grpDoji) / 100
+longLeggedWickMinPct= input.float(35.0, "Long-Legged Min Wick Each Side (% of range)", minval=10, maxval=49, group=grpDoji) / 100
+crossSymTolPct      = input.float(15.0, "Cross Doji Wick Symmetry Tolerance (% of range)", minval=1, maxval=40, group=grpDoji) / 100
+
+grpRT = "Real-Time (Unconfirmed)"
+showLiveSwing   = input.bool(true, "Show Live Swing High/Low (no confirmation lag)", group=grpRT)
+showLiveBOS     = input.bool(true, "Show Live BOS (reacts intrabar, unconfirmed)", group=grpRT)
+
+grpSess = "Sessions & Daily/Weekly Levels"
+showPDHL      = input.bool(true, "Show Previous Day High/Low", group=grpSess)
+showPWHL      = input.bool(true, "Show Previous Week High/Low", group=grpSess)
+showSessions  = input.bool(true, "Show Session Highs/Lows (Asia/London/NY)", group=grpSess)
+asiaSession   = input.session("1900-0400", "Asia Session (ET)", group=grpSess)
+londonSession = input.session("0300-1200", "London Session (ET)", group=grpSess)
+nySession     = input.session("0800-1700", "New York Session (ET)", group=grpSess)
+
+// ============================================================
+// STRUCTURE: swing pivots, bias, BOS, liquidity sweeps
+// ============================================================
+ph = ta.pivothigh(high, swingLen, swingLen)
+pl = ta.pivotlow(low, swingLen, swingLen)
+
+var float lastSwingHigh = na
+var float prevSwingHigh = na
+var int   lastSwingHighBar = na
+
+var float lastSwingLow = na
+var float prevSwingLow = na
+var int   lastSwingLowBar = na
+
+if not na(ph)
+    prevSwingHigh := lastSwingHigh
+    lastSwingHigh := ph
+    lastSwingHighBar := bar_index - swingLen
+
+if not na(pl)
+    prevSwingLow := lastSwingLow
+    lastSwingLow := pl
+    lastSwingLowBar := bar_index - swingLen
+
+// Live (unconfirmed) swing high/low — a rolling extreme that needs no
+// right-side confirmation bars, so it reacts to price immediately/intrabar
+// instead of lagging swingLen bars behind like the confirmed pivots above.
+rtWindow = swingLen * 2 + 1
+liveSwingHigh = ta.highest(high, rtWindow)
+liveSwingLow  = ta.lowest(low, rtWindow)
+
+plot(showLiveSwing ? liveSwingHigh : na, title="Live Swing High", color=color.new(color.yellow, 55), style=plot.style_circles, linewidth=1)
+plot(showLiveSwing ? liveSwingLow  : na, title="Live Swing Low",  color=color.new(color.orange, 55), style=plot.style_circles, linewidth=1)
+
+liveCrossUp   = ta.crossover(close, liveSwingHigh[1])
+liveCrossDown = ta.crossunder(close, liveSwingLow[1])
+liveBullBOS = showLiveBOS and liveCrossUp
+liveBearBOS = showLiveBOS and liveCrossDown
+
+plotshape(liveBullBOS, title="Live BOS Up",   style=shape.triangleup,   location=location.belowbar, color=color.yellow, text="BOS?", textcolor=color.yellow, size=size.tiny)
+plotshape(liveBearBOS, title="Live BOS Down", style=shape.triangledown, location=location.abovebar, color=color.orange, text="BOS?", textcolor=color.orange, size=size.tiny)
+
+var string bias = "Range"
+if not na(lastSwingHigh) and not na(prevSwingHigh) and not na(lastSwingLow) and not na(prevSwingLow)
+    if lastSwingHigh > prevSwingHigh and lastSwingLow > prevSwingLow
+        bias := "Uptrend"
+    else if lastSwingHigh < prevSwingHigh and lastSwingLow < prevSwingLow
+        bias := "Downtrend"
+    else
+        bias := "Range"
+
+// Break of Structure
+// bar_index guards below stop this from stacking duplicate lines/labels: since
+// `close` is the live/still-forming price in real time, ta.crossover can flip
+// true more than once on the same unconfirmed bar as price chops around the
+// level. The guard lets it fire on the first tick that trips it (no waiting
+// for bar close) but only once per bar.
+var int lastBullBosBar = na
+var int lastBearBosBar = na
+
+crossedAboveHigh = ta.crossover(close, lastSwingHigh)
+crossedBelowLow  = ta.crossunder(close, lastSwingLow)
+bullBOS = showBOS and not na(lastSwingHigh) and crossedAboveHigh and bar_index != lastBullBosBar
+bearBOS = showBOS and not na(lastSwingLow) and crossedBelowLow and bar_index != lastBearBosBar
+
+if bullBOS
+    lastBullBosBar := bar_index
+    line.new(lastSwingHighBar, lastSwingHigh, bar_index, lastSwingHigh, color=color.new(color.lime, 0), style=line.style_solid, width=1)
+    label.new(bar_index, lastSwingHigh, "BOS", style=label.style_label_down, color=color.new(color.lime, 80), textcolor=color.lime, size=size.tiny)
+
+if bearBOS
+    lastBearBosBar := bar_index
+    line.new(lastSwingLowBar, lastSwingLow, bar_index, lastSwingLow, color=color.new(color.red, 0), style=line.style_solid, width=1)
+    label.new(bar_index, lastSwingLow, "BOS", style=label.style_label_up, color=color.new(color.red, 80), textcolor=color.red, size=size.tiny)
+
+// Liquidity sweeps — wick beyond a swing level that closes back inside it
+var float lastSweptHigh = na
+var float lastSweptLow = na
+
+sweepHigh = showSweep and not na(lastSwingHigh) and high > lastSwingHigh and close < lastSwingHigh and lastSwingHigh != lastSweptHigh
+sweepLow  = showSweep and not na(lastSwingLow) and low < lastSwingLow and close > lastSwingLow and lastSwingLow != lastSweptLow
+
+if sweepHigh
+    lastSweptHigh := lastSwingHigh
+    label.new(bar_index, high, "Liquidity Sweep", style=label.style_label_down, color=color.new(color.orange, 70), textcolor=color.orange, size=size.tiny)
+
+if sweepLow
+    lastSweptLow := lastSwingLow
+    label.new(bar_index, low, "Liquidity Sweep", style=label.style_label_up, color=color.new(color.orange, 70), textcolor=color.orange, size=size.tiny)
+
+// ============================================================
+// FAIR VALUE GAPS (3-candle imbalance)
+// Boxes extend right only while unmitigated; once price trades back
+// through the gap, the box freezes in place instead of stacking forever.
+// ============================================================
+var box[]   bullFvgBox = array.new_box()
+var float[] bullFvgBot = array.new_float()
+var box[]   bearFvgBox = array.new_box()
+var float[] bearFvgTop = array.new_float()
+
+// bar_index guards for the same intrabar-repaint reason as BOS above: `low`/
+// `high` are live on the still-forming bar, so the gap condition could flip
+// true on more than one tick of the same bar without this.
+var int lastBullFvgBar = na
+var int lastBearFvgBar = na
+
+bullishFVG = showFVG and low > high[2] and bar_index != lastBullFvgBar
+bearishFVG = showFVG and high < low[2] and bar_index != lastBearFvgBar
+
+if bullishFVG
+    lastBullFvgBar := bar_index
+    b = box.new(bar_index[2], low, bar_index, high[2], border_color=color.new(color.lime, 60), bgcolor=color.new(color.lime, 88))
+    label.new(bar_index[1], (low + high[2]) / 2, "FVG", style=label.style_label_left, color=color.new(color.lime, 100), textcolor=color.lime, size=size.tiny)
+    array.push(bullFvgBox, b)
+    array.push(bullFvgBot, high[2])
+
+if bearishFVG
+    lastBearFvgBar := bar_index
+    b = box.new(bar_index[2], low[2], bar_index, high, border_color=color.new(color.red, 60), bgcolor=color.new(color.red, 88))
+    label.new(bar_index[1], (low[2] + high) / 2, "FVG", style=label.style_label_left, color=color.new(color.red, 100), textcolor=color.red, size=size.tiny)
+    array.push(bearFvgBox, b)
+    array.push(bearFvgTop, low[2])
+
+if showFVG and array.size(bullFvgBox) > 0
+    for j = array.size(bullFvgBox) - 1 to 0
+        bx = array.get(bullFvgBox, j)
+        bot = array.get(bullFvgBot, j)
+        box.set_right(bx, bar_index)
+        if low <= bot
+            array.remove(bullFvgBox, j)
+            array.remove(bullFvgBot, j)
+if showFVG and array.size(bearFvgBox) > 0
+    for j = array.size(bearFvgBox) - 1 to 0
+        bx = array.get(bearFvgBox, j)
+        top = array.get(bearFvgTop, j)
+        box.set_right(bx, bar_index)
+        if high >= top
+            array.remove(bearFvgBox, j)
+            array.remove(bearFvgTop, j)
+
+// ============================================================
+// ORDER BLOCKS — last opposite-colour candle before a BOS impulse
+// Boxes extend right only while unmitigated (price hasn't closed back through).
+// ============================================================
+var box[]   bullObBox = array.new_box()
+var float[] bullObBot = array.new_float()
+var box[]   bearObBox = array.new_box()
+var float[] bearObTop = array.new_float()
+
+if bullBOS and showOB
+    for i = 1 to obLookback
+        if close[i] < open[i]
+            ob = box.new(bar_index[i], high[i], bar_index, low[i], border_color=color.new(color.teal, 40), bgcolor=color.new(color.teal, 85))
+            label.new(bar_index[i], low[i], "OB", style=label.style_label_up, color=color.new(color.teal, 100), textcolor=color.teal, size=size.tiny)
+            array.push(bullObBox, ob)
+            array.push(bullObBot, low[i])
+            break
+
+if bearBOS and showOB
+    for i = 1 to obLookback
+        if close[i] > open[i]
+            ob = box.new(bar_index[i], high[i], bar_index, low[i], border_color=color.new(color.maroon, 40), bgcolor=color.new(color.maroon, 85))
+            label.new(bar_index[i], high[i], "OB", style=label.style_label_down, color=color.new(color.maroon, 100), textcolor=color.maroon, size=size.tiny)
+            array.push(bearObBox, ob)
+            array.push(bearObTop, high[i])
+            break
+
+if showOB and array.size(bullObBox) > 0
+    for j = array.size(bullObBox) - 1 to 0
+        bx = array.get(bullObBox, j)
+        bot = array.get(bullObBot, j)
+        box.set_right(bx, bar_index)
+        if close < bot
+            array.remove(bullObBox, j)
+            array.remove(bullObBot, j)
+if showOB and array.size(bearObBox) > 0
+    for j = array.size(bearObBox) - 1 to 0
+        bx = array.get(bearObBox, j)
+        top = array.get(bearObTop, j)
+        box.set_right(bx, bar_index)
+        if close > top
+            array.remove(bearObBox, j)
+            array.remove(bearObTop, j)
+
+// ============================================================
+// EQUILIBRIUM / PREMIUM-DISCOUNT — midpoint of the active swing range
+// Objects are created once and moved with set_xy/set_lefttop/set_rightbottom
+// on subsequent bars instead of being deleted and recreated every bar — the
+// delete+new pattern was churning line/box objects across the entire chart
+// history and on every realtime tick, which is unnecessary drawing overhead.
+// ============================================================
+var line eqLine = na
+var box  premiumBox = na
+var box  discountBox = na
+
+rangeValid = showEQ and not na(lastSwingHigh) and not na(lastSwingLow) and lastSwingHigh > lastSwingLow
+if rangeValid
+    eqLevel = (lastSwingHigh + lastSwingLow) / 2
+    leftBar = math.min(lastSwingHighBar, lastSwingLowBar)
+
+    if na(eqLine)
+        eqLine := line.new(leftBar, eqLevel, bar_index, eqLevel, color=color.new(color.gray, 30), style=line.style_dashed, width=1)
+        premiumBox := box.new(leftBar, lastSwingHigh, bar_index, eqLevel, border_color=na, bgcolor=color.new(color.red, 93))
+        discountBox := box.new(leftBar, eqLevel, bar_index, lastSwingLow, border_color=na, bgcolor=color.new(color.lime, 93))
+    else
+        line.set_xy1(eqLine, leftBar, eqLevel)
+        line.set_xy2(eqLine, bar_index, eqLevel)
+        box.set_lefttop(premiumBox, leftBar, lastSwingHigh)
+        box.set_rightbottom(premiumBox, bar_index, eqLevel)
+        box.set_lefttop(discountBox, leftBar, eqLevel)
+        box.set_rightbottom(discountBox, bar_index, lastSwingLow)
+
+// ============================================================
+// PREVIOUS DAY / WEEK HIGH & LOW
+// Non-repainting: request.security with [1] on the daily/weekly series
+// always reads the last *completed* day/week, never the one in progress.
+// ============================================================
+[pdHigh, pdLow] = request.security(syminfo.tickerid, "D", [high[1], low[1]], lookahead=barmerge.lookahead_off)
+[pwHigh, pwLow] = request.security(syminfo.tickerid, "W", [high[1], low[1]], lookahead=barmerge.lookahead_off)
+
+// pdHigh/pwHigh only change value on the first intraday bar of a new day/week
+// (that's when request.security's [1]-lagged daily/weekly series rolls over),
+// so comparing against the previous bar's value doubles as a clean day/week
+// boundary detector for anchoring the line's left edge.
+var int dayStartBar  = na
+var int weekStartBar = na
+if not na(pdHigh) and (na(pdHigh[1]) or pdHigh != pdHigh[1] or pdLow != pdLow[1])
+    dayStartBar := bar_index
+if not na(pwHigh) and (na(pwHigh[1]) or pwHigh != pwHigh[1] or pwLow != pwLow[1])
+    weekStartBar := bar_index
+
+var line pdHighLine = na
+var line pdLowLine  = na
+var line pwHighLine = na
+var line pwLowLine  = na
+var label pdHighLbl = na
+var label pdLowLbl  = na
+var label pwHighLbl = na
+var label pwLowLbl  = na
+
+// Objects are only deleted+recreated on the bar a new day/week actually
+// starts (dayStartBar/weekStartBar == bar_index); every other bar just
+// nudges the existing line/label's right edge forward with set_xy2/set_x,
+// instead of destroying and rebuilding 4 drawing objects on every bar.
+if showPDHL and not na(pdHigh)
+    if na(pdHighLine) or dayStartBar == bar_index
+        if not na(pdHighLine)
+            line.delete(pdHighLine)
+            line.delete(pdLowLine)
+            label.delete(pdHighLbl)
+            label.delete(pdLowLbl)
+        pdHighLine := line.new(dayStartBar, pdHigh, bar_index, pdHigh, color=color.new(color.silver, 20), style=line.style_dashed, width=1)
+        pdLowLine  := line.new(dayStartBar, pdLow,  bar_index, pdLow,  color=color.new(color.silver, 20), style=line.style_dashed, width=1)
+        pdHighLbl  := label.new(bar_index, pdHigh, "PDH", style=label.style_label_left, color=color.new(color.silver, 100), textcolor=color.silver, size=size.tiny)
+        pdLowLbl   := label.new(bar_index, pdLow,  "PDL", style=label.style_label_left, color=color.new(color.silver, 100), textcolor=color.silver, size=size.tiny)
+    else
+        line.set_xy2(pdHighLine, bar_index, pdHigh)
+        line.set_xy2(pdLowLine, bar_index, pdLow)
+        label.set_x(pdHighLbl, bar_index)
+        label.set_x(pdLowLbl, bar_index)
+
+if showPWHL and not na(pwHigh)
+    if na(pwHighLine) or weekStartBar == bar_index
+        if not na(pwHighLine)
+            line.delete(pwHighLine)
+            line.delete(pwLowLine)
+            label.delete(pwHighLbl)
+            label.delete(pwLowLbl)
+        pwHighLine := line.new(weekStartBar, pwHigh, bar_index, pwHigh, color=color.new(color.blue, 20), style=line.style_dotted, width=1)
+        pwLowLine  := line.new(weekStartBar, pwLow,  bar_index, pwLow,  color=color.new(color.blue, 20), style=line.style_dotted, width=1)
+        pwHighLbl  := label.new(bar_index, pwHigh, "PWH", style=label.style_label_left, color=color.new(color.blue, 100), textcolor=color.blue, size=size.tiny)
+        pwLowLbl   := label.new(bar_index, pwLow,  "PWL", style=label.style_label_left, color=color.new(color.blue, 100), textcolor=color.blue, size=size.tiny)
+    else
+        line.set_xy2(pwHighLine, bar_index, pwHigh)
+        line.set_xy2(pwLowLine, bar_index, pwLow)
+        label.set_x(pwHighLbl, bar_index)
+        label.set_x(pwLowLbl, bar_index)
+
+// ============================================================
+// SESSION HIGHS/LOWS — Asia, London, New York
+// Each session's H/L line is redrawn every bar, extending right to the
+// current bar; the level itself only updates while that session is active,
+// so once a session ends its line freezes and keeps extending forward as a
+// liquidity reference until the next occurrence of that session resets it.
+// ============================================================
+inAsia   = not na(time(timeframe.period, asiaSession, "America/New_York"))
+inLondon = not na(time(timeframe.period, londonSession, "America/New_York"))
+inNY     = not na(time(timeframe.period, nySession, "America/New_York"))
+
+var float asiaHigh = na
+var float asiaLow  = na
+var int   asiaStartBar = na
+var float londonHigh = na
+var float londonLow  = na
+var int   londonStartBar = na
+var float nyHigh = na
+var float nyLow  = na
+var int   nyStartBar = na
+
+if inAsia and not inAsia[1]
+    asiaHigh := high
+    asiaLow := low
+    asiaStartBar := bar_index
+else if inAsia
+    asiaHigh := math.max(asiaHigh, high)
+    asiaLow := math.min(asiaLow, low)
+
+if inLondon and not inLondon[1]
+    londonHigh := high
+    londonLow := low
+    londonStartBar := bar_index
+else if inLondon
+    londonHigh := math.max(londonHigh, high)
+    londonLow := math.min(londonLow, low)
+
+if inNY and not inNY[1]
+    nyHigh := high
+    nyLow := low
+    nyStartBar := bar_index
+else if inNY
+    nyHigh := math.max(nyHigh, high)
+    nyLow := math.min(nyLow, low)
+
+var line asiaHighLine = na
+var line asiaLowLine  = na
+var line londonHighLine = na
+var line londonLowLine  = na
+var line nyHighLine = na
+var line nyLowLine  = na
+var label asiaHighLbl = na
+var label asiaLowLbl  = na
+var label londonHighLbl = na
+var label londonLowLbl  = na
+var label nyHighLbl = na
+var label nyLowLbl  = na
+
+// Objects are only deleted+recreated when a new session instance begins;
+// every other bar (including the running high/low updates while a session
+// is active) just moves the existing line/label with set_xy2/set_x/set_y,
+// instead of destroying and rebuilding 2 lines + 2 labels every bar.
+if showSessions and not na(asiaHigh)
+    if na(asiaHighLine) or (inAsia and not inAsia[1])
+        if not na(asiaHighLine)
+            line.delete(asiaHighLine)
+            line.delete(asiaLowLine)
+            label.delete(asiaHighLbl)
+            label.delete(asiaLowLbl)
+        asiaHighLine := line.new(asiaStartBar, asiaHigh, bar_index, asiaHigh, color=color.new(color.purple, 30), style=line.style_solid, width=1)
+        asiaLowLine  := line.new(asiaStartBar, asiaLow,  bar_index, asiaLow,  color=color.new(color.purple, 30), style=line.style_solid, width=1)
+        asiaHighLbl  := label.new(bar_index, asiaHigh, "ASIA H", style=label.style_label_left, color=color.new(color.purple, 100), textcolor=color.purple, size=size.tiny)
+        asiaLowLbl   := label.new(bar_index, asiaLow,  "ASIA L", style=label.style_label_left, color=color.new(color.purple, 100), textcolor=color.purple, size=size.tiny)
+    else
+        line.set_xy2(asiaHighLine, bar_index, asiaHigh)
+        line.set_xy2(asiaLowLine, bar_index, asiaLow)
+        label.set_x(asiaHighLbl, bar_index)
+        label.set_x(asiaLowLbl, bar_index)
+        label.set_y(asiaHighLbl, asiaHigh)
+        label.set_y(asiaLowLbl, asiaLow)
+
+if showSessions and not na(londonHigh)
+    if na(londonHighLine) or (inLondon and not inLondon[1])
+        if not na(londonHighLine)
+            line.delete(londonHighLine)
+            line.delete(londonLowLine)
+            label.delete(londonHighLbl)
+            label.delete(londonLowLbl)
+        londonHighLine := line.new(londonStartBar, londonHigh, bar_index, londonHigh, color=color.new(color.blue, 30), style=line.style_solid, width=1)
+        londonLowLine  := line.new(londonStartBar, londonLow,  bar_index, londonLow,  color=color.new(color.blue, 30), style=line.style_solid, width=1)
+        londonHighLbl  := label.new(bar_index, londonHigh, "LDN H", style=label.style_label_left, color=color.new(color.blue, 100), textcolor=color.blue, size=size.tiny)
+        londonLowLbl   := label.new(bar_index, londonLow,  "LDN L", style=label.style_label_left, color=color.new(color.blue, 100), textcolor=color.blue, size=size.tiny)
+    else
+        line.set_xy2(londonHighLine, bar_index, londonHigh)
+        line.set_xy2(londonLowLine, bar_index, londonLow)
+        label.set_x(londonHighLbl, bar_index)
+        label.set_x(londonLowLbl, bar_index)
+        label.set_y(londonHighLbl, londonHigh)
+        label.set_y(londonLowLbl, londonLow)
+
+if showSessions and not na(nyHigh)
+    if na(nyHighLine) or (inNY and not inNY[1])
+        if not na(nyHighLine)
+            line.delete(nyHighLine)
+            line.delete(nyLowLine)
+            label.delete(nyHighLbl)
+            label.delete(nyLowLbl)
+        nyHighLine := line.new(nyStartBar, nyHigh, bar_index, nyHigh, color=color.new(color.orange, 30), style=line.style_solid, width=1)
+        nyLowLine  := line.new(nyStartBar, nyLow,  bar_index, nyLow,  color=color.new(color.orange, 30), style=line.style_solid, width=1)
+        nyHighLbl  := label.new(bar_index, nyHigh, "NY H", style=label.style_label_left, color=color.new(color.orange, 100), textcolor=color.orange, size=size.tiny)
+        nyLowLbl   := label.new(bar_index, nyLow,  "NY L", style=label.style_label_left, color=color.new(color.orange, 100), textcolor=color.orange, size=size.tiny)
+    else
+        line.set_xy2(nyHighLine, bar_index, nyHigh)
+        line.set_xy2(nyLowLine, bar_index, nyLow)
+        label.set_x(nyHighLbl, bar_index)
+        label.set_x(nyLowLbl, bar_index)
+        label.set_y(nyHighLbl, nyHigh)
+        label.set_y(nyLowLbl, nyLow)
+
+// ============================================================
+// BIAS TABLE
+// ============================================================
+if showBias and barstate.islast
+    var table biasTable = table.new(position.top_right, 1, 1, border_width=1)
+    biasColor = bias == "Uptrend" ? color.new(color.lime, 70) : bias == "Downtrend" ? color.new(color.red, 70) : color.new(color.gray, 70)
+    table.cell(biasTable, 0, 0, "BIAS: " + bias, text_color=color.white, bgcolor=biasColor)
+
+// ============================================================
+// DOJI PATTERN DETECTION
+// ============================================================
+// Classification is mutually exclusive per candle, checked in this priority:
+// Dragonfly > Gravestone > Cross (symmetric wicks) > Long-Legged (long but asymmetric wicks) > plain Doji (fallback)
+bodyHigh = math.max(open, close)
+bodyLow  = math.min(open, close)
+bodySize = bodyHigh - bodyLow
+candleRange = high - low
+isGreen = close >= open
+isRed   = close < open
+
+bodyPct  = candleRange > 0 ? bodySize / candleRange : 1.0
+upperPct = candleRange > 0 ? (high - bodyHigh) / candleRange : 0.0
+lowerPct = candleRange > 0 ? (bodyLow - low) / candleRange : 0.0
+
+isDojiBase     = candleRange > 0 and bodyPct <= dojiBodyMaxPct
+isDragonfly    = isDojiBase and upperPct <= oppWickMaxPct and lowerPct > oppWickMaxPct
+isGravestone   = isDojiBase and lowerPct <= oppWickMaxPct and upperPct > oppWickMaxPct
+isCross        = isDojiBase and not isDragonfly and not isGravestone and upperPct > oppWickMaxPct and lowerPct > oppWickMaxPct and math.abs(upperPct - lowerPct) <= crossSymTolPct
+isLongLegged   = isDojiBase and not isDragonfly and not isGravestone and not isCross and upperPct >= longLeggedWickMinPct and lowerPct >= longLeggedWickMinPct
+isPlainDoji    = isDojiBase and not isDragonfly and not isGravestone and not isCross and not isLongLegged
+
+markGreenDoji      = showDoji and isPlainDoji and isGreen
+markRedDoji        = showDoji and isPlainDoji and isRed
+markGreenLongLegged= showLongLegged and isLongLegged and isGreen
+markRedLongLegged  = showLongLegged and isLongLegged and isRed
+markGreenCross     = showCross and isCross and isGreen
+markRedCross       = showCross and isCross and isRed
+markGreenDragonfly = showDragonfly and isDragonfly and isGreen
+markRedGravestone  = showGravestone and isGravestone and isRed
+
+plotshape(markGreenDoji,       title="Green Doji",              style=shape.circle,  location=location.belowbar, color=color.lime,   text="D",   textcolor=color.lime,   size=size.tiny)
+plotshape(markRedDoji,         title="Red Doji",                style=shape.circle,  location=location.abovebar, color=color.red,    text="D",   textcolor=color.red,    size=size.tiny)
+plotshape(markGreenLongLegged, title="Green Long-Legged Doji",  style=shape.circle,  location=location.belowbar, color=color.lime,   text="LLD", textcolor=color.lime,   size=size.tiny)
+plotshape(markRedLongLegged,   title="Red Long-Legged Doji",    style=shape.circle,  location=location.abovebar, color=color.red,    text="LLD", textcolor=color.red,    size=size.tiny)
+plotshape(markGreenCross,      title="Green Cross Doji",        style=shape.xcross,  location=location.belowbar, color=color.lime,   text="X",   textcolor=color.lime,   size=size.tiny)
+plotshape(markRedCross,        title="Red Inverted Cross Doji", style=shape.xcross,  location=location.abovebar, color=color.red,    text="X",   textcolor=color.red,    size=size.tiny)
+plotshape(markGreenDragonfly,  title="Green Dragonfly Doji",    style=shape.triangleup,   location=location.belowbar, color=color.aqua,   text="DF",  textcolor=color.aqua,   size=size.tiny)
+plotshape(markRedGravestone,   title="Red Gravestone Doji",     style=shape.triangledown, location=location.abovebar, color=color.fuchsia,text="GS",  textcolor=color.fuchsia,size=size.tiny)
