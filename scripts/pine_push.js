@@ -12,10 +12,13 @@ if (!t) { console.error('No TradingView target'); process.exit(1); }
 const c = await CDP({ host: 'localhost', port: 9222, target: t.id });
 await c.Runtime.enable();
 
-// Inject source
+// Inject source. There can be multiple .monaco-editor.pine-editor-monaco
+// elements in the DOM (e.g. a stale hidden instance from a previous panel
+// state) — only one has the react fiber env attached, so scan all of them
+// instead of assuming the first querySelector match is live.
 const escaped = JSON.stringify(src);
 const set = (await c.Runtime.evaluate({
-  expression: `(function(){var c=document.querySelector(".monaco-editor.pine-editor-monaco");if(!c)return false;var el=c;var fk;for(var i=0;i<20;i++){if(!el)break;fk=Object.keys(el).find(function(k){return k.startsWith("__reactFiber$")});if(fk)break;el=el.parentElement}if(!fk)return false;var cur=el[fk];for(var d=0;d<15;d++){if(!cur)break;if(cur.memoizedProps&&cur.memoizedProps.value&&cur.memoizedProps.value.monacoEnv){var env=cur.memoizedProps.value.monacoEnv;if(env.editor&&typeof env.editor.getEditors==="function"){var eds=env.editor.getEditors();if(eds.length>0){eds[0].setValue(${escaped});return true}}}cur=cur.return}return false})()`,
+  expression: `(function(){var els=document.querySelectorAll(".monaco-editor.pine-editor-monaco");for(var idx=0;idx<els.length;idx++){var el=els[idx];var fk;var cur=el;for(var i=0;i<20;i++){if(!cur)break;fk=Object.keys(cur).find(function(k){return k.startsWith("__reactFiber$")});if(fk)break;cur=cur.parentElement}if(!fk)continue;var fiber=cur[fk];for(var d=0;d<15;d++){if(!fiber)break;if(fiber.memoizedProps&&fiber.memoizedProps.value&&fiber.memoizedProps.value.monacoEnv){var env=fiber.memoizedProps.value.monacoEnv;if(env.editor&&typeof env.editor.getEditors==="function"){var eds=env.editor.getEditors();if(eds.length>0){eds[0].setValue(${escaped});return true}}}fiber=fiber.return}}return false})()`,
   returnByValue: true,
 })).result?.value;
 
@@ -37,7 +40,7 @@ if (!clicked) {
 // Wait then check errors
 await new Promise(r => setTimeout(r, 3000));
 const errors = (await c.Runtime.evaluate({
-  expression: '(function(){var c=document.querySelector(".monaco-editor.pine-editor-monaco");if(!c)return[];var el=c;var fk;for(var i=0;i<20;i++){if(!el)break;fk=Object.keys(el).find(function(k){return k.startsWith("__reactFiber$")});if(fk)break;el=el.parentElement}if(!fk)return[];var cur=el[fk];for(var d=0;d<15;d++){if(!cur)break;if(cur.memoizedProps&&cur.memoizedProps.value&&cur.memoizedProps.value.monacoEnv){var env=cur.memoizedProps.value.monacoEnv;if(env.editor&&typeof env.editor.getEditors==="function"){var eds=env.editor.getEditors();if(eds.length>0){var model=eds[0].getModel();var markers=env.editor.getModelMarkers({resource:model.uri});return markers.map(function(m){return{line:m.startLineNumber,msg:m.message}})}}}cur=cur.return}return[]})()',
+  expression: '(function(){var els=document.querySelectorAll(".monaco-editor.pine-editor-monaco");for(var idx=0;idx<els.length;idx++){var el=els[idx];var fk;var cur=el;for(var i=0;i<20;i++){if(!cur)break;fk=Object.keys(cur).find(function(k){return k.startsWith("__reactFiber$")});if(fk)break;cur=cur.parentElement}if(!fk)continue;var fiber=cur[fk];for(var d=0;d<15;d++){if(!fiber)break;if(fiber.memoizedProps&&fiber.memoizedProps.value&&fiber.memoizedProps.value.monacoEnv){var env=fiber.memoizedProps.value.monacoEnv;if(env.editor&&typeof env.editor.getEditors==="function"){var eds=env.editor.getEditors();if(eds.length>0){var model=eds[0].getModel();var markers=env.editor.getModelMarkers({resource:model.uri});return markers.map(function(m){return{line:m.startLineNumber,msg:m.message}})}}}fiber=fiber.return}}return[]})()',
   returnByValue: true,
 })).result?.value || [];
 
