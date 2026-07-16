@@ -3,7 +3,10 @@
  * All functions accept plain options objects and return plain JS objects.
  * They throw on error (callers catch and format).
  */
-import { evaluate, evaluateAsync, getClient } from '../connection.js';
+// Pine Editor work runs in its own dedicated background TradingView tab
+// (see connection.js) so it never disrupts whatever chart the user has in
+// front of them.
+import { evaluatePine as evaluate, evaluatePineAsync as evaluateAsync, getPineClient as getClient } from '../connection.js';
 
 // ── Monaco finder (injected into TV page) ──
 const FIND_MONACO = `

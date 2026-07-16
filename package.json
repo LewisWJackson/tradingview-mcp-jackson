@@ -23,6 +23,7 @@
     "test:count": "node --test --test-reporter=spec tests/e2e.test.js 2>&1 | tail -5"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.68.0",
     "@modelcontextprotocol/sdk": "^1.12.1",
     "chrome-remote-interface": "^0.33.2",
     "dotenv": "^17.4.1"

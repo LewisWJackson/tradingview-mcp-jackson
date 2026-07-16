@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Runs `tv trade-alert check` every 5 minutes via launchd (macOS). Adjust
+  StartInterval (seconds) below if you want a different cadence — a full
+  multi-timeframe scan takes ~70s, so don't go much below that.
+  This only evaluates and notifies you (Pushover) when TradingView Desktop is already
+  running with CDP enabled (see ./scripts/launch_tv_debug_mac.sh) — it does
+  not launch TradingView itself.
+
+  Setup:
+    1. Replace REPLACE_WITH_PROJECT_DIR below with the absolute path to this
+       repo (e.g. /Users/you/tradingview-mcp-jackson) — three occurrences.
+    2. Replace REPLACE_WITH_NODE_PATH with the absolute path to `node`
+       (run `which node` to find it).
+    3. Copy this file (renamed, dropping .example) to:
+         ~/Library/LaunchAgents/com.tradingview-mcp.trade-alert.plist
+    4. Load it:
+         launchctl load ~/Library/LaunchAgents/com.tradingview-mcp.trade-alert.plist
+    5. Check logs at REPLACE_WITH_PROJECT_DIR/trade-alert.log
+    6. To stop: launchctl unload ~/Library/LaunchAgents/com.tradingview-mcp.trade-alert.plist
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.tradingview-mcp.trade-alert</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>REPLACE_WITH_NODE_PATH</string>
+    <string>REPLACE_WITH_PROJECT_DIR/src/cli/index.js</string>
+    <string>trade-alert</string>
+    <string>check</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>REPLACE_WITH_PROJECT_DIR</string>
+
+  <key>StartInterval</key>
+  <integer>300</integer>
+
+  <key>StandardOutPath</key>
+  <string>REPLACE_WITH_PROJECT_DIR/trade-alert.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>REPLACE_WITH_PROJECT_DIR/trade-alert.log</string>
+
+  <key>RunAtLoad</key>
+  <false/>
+</dict>
+</plist>

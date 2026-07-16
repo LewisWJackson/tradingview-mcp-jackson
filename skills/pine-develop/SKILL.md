@@ -62,8 +62,10 @@ Common Pine Script errors:
 
 ## Step 6: Verify on Chart
 
+Note: all Pine work (push/pull/compile) runs in a dedicated background TradingView tab, not the user's main chart — see "Pine Editor runs in a dedicated background tab" in CLAUDE.md. `capture_screenshot` targets the user's main chart, so it will NOT show the newly compiled indicator unless you first add it to that chart.
+
 After clean compilation:
-1. `capture_screenshot` — take a screenshot to verify it looks right
+1. If the user wants it verified on their actual chart, use `chart_manage_indicator` to add the (now-saved) indicator by name to their main chart, then `capture_screenshot` to verify it looks right
 2. `data_get_strategy_results` — if it's a strategy, check performance
 3. Show the user the results
 

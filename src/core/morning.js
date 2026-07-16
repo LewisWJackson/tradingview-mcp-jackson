@@ -36,7 +36,7 @@ function assertSafeDate(dateStr) {
   }
 }
 
-function loadRules(rulesPath) {
+export function loadRules(rulesPath) {
   if (rulesPath) assertSafeRulesPath(rulesPath);
 
   const candidates = [
