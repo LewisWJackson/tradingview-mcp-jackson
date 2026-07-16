@@ -16,6 +16,8 @@ function buildGraphicsJS(collectionName, mapKey, filter) {
       var sources = model.model().dataSources();
       var results = [];
       var filter = '${filter}';
+      var pricescale = 100;
+      try { pricescale = model.model().mainSeries().symbolInfo().pricescale || 100; } catch(e) {}
       for (var si = 0; si < sources.length; si++) {
         var s = sources[si];
         if (!s.metaInfo) continue;
@@ -54,7 +56,7 @@ function buildGraphicsJS(collectionName, mapKey, filter) {
           if (items.length > 0) results.push({name: name, count: items.length, items: items});
         } catch(e) {}
       }
-      return results;
+      return { pricescale: pricescale, results: results };
     })()
   `;
 }
@@ -359,7 +361,7 @@ export async function getStudyValues() {
 
 export async function getPineLines({ study_filter, verbose } = {}) {
   const filter = study_filter || '';
-  const raw = await evaluate(buildGraphicsJS('dwglines', 'lines', filter));
+  const { pricescale, results: raw } = await evaluate(buildGraphicsJS('dwglines', 'lines', filter));
   if (!raw || raw.length === 0) return { success: true, study_count: 0, studies: [] };
 
   const studies = raw.map(s => {
@@ -368,8 +370,8 @@ export async function getPineLines({ study_filter, verbose } = {}) {
     const allLines = [];
     for (const item of s.items) {
       const v = item.raw;
-      const y1 = v.y1 != null ? Math.round(v.y1 * 100) / 100 : null;
-      const y2 = v.y2 != null ? Math.round(v.y2 * 100) / 100 : null;
+      const y1 = v.y1 != null ? Math.round(v.y1 * pricescale) / pricescale : null;
+      const y2 = v.y2 != null ? Math.round(v.y2 * pricescale) / pricescale : null;
       if (verbose) allLines.push({ id: item.id, y1, y2, x1: v.x1, x2: v.x2, horizontal: v.y1 === v.y2, style: v.st, width: v.w, color: v.ci });
       if (y1 != null && v.y1 === v.y2 && !seen[y1]) { hLevels.push(y1); seen[y1] = true; }
     }
@@ -383,7 +385,7 @@ export async function getPineLines({ study_filter, verbose } = {}) {
 
 export async function getPineLabels({ study_filter, max_labels, verbose } = {}) {
   const filter = study_filter || '';
-  const raw = await evaluate(buildGraphicsJS('dwglabels', 'labels', filter));
+  const { pricescale, results: raw } = await evaluate(buildGraphicsJS('dwglabels', 'labels', filter));
   if (!raw || raw.length === 0) return { success: true, study_count: 0, studies: [] };
 
   const limit = max_labels || 50;
@@ -391,7 +393,7 @@ export async function getPineLabels({ study_filter, max_labels, verbose } = {}) 
     let labels = s.items.map(item => {
       const v = item.raw;
       const text = v.t || '';
-      const price = v.y != null ? Math.round(v.y * 100) / 100 : null;
+      const price = v.y != null ? Math.round(v.y * pricescale) / pricescale : null;
       if (verbose) return { id: item.id, text, price, x: v.x, yloc: v.yl, size: v.sz, textColor: v.tci, color: v.ci };
       return { text, price };
     }).filter(l => l.text || l.price != null);
@@ -403,7 +405,7 @@ export async function getPineLabels({ study_filter, max_labels, verbose } = {}) 
 
 export async function getPineTables({ study_filter } = {}) {
   const filter = study_filter || '';
-  const raw = await evaluate(buildGraphicsJS('dwgtablecells', 'tableCells', filter));
+  const { results: raw } = await evaluate(buildGraphicsJS('dwgtablecells', 'tableCells', filter));
   if (!raw || raw.length === 0) return { success: true, study_count: 0, studies: [] };
 
   const studies = raw.map(s => {
@@ -431,7 +433,7 @@ export async function getPineTables({ study_filter } = {}) {
 
 export async function getPineBoxes({ study_filter, verbose } = {}) {
   const filter = study_filter || '';
-  const raw = await evaluate(buildGraphicsJS('dwgboxes', 'boxes', filter));
+  const { pricescale, results: raw } = await evaluate(buildGraphicsJS('dwgboxes', 'boxes', filter));
   if (!raw || raw.length === 0) return { success: true, study_count: 0, studies: [] };
 
   const studies = raw.map(s => {
@@ -440,8 +442,8 @@ export async function getPineBoxes({ study_filter, verbose } = {}) {
     const allBoxes = [];
     for (const item of s.items) {
       const v = item.raw;
-      const high = v.y1 != null && v.y2 != null ? Math.round(Math.max(v.y1, v.y2) * 100) / 100 : null;
-      const low = v.y1 != null && v.y2 != null ? Math.round(Math.min(v.y1, v.y2) * 100) / 100 : null;
+      const high = v.y1 != null && v.y2 != null ? Math.round(Math.max(v.y1, v.y2) * pricescale) / pricescale : null;
+      const low = v.y1 != null && v.y2 != null ? Math.round(Math.min(v.y1, v.y2) * pricescale) / pricescale : null;
       if (verbose) allBoxes.push({ id: item.id, high, low, x1: v.x1, x2: v.x2, borderColor: v.c, bgColor: v.bc });
       if (high != null && low != null) { const key = high + ':' + low; if (!seen[key]) { zones.push({ high, low }); seen[key] = true; } }
     }
