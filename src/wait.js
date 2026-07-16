@@ -1,9 +1,10 @@
-import { evaluate } from './connection.js';
+import { evaluate as defaultEvaluate } from './connection.js';
 
 const DEFAULT_TIMEOUT = 10000;
 const POLL_INTERVAL = 200;
 
-export async function waitForChartReady(expectedSymbol = null, expectedTf = null, timeout = DEFAULT_TIMEOUT) {
+export async function waitForChartReady(expectedSymbol = null, expectedTf = null, timeout = DEFAULT_TIMEOUT, conn = null) {
+  const evaluate = conn?.evaluate || defaultEvaluate;
   const start = Date.now();
   let lastBarCount = -1;
   let stableCount = 0;

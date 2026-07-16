@@ -6,8 +6,9 @@ import { waitForChartReady } from '../wait.js';
 
 const CHART_API = 'window.TradingViewApi._activeChartWidgetWV.value()';
 
-export async function getState() {
-  const state = await evaluate(`
+export async function getState({ conn } = {}) {
+  const ev = conn?.evaluate || evaluate;
+  const state = await ev(`
     (function() {
       var chart = ${CHART_API};
       var studies = [];
@@ -28,8 +29,9 @@ export async function getState() {
   return { success: true, ...state };
 }
 
-export async function setSymbol({ symbol }) {
-  await evaluateAsync(`
+export async function setSymbol({ symbol, conn }) {
+  const evAsync = conn?.evaluateAsync || evaluateAsync;
+  await evAsync(`
     (function() {
       var chart = ${CHART_API};
       return new Promise(function(resolve) {
@@ -38,18 +40,19 @@ export async function setSymbol({ symbol }) {
       });
     })()
   `);
-  const ready = await waitForChartReady(symbol);
+  const ready = await waitForChartReady(symbol, null, undefined, conn);
   return { success: true, symbol, chart_ready: ready };
 }
 
-export async function setTimeframe({ timeframe }) {
-  await evaluate(`
+export async function setTimeframe({ timeframe, conn }) {
+  const ev = conn?.evaluate || evaluate;
+  await ev(`
     (function() {
       var chart = ${CHART_API};
       chart.setResolution('${timeframe.replace(/'/g, "\\'")}', {});
     })()
   `);
-  const ready = await waitForChartReady(null, timeframe);
+  const ready = await waitForChartReady(null, timeframe, undefined, conn);
   return { success: true, timeframe, chart_ready: ready };
 }
 

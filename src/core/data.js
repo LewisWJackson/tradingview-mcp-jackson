@@ -242,8 +242,9 @@ export async function getEquity() {
   return { success: true, data_points: equity?.data?.length || 0, source: equity?.source, data: equity?.data || [], equity_summary: equity?.equity_summary, note: equity?.note, error: equity?.error };
 }
 
-export async function getQuote({ symbol } = {}) {
-  const data = await evaluate(`
+export async function getQuote({ symbol, conn } = {}) {
+  const ev = conn?.evaluate || evaluate;
+  const data = await ev(`
     (function() {
       var api = ${CHART_API};
       var sym = '${symbol || ''}';
@@ -321,8 +322,9 @@ export async function getDepth() {
   return { success: true, bid_levels: data.bids?.length || 0, ask_levels: data.asks?.length || 0, spread: data.spread, bids: data.bids || [], asks: data.asks || [], raw_values: data.raw_values, note: data.note };
 }
 
-export async function getStudyValues() {
-  const data = await evaluate(`
+export async function getStudyValues({ conn } = {}) {
+  const ev = conn?.evaluate || evaluate;
+  const data = await ev(`
     (function() {
       var chart = window.TradingViewApi._activeChartWidgetWV.value()._chartWidget;
       var model = chart.model();

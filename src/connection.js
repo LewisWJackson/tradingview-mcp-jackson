@@ -1,4 +1,5 @@
 import CDP from 'chrome-remote-interface';
+import { loadScannerTab } from './core/scanner_tab_state.js';
 
 let client = null;
 let targetInfo = null;
@@ -71,8 +72,13 @@ export async function connect() {
 async function findChartTarget() {
   const resp = await fetch(`http://${CDP_HOST}:${CDP_PORT}/json/list`);
   const targets = await resp.json();
-  // Prefer targets with tradingview.com/chart in the URL
-  return targets.find(t => t.type === 'page' && /tradingview\.com\/chart/i.test(t.url))
+  // Prefer targets with tradingview.com/chart in the URL, but skip the
+  // dedicated background scanner tab (if one is configured) so interactive
+  // tools never accidentally attach to it instead of the foreground chart.
+  const scannerId = loadScannerTab()?.target_id;
+  const chartPages = targets.filter(t => t.type === 'page' && /tradingview\.com\/chart/i.test(t.url));
+  const nonScannerPages = scannerId ? chartPages.filter(t => t.id !== scannerId) : chartPages;
+  return (nonScannerPages[0] || chartPages[0])
     || targets.find(t => t.type === 'page' && /tradingview/i.test(t.url))
     || null;
 }
@@ -111,6 +117,68 @@ export async function disconnect() {
     client = null;
     targetInfo = null;
   }
+}
+
+/**
+ * A standalone CDP connection pinned to one specific target id, independent
+ * of the default singleton above. Evaluating against it runs JS in that
+ * tab's page context without bringing the tab to the foreground — used to
+ * drive the background scanner tab while the user's active tab stays put.
+ */
+export function createScopedConnection(targetId) {
+  let scopedClient = null;
+
+  async function getScopedClient() {
+    if (scopedClient) {
+      try {
+        await scopedClient.Runtime.evaluate({ expression: '1', returnByValue: true });
+        return scopedClient;
+      } catch {
+        scopedClient = null;
+      }
+    }
+    scopedClient = await CDP({ host: CDP_HOST, port: CDP_PORT, target: targetId });
+    await scopedClient.Runtime.enable();
+    await scopedClient.Page.enable();
+    await scopedClient.DOM.enable();
+    return scopedClient;
+  }
+
+  async function scopedEvaluate(expression, opts = {}) {
+    const c = await getScopedClient();
+    const result = await c.Runtime.evaluate({
+      expression,
+      returnByValue: true,
+      awaitPromise: opts.awaitPromise ?? false,
+      ...opts,
+    });
+    if (result.exceptionDetails) {
+      const msg = result.exceptionDetails.exception?.description
+        || result.exceptionDetails.text
+        || 'Unknown evaluation error';
+      throw new Error(`JS evaluation error: ${msg}`);
+    }
+    return result.result?.value;
+  }
+
+  async function scopedEvaluateAsync(expression) {
+    return scopedEvaluate(expression, { awaitPromise: true });
+  }
+
+  async function scopedDisconnect() {
+    if (scopedClient) {
+      try { await scopedClient.close(); } catch {}
+      scopedClient = null;
+    }
+  }
+
+  return {
+    targetId,
+    getClient: getScopedClient,
+    evaluate: scopedEvaluate,
+    evaluateAsync: scopedEvaluateAsync,
+    disconnect: scopedDisconnect,
+  };
 }
 
 // --- Direct API path helpers ---

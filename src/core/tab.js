@@ -3,6 +3,7 @@
  * Controls TradingView Desktop tabs via CDP and Electron keyboard shortcuts.
  */
 import { getClient, evaluate } from '../connection.js';
+import { loadScannerTab, saveScannerTab, clearScannerTab } from './scanner_tab_state.js';
 
 const CDP_HOST = 'localhost';
 const CDP_PORT = 9222;
@@ -103,4 +104,53 @@ export async function switchTab({ index }) {
   } catch (e) {
     throw new Error(`Failed to activate tab ${idx}: ${e.message}`);
   }
+}
+
+/**
+ * Pin an existing tab (by index, from `list()`) as the dedicated background
+ * scanner tab. Once set, trade_alert.js drives that tab's chart directly via
+ * a pinned CDP target — without ever activating/focusing it — so repeated
+ * checks don't flicker whatever tab the user is actively looking at. Also
+ * excluded from the default connection's target selection (see connection.js).
+ */
+export async function setScannerTab({ index }) {
+  const tabs = await list();
+  const idx = Number(index);
+
+  if (isNaN(idx) || idx < 0 || idx >= tabs.tab_count) {
+    throw new Error(`Tab index ${idx} out of range (have ${tabs.tab_count} tabs). Run "tv tab list" to see indexes.`);
+  }
+
+  const target = tabs.tabs[idx];
+  saveScannerTab({ target_id: target.id, chart_id: target.chart_id });
+  return { success: true, action: 'scanner_tab_set', index: idx, tab_id: target.id, chart_id: target.chart_id };
+}
+
+/**
+ * Report whether a scanner tab is configured and still open.
+ */
+export async function getScannerTab() {
+  const saved = loadScannerTab();
+  if (!saved) return { success: true, configured: false };
+
+  const tabs = await list();
+  const match = tabs.tabs.find(t => t.id === saved.target_id);
+  return {
+    success: true,
+    configured: true,
+    active: Boolean(match),
+    tab_id: saved.target_id,
+    chart_id: saved.chart_id,
+    index: match ? match.index : null,
+    note: match ? undefined : 'Configured scanner tab is no longer open. Re-run "tv trade-alert set-scanner-tab <index>".',
+  };
+}
+
+/**
+ * Unpin the scanner tab. Trade alert checks fall back to scanning on the
+ * active/foreground tab (the old, flickering behavior) until a new one is set.
+ */
+export async function clearScannerTabPin() {
+  clearScannerTab();
+  return { success: true, action: 'scanner_tab_cleared' };
 }

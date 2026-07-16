@@ -1,7 +1,7 @@
 /**
  * Core screenshot/capture logic.
  */
-import { getClient, evaluate, getChartCollection } from "../connection.js";
+import { getClient as defaultGetClient, evaluate as defaultEvaluate, getChartCollection } from "../connection.js";
 import { writeFileSync, mkdirSync } from "fs";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
@@ -20,7 +20,9 @@ function sanitiseFilename(name) {
   return cleaned;
 }
 
-export async function captureScreenshot({ region, filename, method } = {}) {
+export async function captureScreenshot({ region, filename, method, conn } = {}) {
+  const evaluate = conn?.evaluate || defaultEvaluate;
+  const getClient = conn?.getClient || defaultGetClient;
   mkdirSync(SCREENSHOT_DIR, { recursive: true });
 
   const ts = new Date().toISOString().replace(/[:.]/g, "-");
