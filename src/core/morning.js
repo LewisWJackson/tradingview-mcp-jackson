@@ -9,6 +9,7 @@ import { join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import * as chart from "./chart.js";
 import * as data from "./data.js";
+import * as trend from "./trend.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = resolve(__dirname, "../../");
@@ -92,10 +93,11 @@ export async function runBrief({ rules_path } = {}) {
       await chart.setTimeframe({ timeframe: default_timeframe });
       await new Promise((r) => setTimeout(r, 900));
 
-      const [state, indicators, quote] = await Promise.all([
+      const [state, indicators, quote, trendSummary] = await Promise.all([
         chart.getState(),
         data.getStudyValues(),
         data.getQuote({}),
+        trend.getTrendSummary({}).catch((err) => ({ success: false, error: err.message })),
       ]);
 
       results.push({
@@ -104,6 +106,7 @@ export async function runBrief({ rules_path } = {}) {
         state,
         indicators,
         quote,
+        trend: trendSummary,
       });
     } catch (err) {
       results.push({ symbol, error: err.message });
@@ -131,6 +134,7 @@ export async function runBrief({ rules_path } = {}) {
     symbols_scanned: results,
     instruction: [
       "For each symbol in symbols_scanned, apply the bias_criteria from rules to the indicator readings.",
+      "Each symbol also has a `trend` field (EMA/ADX/swing-structure verdict) — use it to confirm or challenge the bias_criteria read, especially trend.strength (ADX below 20 means no real trend, treat any bias as low-conviction).",
       "Output one line per symbol: SYMBOL | BIAS: [bullish/bearish/neutral] | KEY LEVEL: [price] | WATCH: [what to monitor]",
       "End with a one-sentence overall market read.",
       "Be direct. No preamble.",

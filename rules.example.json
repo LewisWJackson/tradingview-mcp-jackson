@@ -6,17 +6,20 @@
     "bullish": [
       "Ribbon direction is up (bullish colour)",
       "Price is above the 20 EMA on the 4H",
-      "RSI is below 60 (room to run)"
+      "RSI is below 60 (room to run)",
+      "trend.direction is 'up' and trend.strength is 'strong' or 'very strong' (ADX >= 25)"
     ],
     "bearish": [
       "Ribbon direction is down (bearish colour)",
       "Price is below the 20 EMA on the 4H",
-      "RSI is above 40 (room to drop)"
+      "RSI is above 40 (room to drop)",
+      "trend.direction is 'down' and trend.strength is 'strong' or 'very strong' (ADX >= 25)"
     ],
     "neutral": [
       "Ribbon is flat or mixed",
       "Price is chopping around the 20 EMA",
-      "RSI is between 45 and 55"
+      "RSI is between 45 and 55",
+      "trend.strength is 'weak/choppy' (ADX < 20) regardless of direction"
     ]
   },
 
