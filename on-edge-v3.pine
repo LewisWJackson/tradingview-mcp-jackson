@@ -1,0 +1,76 @@
+//@version=6
+// ON-EDGE v3 — Tightened Overnight Edge [NIFTY/stocks]
+// Research-verified 2026-07-02 on 6y Fyers daily data (backtest-meanrev*.js):
+//   IBS >= 0.8  AND  green day  AND  close > SMA200(D)
+//   Buy near close → sell next open.
+//   NIFTY: 274 trades, 74% win, PF 3.03 | OOS: 77.1% win, PF 3.64
+// Looser v2 gate (IBS>=0.7): 73% win, PF 3.02 — v3 trades less, wins more.
+// Mean-reversion entries (RSI2/IBS-low) and overnight buy-weakness all FAILED
+// OOS on NSE — the overnight session pays momentum only. Do not invert this.
+indicator("ON-EDGE v3 — Tight Overnight Edge", overlay = true)
+
+// ── Inputs ──────────────────────────────────────────────────────────
+ibsThresh  = input.float(0.8, "IBS threshold (v3 tight; 0.7 = v2)", step = 0.05)
+needGreen  = input.bool(true, "Require green day (close > open)")
+entryH     = input.int(15, "Entry check hour (IST)",   minval = 0, maxval = 23)
+entryM     = input.int(20, "Entry check minute (IST)", minval = 0, maxval = 59)
+showTable  = input.bool(true, "Show status table")
+
+// ── Daily gates (any intraday TF; current day updates intrabar) ─────
+dO      = request.security(syminfo.tickerid, "D", open)
+dH      = request.security(syminfo.tickerid, "D", high)
+dL      = request.security(syminfo.tickerid, "D", low)
+dC      = request.security(syminfo.tickerid, "D", close)
+sma200D = request.security(syminfo.tickerid, "D", ta.sma(close, 200))
+
+ibs     = (dC - dL) / (dH - dL == 0 ? 1 : dH - dL)
+ibsOK   = ibs >= ibsThresh
+greenOK = not needGreen or dC > dO
+trendOK = dC > sma200D
+qualify = ibsOK and greenOK and trendOK
+
+// ── Timing: signal near close, exit next open ───────────────────────
+// Bar CLOSE time (an open-time check misses the last bar on 15m charts).
+nowMin   = hour(time_close, "Asia/Kolkata") * 60 + minute(time_close, "Asia/Kolkata")
+inWindow = nowMin >= entryH * 60 + entryM
+newDay   = ta.change(time("D")) != 0
+
+var bool inPos = false
+buyTrigger  = qualify and inWindow and not inPos
+sellTrigger = inPos and newDay
+if buyTrigger
+    inPos := true
+if sellTrigger
+    inPos := false
+
+// ── Visuals ─────────────────────────────────────────────────────────
+plot(sma200D, "SMA200 (D)", color.orange, linewidth = 2)
+plotshape(buyTrigger,  "BUY tonight", shape.triangleup,   location.belowbar, color.green, size = size.small, text = "HOLD")
+plotshape(sellTrigger, "SELL open",   shape.triangledown, location.abovebar, color.red,   size = size.small, text = "EXIT")
+
+// ── Status table ────────────────────────────────────────────────────
+var table t = table.new(position.top_right, 2, 6, border_color = color.gray, border_width = 1)
+okC(c) => c ? color.new(color.green, 70) : color.new(color.red, 70)
+if showTable and barstate.islast
+    hdr = color.new(color.gray, 55)
+    dist = (dC - sma200D) / sma200D * 100.0
+    table.cell(t, 0, 0, "ON-EDGE v3",        text_color = color.white, bgcolor = hdr, text_size = size.small)
+    table.cell(t, 1, 0, qualify ? "🎫 HOLD TONIGHT" : "— flat", text_color = color.white, bgcolor = okC(qualify), text_size = size.small)
+    table.cell(t, 0, 1, "IBS (need ≥" + str.tostring(ibsThresh, "0.00") + ")", text_color = color.white, bgcolor = hdr, text_size = size.small)
+    table.cell(t, 1, 1, str.tostring(ibs, "0.00") + (ibsOK ? " ✅" : " ❌"), text_color = color.white, bgcolor = okC(ibsOK), text_size = size.small)
+    table.cell(t, 0, 2, "Green day",          text_color = color.white, bgcolor = hdr, text_size = size.small)
+    table.cell(t, 1, 2, (dC > dO ? "yes" : "no") + (greenOK ? " ✅" : " ❌"), text_color = color.white, bgcolor = okC(greenOK), text_size = size.small)
+    table.cell(t, 0, 3, "Trend vs SMA200(D)", text_color = color.white, bgcolor = hdr, text_size = size.small)
+    table.cell(t, 1, 3, (dist >= 0 ? "+" : "") + str.tostring(dist, "0.0") + "%" + (trendOK ? " ✅" : " ❌"), text_color = color.white, bgcolor = okC(trendOK), text_size = size.small)
+    table.cell(t, 0, 4, "Verified stats",     text_color = color.white, bgcolor = hdr, text_size = size.small)
+    table.cell(t, 1, 4, "74% win · PF 3.0 (OOS 77%/3.6)", text_color = color.white, bgcolor = hdr, text_size = size.small)
+    table.cell(t, 0, 5, "Hold",               text_color = color.white, bgcolor = hdr, text_size = size.small)
+    table.cell(t, 1, 5, "close → next open only", text_color = color.white, bgcolor = hdr, text_size = size.small)
+
+// ── Alerts ──────────────────────────────────────────────────────────
+alertcondition(buyTrigger,  "ON-EDGE v3 BUY (hold overnight)", "ON-EDGE v3: qualifies — buy near close, sell next open")
+alertcondition(sellTrigger, "ON-EDGE v3 SELL (next open)",     "ON-EDGE v3: exit at the open")
+if buyTrigger
+    alert("ON-EDGE v3 " + syminfo.ticker + ": HOLD TONIGHT — IBS " + str.tostring(ibs, "0.00") + ", buy near close / sell next open", alert.freq_once_per_bar_close)
+if sellTrigger
+    alert("ON-EDGE v3 " + syminfo.ticker + ": EXIT at open", alert.freq_once_per_bar_close)

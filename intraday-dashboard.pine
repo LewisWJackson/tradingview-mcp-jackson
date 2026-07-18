@@ -1,0 +1,122 @@
+//@version=6
+// INTRADAY DASHBOARD [NSE] — execution support, deliberately NO buy/sell signals.
+// Every intraday signal family tested on real Fyers data (2026-07-02) lost
+// after costs: scalper, ORB, same-day mean reversion, intraday momentum.
+// This tool instead answers the four questions that matter for a
+// discretionary day trade: Where am I vs VWAP/OR/prior day? Is volume real?
+// Is today a trend day or chop? How close is the next level?
+indicator("Intraday Dashboard [NSE]", overlay = true, max_lines_count = 500)
+
+// ── Inputs ──────────────────────────────────────────────────────────
+orMinutes = input.int(15, "Opening range minutes", minval = 5, maxval = 60)
+relVolLen = input.int(14, "Volume lookback (days)", minval = 5)
+tblPos    = input.string("middle_right", "Table position",
+     options = ["top_right", "middle_right", "bottom_right", "top_left", "middle_left", "bottom_left"])
+showLvls  = input.bool(true, "Plot PDH / PDL / PDC lines")
+showOR    = input.bool(true, "Plot opening-range lines")
+
+// ── Session / day plumbing ──────────────────────────────────────────
+newDay  = ta.change(time("D")) != 0
+istMin  = hour(time, "Asia/Kolkata") * 60 + minute(time, "Asia/Kolkata")
+sinceOpen = istMin - (9 * 60 + 15)                       // minutes since 09:15
+inOR    = sinceOpen >= 0 and sinceOpen < orMinutes
+
+// ── Prior-day levels + daily ATR / avg volume (no repaint: [1] + lookahead) ──
+pdh    = request.security(syminfo.tickerid, "D", high[1],            lookahead = barmerge.lookahead_on)
+pdl    = request.security(syminfo.tickerid, "D", low[1],             lookahead = barmerge.lookahead_on)
+pdc    = request.security(syminfo.tickerid, "D", close[1],           lookahead = barmerge.lookahead_on)
+atrD   = request.security(syminfo.tickerid, "D", ta.atr(14)[1],      lookahead = barmerge.lookahead_on)
+avgDayVol = request.security(syminfo.tickerid, "D", ta.sma(volume, relVolLen)[1], lookahead = barmerge.lookahead_on)
+
+// ── Intraday state (reset each day) ─────────────────────────────────
+var float orH = na, var float orL = na
+var float dayH = na, var float dayL = na, var float dayO = na
+var float cumVol = 0.0
+var int barsTot = 0, var int barsAbove = 0
+if newDay
+    orH := na, orL := na
+    dayH := high, dayL := low, dayO := open
+    cumVol := 0.0
+    barsTot := 0, barsAbove := 0
+if inOR
+    orH := na(orH) ? high : math.max(orH, high)
+    orL := na(orL) ? low  : math.min(orL, low)
+dayH := na(dayH) ? high : math.max(dayH, high)
+dayL := na(dayL) ? low  : math.min(dayL, low)
+cumVol += volume
+
+vwap = ta.vwap(hlc3)
+barsTot += 1
+if close > vwap
+    barsAbove += 1
+
+// ── Derived reads ───────────────────────────────────────────────────
+elapsedFrac = math.max(math.min(sinceOpen / 375.0, 1.0), 0.05)   // NSE day = 375 min
+relVol      = (na(avgDayVol) or avgDayVol == 0) ? na : cumVol / (avgDayVol * elapsedFrac)
+dayRange    = dayH - dayL
+rangeVsATR  = (na(atrD) or atrD == 0) ? na : dayRange / atrD
+pctAbove    = barsTot > 0 ? 100.0 * barsAbove / barsTot : na
+vwapDist    = (close - vwap) / close * 100
+gapPct      = na(pdc) ? na : (dayO - pdc) / pdc * 100
+
+dayType = na(rangeVsATR) ? "—" :
+     rangeVsATR < 0.6 ? "😴 QUIET / chop risk" :
+     rangeVsATR >= 0.9 and pctAbove >= 70 ? "🔥 TREND UP day" :
+     rangeVsATR >= 0.9 and pctAbove <= 30 ? "🔻 TREND DOWN day" :
+     "↔️ MIXED / two-sided"
+
+// nearest level above and below
+f_near(px) =>
+    float above = na, float below = na
+    string aName = "", string bName = ""
+    lvls = array.from(pdh, pdl, pdc, orH, orL, vwap)
+    names = array.from("PDH", "PDL", "PDC", "OR-H", "OR-L", "VWAP")
+    for i = 0 to array.size(lvls) - 1
+        v = array.get(lvls, i)
+        if not na(v)
+            if v > px and (na(above) or v < above)
+                above := v
+                aName := array.get(names, i)
+            if v < px and (na(below) or v > below)
+                below := v
+                bName := array.get(names, i)
+    [above, aName, below, bName]
+
+// ── Plots ───────────────────────────────────────────────────────────
+plot(vwap, "VWAP", color.blue, linewidth = 2)
+plot(showOR and not na(orH) and not inOR ? orH : na, "OR High", color.teal,   style = plot.style_linebr)
+plot(showOR and not na(orL) and not inOR ? orL : na, "OR Low",  color.maroon, style = plot.style_linebr)
+plot(showLvls ? pdh : na, "PDH", color.new(color.green, 40), style = plot.style_linebr)
+plot(showLvls ? pdl : na, "PDL", color.new(color.red, 40),   style = plot.style_linebr)
+plot(showLvls ? pdc : na, "PDC", color.new(color.gray, 30),  style = plot.style_linebr)
+
+// ── Dashboard ───────────────────────────────────────────────────────
+posMap(p) => p == "top_right" ? position.top_right : p == "middle_right" ? position.middle_right :
+     p == "bottom_right" ? position.bottom_right : p == "top_left" ? position.top_left :
+     p == "middle_left" ? position.middle_left : position.bottom_left
+var table t = na
+if barstate.islast
+    t := table.new(posMap(tblPos), 2, 10, border_color = color.gray, border_width = 1)
+    hdr  = color.new(color.gray, 55)
+    good = color.new(color.green, 70), bad = color.new(color.red, 70), neu = color.new(color.gray, 75)
+    [nA, nAn, nB, nBn] = f_near(close)
+    table.cell(t, 0, 0, "INTRADAY DASH", text_color = color.white, bgcolor = color.new(color.black, 20), text_size = size.small)
+    table.cell(t, 1, 0, syminfo.ticker,  text_color = color.white, bgcolor = color.new(color.black, 20), text_size = size.small)
+    table.cell(t, 0, 1, "Day type",      text_color = color.white, bgcolor = hdr, text_size = size.small)
+    table.cell(t, 1, 1, dayType,         text_color = color.white, bgcolor = neu, text_size = size.small)
+    table.cell(t, 0, 2, "VWAP",          text_color = color.white, bgcolor = hdr, text_size = size.small)
+    table.cell(t, 1, 2, (vwapDist >= 0 ? "above +" : "below ") + str.tostring(vwapDist, "0.00") + "%", text_color = color.white, bgcolor = vwapDist >= 0 ? good : bad, text_size = size.small)
+    table.cell(t, 0, 3, "Bars > VWAP",   text_color = color.white, bgcolor = hdr, text_size = size.small)
+    table.cell(t, 1, 3, na(pctAbove) ? "—" : str.tostring(pctAbove, "0") + "%", text_color = color.white, bgcolor = na(pctAbove) ? neu : pctAbove >= 70 ? good : pctAbove <= 30 ? bad : neu, text_size = size.small)
+    table.cell(t, 0, 4, "RelVol (proj)", text_color = color.white, bgcolor = hdr, text_size = size.small)
+    table.cell(t, 1, 4, na(relVol) ? "—" : str.tostring(relVol, "0.0") + "× " + (relVol >= 1.5 ? "🔥" : relVol >= 1.0 ? "ok" : "thin"), text_color = color.white, bgcolor = na(relVol) ? neu : relVol >= 1.5 ? good : relVol < 1.0 ? bad : neu, text_size = size.small)
+    table.cell(t, 0, 5, "Range vs ATR(D)", text_color = color.white, bgcolor = hdr, text_size = size.small)
+    table.cell(t, 1, 5, na(rangeVsATR) ? "—" : str.tostring(rangeVsATR * 100, "0") + "%", text_color = color.white, bgcolor = na(rangeVsATR) ? neu : rangeVsATR >= 0.9 ? good : neu, text_size = size.small)
+    table.cell(t, 0, 6, "Gap at open",   text_color = color.white, bgcolor = hdr, text_size = size.small)
+    table.cell(t, 1, 6, na(gapPct) ? "—" : (gapPct >= 0 ? "+" : "") + str.tostring(gapPct, "0.00") + "%", text_color = color.white, bgcolor = neu, text_size = size.small)
+    table.cell(t, 0, 7, "Next level ↑",  text_color = color.white, bgcolor = hdr, text_size = size.small)
+    table.cell(t, 1, 7, na(nA) ? "—" : nAn + " " + str.tostring(nA, format.mintick) + "  (+" + str.tostring((nA - close) / close * 100, "0.00") + "%)", text_color = color.white, bgcolor = neu, text_size = size.small)
+    table.cell(t, 0, 8, "Next level ↓",  text_color = color.white, bgcolor = hdr, text_size = size.small)
+    table.cell(t, 1, 8, na(nB) ? "—" : nBn + " " + str.tostring(nB, format.mintick) + "  (−" + str.tostring((close - nB) / close * 100, "0.00") + "%)", text_color = color.white, bgcolor = neu, text_size = size.small)
+    table.cell(t, 0, 9, "⚠ Reminder",    text_color = color.white, bgcolor = hdr, text_size = size.small)
+    table.cell(t, 1, 9, "no tested intraday edge — size small", text_color = color.orange, bgcolor = neu, text_size = size.small)

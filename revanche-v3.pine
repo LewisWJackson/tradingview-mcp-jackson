@@ -1,0 +1,868 @@
+// © Vignesh Radhakrishnan
+// NIFTY REVANCHE v3.0 — INDICATOR (Sniper Edition — Live Chart)
+// Paste this on your LIVE NIFTY 15m chart. NIFTY INDEX ONLY.
+//
+// New in v3.0 vs v2.9 (TK-alignment study, 2026-07-15, 4y split-sample):
+//   • TK Alignment HARD GATE (momentum entries only): longs need Tenkan(9)
+//     above Kijun(26), shorts the reverse. Improved BOTH halves — IS PF
+//     1.00→1.21, OOS PF 1.13→1.28, ~30% fewer trades. Robust across
+//     tk 7-12 / kj 20-34. NOTE: the TK CROSS as an entry TRIGGER tested
+//     no better than baseline (coin-flip) — only the alignment gates.
+//     OTE pullback entries deliberately NOT gated (untested combo).
+//
+// New in v2.9 vs v2.8 (gate-sensitivity study, 2026-07-04, 4y split-sample):
+//   • ADX hard gate OFF by default — removing it improved BOTH halves
+//     (IS PF 0.93→1.05, OOS 1.06→1.04→ combined with KZ removal OOS 1.10).
+//     ADX still shown on dashboard as info; toggle to re-enable.
+//   • Kill-Zone hard gate OFF by default — KZ windows tested WORSE than the
+//     hours they exclude (PF 0.68 inside vs 0.81 outside). Entries now allowed
+//     9:45–14:45 continuously. Toggle to re-enable old behaviour.
+//   • LAST SIGNAL panel resets every morning — each day starts clean; the
+//     panel only ever shows TODAY'S last signal.
+//   • ⚠ COUNTER-TREND VARIANTS TESTED AND REJECTED: dropping the EMA200 +
+//     1H-bias gates catches fade days (e.g. 3-Jul PE, worth +0.05%) but
+//     loses 4.5–6.5% OOS. Do NOT remove the trend gates — they earn their
+//     place. The 1H bias gate alone: removing it degraded OOS. KEEP.
+//
+// v2.8: 🔥 VIX-Spike gate (F1) — skip day after VIX +5% d/d (validated OOS;
+//   VIX LEVEL filter >20 failed OOS — deliberately not used).
+// v2.7: index volume-score fix, Tuesday expiry, symmetric FVG, EOD force-
+//   close, 🌙 overnight edge module (6y PF 3.03, OOS 77%/3.64, attrib 3.14).
+//
+// BACKTEST NOTE: intraday model with v2.9 gates, 4y NIFTY 15m: PF ~1.04-1.10
+//   = still marginal. Intraday signals are a DISCRETIONARY decision aid.
+//   The 🌙 overnight module is the verified edge.
+
+//@version=6
+indicator("NIFTY REVANCHE v3.0 [Vignesh Radhakrishnan]", shorttitle="REV-3.0", overlay=true, max_bars_back=5000, max_lines_count=400)
+
+// ══════════════════════════════════════════════════════════════════
+// INPUT GROUPS
+// ══════════════════════════════════════════════════════════════════
+GRP_EMA    = "EMA Settings"
+GRP_ORB    = "Opening Range Breakout (ORB)"
+GRP_SMC    = "SMC — BOS / CHOCH / Order Blocks / FVG / OTE"
+GRP_PIVOT  = "Pivot Points (Daily)"
+GRP_ICT    = "ICT — Kill Zones + Liquidity Sweeps"
+GRP_SCORE  = "AI Confidence Score + Filters"
+GRP_RISK   = "Risk Management (Display Only)"
+GRP_VIX    = "India VIX — Regime Filter"
+GRP_OI     = "OI / Options Market (Manual Daily Input)"
+GRP_CB     = "Circuit Breaker"
+GRP_EXPIRY = "Expiry Day Mode"
+GRP_VIZ    = "Visual Enhancements"
+GRP_EDGE   = "🌙 Overnight Edge (VERIFIED)"
+
+// ── EMA ──────────────────────────────────────────────────────────
+fastLen  = input.int(9,   "Fast EMA",  minval=1, group=GRP_EMA)
+slowLen  = input.int(21,  "Slow EMA",  minval=1, group=GRP_EMA)
+trendLen = input.int(200, "Trend EMA", minval=50, group=GRP_EMA)
+
+// ── ORB ──────────────────────────────────────────────────────────
+useORB     = input.bool(true, "Enable ORB Signals", group=GRP_ORB)
+orbMinutes = input.int(30, "ORB Period (minutes)", options=[15, 30, 45, 60], group=GRP_ORB)
+showORB    = input.bool(true, "Show ORB Levels", group=GRP_ORB)
+
+// ── SMC ──────────────────────────────────────────────────────────
+swingLen   = input.int(10,  "Swing Lookback (bars)", minval=3, maxval=50, group=GRP_SMC)
+showBOSlbl = input.bool(false, "Show BOS / CHOCH Arrows", group=GRP_SMC)
+showOB     = input.bool(true,  "Show Order Block Lines",   group=GRP_SMC)
+useOTE     = input.bool(true,  "Enable 🎯 Pullback entries (OTE 62-79% zones)", group=GRP_SMC)
+oteMaxBars = input.int(20,     "OTE Max Wait (bars after BOS)", minval=5, maxval=50, group=GRP_SMC)
+
+// ── Pivot Points ─────────────────────────────────────────────────
+usePivotBonus  = input.bool(true, "Pivot Proximity Bonus (+8 pts)", group=GRP_PIVOT)
+showPivotLines = input.bool(true, "Show Daily Pivot Lines", group=GRP_PIVOT)
+pivotBuf       = input.float(0.5, "Pivot Proximity Buffer (ATR mult)", minval=0.1, maxval=2.0, step=0.1, group=GRP_PIVOT)
+
+// ── ICT ──────────────────────────────────────────────────────────
+// v2.9: hard gate OFF by default — KZ windows tested worse than the hours
+// they exclude (PF 0.68 in vs 0.81 out). Display/awareness only.
+useKZGate   = input.bool(false, "Kill-Zone HARD GATE (tested: hurts — off)", group=GRP_ICT, tooltip="4y test: trades inside kill zones PF 0.68 vs 0.81 outside. When OFF, entries are allowed 9:45–14:45 continuously. Turn ON to restore old KZ-only behaviour.")
+useLiqSweep = input.bool(true, "Liquidity Sweep Bonus (+10 pts)", group=GRP_ICT)
+
+// ── Score + Filters ───────────────────────────────────────────────
+minScore       = input.int(65,    "Min AI Score to Trade", minval=50, maxval=95, group=GRP_SCORE)
+// v2.9: ADX hard gate OFF by default — removal improved both sample halves.
+useADX         = input.bool(false, "ADX HARD GATE (tested: pure lag — off)", group=GRP_SCORE, tooltip="4y split-sample: removing the ADX>=25 gate improved BOTH halves (more trades, same-or-better PF). ADX stays on the dashboard as information. Turn ON to restore.")
+adxLen         = input.int(14,    "ADX Length", minval=5, group=GRP_SCORE)
+adxMin         = input.int(25,    "ADX Min (25 = strong trend)", minval=15, maxval=40, group=GRP_SCORE)
+useVol         = input.bool(true, "Volume Surge in score", group=GRP_SCORE)
+volMult        = input.float(1.3, "Volume Multiplier", minval=1.0, maxval=3.0, step=0.1, group=GRP_SCORE)
+rsiLen         = input.int(14,    "RSI Length", minval=5, group=GRP_SCORE)
+useMTF         = input.bool(true, "1H MTF Bias HARD GATE (tested: KEEP)", group=GRP_SCORE)
+// v3.0: alignment (which side tenkan is on) carries regime signal; the cross
+// event itself tested as a coin-flip. Momentum entries only.
+useTKGate      = input.bool(true, "TK Alignment HARD GATE (tested: KEEP)", group=GRP_SCORE, tooltip="Longs only while Tenkan is above Kijun, shorts only while below. Momentum entries only — OTE pullback entries are not gated. 4y split-sample (2026-07-15): improved BOTH halves, IS PF 1.00→1.21, OOS 1.13→1.28, ~30% fewer trades; robust across tk 7-12 / kj 20-34.")
+tkLen          = input.int(9,     "Tenkan Length", minval=5,  maxval=20, group=GRP_SCORE)
+kjLen          = input.int(26,    "Kijun Length",  minval=15, maxval=40, group=GRP_SCORE)
+useVwapGate    = input.bool(true, "VWAP Distance Gate (Momentum entries only)", group=GRP_SCORE)
+vwapMaxDist    = input.float(0.5, "Max Distance from VWAP (%)", minval=0.1, maxval=2.0, step=0.1, group=GRP_SCORE)
+
+// ── Risk (display only) ───────────────────────────────────────────
+longsEnabled = input.bool(true,  "Enable Long Trades (BUY CALL / CE)", group=GRP_RISK)
+niftyLotSize = input.int(65,     "NIFTY Lot Size (qty per lot)", minval=1, group=GRP_RISK)
+slMult       = input.float(1.8,  "SL ATR Multiplier", minval=0.5, maxval=5.0, step=0.1, group=GRP_RISK)
+tp1Mult      = input.float(2.0,  "TP1 R:R (Shorts)", minval=0.5, maxval=5.0, step=0.1, group=GRP_RISK)
+tp1MultLong  = input.float(2.0,  "TP1 R:R (Longs)",  minval=0.5, maxval=6.0, step=0.1, group=GRP_RISK)
+useTP2       = input.bool(true,  "Enable TP2 Split", group=GRP_RISK)
+tp2Mult      = input.float(3.5,  "TP2 R:R", minval=1.0, maxval=8.0, step=0.1, group=GRP_RISK)
+
+// ── India VIX ─────────────────────────────────────────────────────
+useVixFilter = input.bool(true,  "Enable India VIX Regime Filter (HARD GATE)", group=GRP_VIX)
+vixMin       = input.float(11.0, "Min VIX (below = dead market)", minval=5.0, maxval=20.0, step=0.5, group=GRP_VIX)
+vixMax       = input.float(22.0, "Max VIX (above = panic, no trade)", minval=15.0, maxval=50.0, step=0.5, group=GRP_VIX)
+vixHalfAt    = input.float(18.0, "VIX Half-Size Warning Threshold", minval=12.0, maxval=30.0, step=0.5, group=GRP_VIX)
+// v2.8 — F1 spike gate: validated split-sample; targets event-shock chop.
+useVixSpike  = input.bool(true,  "🔥 VIX-Spike Gate: skip day after VIX jump (F1)", group=GRP_VIX, tooltip="No intraday entries the day after India VIX closed more than the threshold % above the prior day. Removes gap-and-reverse event days. Validated in- and out-of-sample; a VIX LEVEL filter (>20) failed OOS and is deliberately not used.")
+vixSpikePct  = input.float(5.0,  "VIX spike threshold (% day-over-day)", minval=1.0, maxval=20.0, step=0.5, group=GRP_VIX)
+
+// ── OI — Options Market (Manual Daily) ───────────────────────────
+usePCR       = input.bool(true,  "PCR in score", group=GRP_OI)
+pcrValue     = input.float(1.0,  "Today's PCR (from Sensibull / NiftyTrader)", minval=0.0, maxval=5.0, step=0.01, group=GRP_OI)
+useMaxPain   = input.bool(false, "Show Max Pain Level", group=GRP_OI)
+maxPainVal   = input.float(0.0,  "Max Pain Strike (0 = off)", minval=0, maxval=99999, step=50, group=GRP_OI)
+hiCallStrike = input.float(0.0,  "Highest Call OI Strike — Resistance (0 = off)", minval=0, maxval=99999, step=50, group=GRP_OI)
+hiPutStrike  = input.float(0.0,  "Highest Put OI Strike — Support (0 = off)", minval=0, maxval=99999, step=50, group=GRP_OI)
+
+// ── Circuit Breaker ───────────────────────────────────────────────
+useCB     = input.bool(true, "Enable Circuit Breaker", group=GRP_CB)
+cbMaxLoss = input.int(3,     "Max Consecutive SL Hits Per Day", minval=2, maxval=7, group=GRP_CB)
+
+// ── Expiry Day ────────────────────────────────────────────────────
+// NSE weekly NIFTY expiry moved Thursday → TUESDAY from 1 Sep 2025 (SEBI).
+useExpiry    = input.bool(true,        "Expiry Day Mode", group=GRP_EXPIRY)
+expiryDay    = input.string("Tuesday", "Expiry Day of Week", options=["Tuesday","Monday","Thursday"], group=GRP_EXPIRY)
+expirySlMult = input.float(1.2,       "Expiry SL Multiplier", minval=0.5, maxval=3.0, step=0.1, group=GRP_EXPIRY)
+
+// ── Visual ────────────────────────────────────────────────────────
+showZones = input.bool(true, "Show Demand / Supply Zone Lines", group=GRP_VIZ)
+showSLTP  = input.bool(true, "Show SL / TP Lines on Chart",     group=GRP_VIZ)
+
+// ── 🌙 Overnight Edge (the verified one) ─────────────────────────
+useOEdge   = input.bool(true,  "Enable 🌙 Overnight Edge signal (VERIFIED)", group=GRP_EDGE)
+oeIbsMin   = input.float(0.8,  "IBS threshold (0.8 tight / 0.7 classic)", step=0.05, group=GRP_EDGE)
+oeNeedGrn  = input.bool(true,  "Require green day", group=GRP_EDGE)
+oeHH       = input.int(15,     "Signal hour (IST)", group=GRP_EDGE)
+oeMM       = input.int(20,     "Signal minute (IST)", group=GRP_EDGE)
+
+// ══════════════════════════════════════════════════════════════════
+// TIME — SESSION WINDOW + (optional) KILL ZONES
+// ══════════════════════════════════════════════════════════════════
+_h = hour(time, "Asia/Kolkata")
+_m = minute(time, "Asia/Kolkata")
+_t = _h * 100 + _m
+
+isNewDay    = _t == 915
+isExpiryDoW = expiryDay == "Tuesday" ? dayofweek == dayofweek.tuesday : expiryDay == "Monday" ? dayofweek == dayofweek.monday : dayofweek == dayofweek.thursday
+isExpiryDay = useExpiry and isExpiryDoW
+
+inKZ1      = _t >= 945  and _t <= 1130
+inKZ2      = _t >= 1330 and _t <= 1500
+inKZ       = inKZ1 or inKZ2
+inKZExpiry = isExpiryDay ? inKZ1 : inKZ
+
+// v2.9: entries allowed 9:45–14:45 continuously; KZ only if gate re-enabled.
+tradeWindow = _t >= 945 and _t < 1445
+kzOK        = not useKZGate or inKZExpiry
+
+// ══════════════════════════════════════════════════════════════════
+// OPENING RANGE BREAKOUT
+// ══════════════════════════════════════════════════════════════════
+orbEnd = orbMinutes == 15 ? 930 : orbMinutes == 30 ? 945 : orbMinutes == 45 ? 1000 : 1015
+
+var float orbHigh = na
+var float orbLow  = na
+var bool  orbDone = false
+
+if isNewDay
+    orbHigh := na
+    orbLow  := na
+    orbDone := false
+
+if _t >= 915 and _t < orbEnd
+    orbHigh := na(orbHigh) ? high : math.max(orbHigh, high)
+    orbLow  := na(orbLow)  ? low  : math.min(orbLow,  low)
+
+if _t >= orbEnd and not orbDone
+    orbDone := true
+
+orbBreakUp   = useORB and orbDone and not na(orbHigh) and close > orbHigh and close[1] <= orbHigh
+orbBreakDown = useORB and orbDone and not na(orbLow)  and close < orbLow  and close[1] >= orbLow
+
+// ══════════════════════════════════════════════════════════════════
+// CORE INDICATORS
+// ══════════════════════════════════════════════════════════════════
+ema9   = ta.ema(close, fastLen)
+ema21  = ta.ema(close, slowLen)
+ema200 = ta.ema(close, trendLen)
+
+emaCrossUp   = ta.crossover(ema9, ema21)
+emaCrossDown = ta.crossunder(ema9, ema21)
+
+stackBull = ema9 > ema21 and ema21 > ema200
+stackBear = ema9 < ema21 and ema21 < ema200
+trendUp   = close > ema200
+trendDown = close < ema200
+
+vwapVal   = ta.vwap(hlc3)
+aboveVWAP = close > vwapVal
+belowVWAP = close < vwapVal
+
+vwapDistPct   = math.abs(close - vwapVal) / vwapVal * 100
+vwapGateLong  = not useVwapGate or (aboveVWAP and vwapDistPct <= vwapMaxDist)
+vwapGateShort = not useVwapGate or (belowVWAP and vwapDistPct <= vwapMaxDist)
+
+[diPlus, diMinus, adxVal] = ta.dmi(adxLen, adxLen)
+adxOK = not useADX or adxVal >= adxMin
+
+// v3.0: Ichimoku-style Donchian midpoints for the TK alignment gate
+tenkanVal = (ta.highest(high, tkLen) + ta.lowest(low, tkLen)) / 2
+kijunVal  = (ta.highest(high, kjLen) + ta.lowest(low, kjLen)) / 2
+tkLongOK  = not useTKGate or tenkanVal > kijunVal
+tkShortOK = not useTKGate or tenkanVal < kijunVal
+
+// v2.7: NIFTY index has no volume feed — volume check would be permanently
+// false and silently dock 8 score pts. Exempt indices (and forex) entirely.
+isForex = syminfo.type == "forex"
+isIndex = syminfo.type == "index"
+volMA   = ta.sma(volume, 20)
+volOK   = not useVol or isForex or isIndex or volume > volMA * volMult
+
+rsiVal         = ta.rsi(close, rsiLen)
+atrVal         = ta.atr(14)
+effectiveSlAtr = isExpiryDay ? atrVal * expirySlMult : atrVal * slMult
+
+// ══════════════════════════════════════════════════════════════════
+// INDIA VIX REGIME + 🔥 SPIKE GATE (F1)
+// ══════════════════════════════════════════════════════════════════
+indiaVix    = request.security("NSE:INDIAVIX", "D", close)
+vixOK       = not useVixFilter or (indiaVix > vixMin and indiaVix < vixMax)
+vixWarning  = useVixFilter and indiaVix >= vixHalfAt and indiaVix < vixMax
+
+// F1: uses only COMPLETED daily closes (close[1] vs close[2]) — known before
+// today's open, no lookahead, stable all day.
+vixPrev1 = request.security("NSE:INDIAVIX", "D", close[1])
+vixPrev2 = request.security("NSE:INDIAVIX", "D", close[2])
+vixSpiked  = not na(vixPrev1) and not na(vixPrev2) and vixPrev2 > 0 and (vixPrev1 - vixPrev2) / vixPrev2 * 100 > vixSpikePct
+vixSpikeOK = not useVixSpike or not vixSpiked
+
+// ══════════════════════════════════════════════════════════════════
+// BOS / CHOCH
+// ══════════════════════════════════════════════════════════════════
+swingHigh = ta.highest(high, swingLen)[1]
+swingLow  = ta.lowest(low,  swingLen)[1]
+
+bullBOS = close > swingHigh
+bearBOS = close < swingLow
+
+var int  structBias = 0
+var bool isCHOCH    = false
+isCHOCH := false
+
+if bullBOS and not bullBOS[1]
+    isCHOCH    := structBias == -1
+    structBias := 1
+
+if bearBOS and not bearBOS[1]
+    isCHOCH    := structBias == 1
+    structBias := -1
+
+// ══════════════════════════════════════════════════════════════════
+// OTE — OPTIMAL TRADE ENTRY 62-79% FIBONACCI ZONES
+// ══════════════════════════════════════════════════════════════════
+var float oteBreakH  = na
+var float oteBreakL  = na
+var bool  oteWaitL   = false
+var bool  oteWaitS   = false
+var float oteLongHi  = na
+var float oteLongLo  = na
+var float oteShortHi = na
+var float oteShortLo = na
+var int   oteBarL    = 0
+var int   oteBarS    = 0
+
+if bullBOS and not bullBOS[1]
+    oteBreakH := swingHigh
+    oteBreakL := swingLow
+    _r        = oteBreakH - oteBreakL
+    oteLongHi := oteBreakH - _r * 0.62
+    oteLongLo := oteBreakH - _r * 0.79
+    oteWaitL  := true
+    oteBarL   := bar_index
+
+if bearBOS and not bearBOS[1]
+    oteBreakH  := swingHigh
+    oteBreakL  := swingLow
+    _r         = oteBreakH - oteBreakL
+    oteShortLo := oteBreakL + _r * 0.62
+    oteShortHi := oteBreakL + _r * 0.79
+    oteWaitS   := true
+    oteBarS    := bar_index
+
+if oteWaitL
+    if bar_index - oteBarL > oteMaxBars
+        oteWaitL := false
+    else if close > oteBreakH + (oteBreakH - oteBreakL) * 0.5
+        oteWaitL := false
+    else if close < oteLongLo - atrVal
+        oteWaitL := false
+
+if oteWaitS
+    if bar_index - oteBarS > oteMaxBars
+        oteWaitS := false
+    else if close < oteBreakL - (oteBreakH - oteBreakL) * 0.5
+        oteWaitS := false
+    else if close > oteShortHi + atrVal
+        oteWaitS := false
+
+inOTELong  = oteWaitL and not na(oteLongLo)  and close >= oteLongLo  and close <= oteLongHi
+inOTEShort = oteWaitS and not na(oteShortLo) and close >= oteShortLo and close <= oteShortHi
+
+// ══════════════════════════════════════════════════════════════════
+// MTF — 1H Structure Bias + 1H RSI direction
+// ══════════════════════════════════════════════════════════════════
+htfBias    = request.security(syminfo.tickerid, "60", structBias)
+htfLongOK  = not useMTF or htfBias >= 0
+htfShortOK = not useMTF or htfBias <= 0
+
+rsi1H     = request.security(syminfo.tickerid, "60", ta.rsi(close, rsiLen))
+rsi1HUp   = rsi1H > rsi1H[1]
+rsi1HDown = rsi1H < rsi1H[1]
+
+// ══════════════════════════════════════════════════════════════════
+// ORDER BLOCKS
+// ══════════════════════════════════════════════════════════════════
+var float bullOBHigh   = na
+var float bullOBLow    = na
+var float bearOBHigh   = na
+var float bearOBLow    = na
+var bool  bullOBActive = false
+var bool  bearOBActive = false
+
+if bullBOS and not bullBOS[1]
+    for i = 1 to math.min(20, bar_index)
+        if close[i] < open[i]
+            bullOBHigh   := high[i]
+            bullOBLow    := low[i]
+            bullOBActive := true
+            break
+
+if bearBOS and not bearBOS[1]
+    for i = 1 to math.min(20, bar_index)
+        if close[i] > open[i]
+            bearOBHigh   := high[i]
+            bearOBLow    := low[i]
+            bearOBActive := true
+            break
+
+if bullOBActive and low < bullOBLow
+    bullOBActive := false
+if bearOBActive and high > bearOBHigh
+    bearOBActive := false
+
+inBullOB = bullOBActive and not na(bullOBLow)  and close >= bullOBLow  and close <= bullOBHigh
+inBearOB = bearOBActive and not na(bearOBHigh) and close >= bearOBLow  and close <= bearOBHigh
+
+// ══════════════════════════════════════════════════════════════════
+// FAIR VALUE GAPS + LIQUIDITY SWEEPS
+// ══════════════════════════════════════════════════════════════════
+bullFVG = high[2] < low
+bearFVG = low[2]  > high
+
+liqHigh   = ta.highest(high, swingLen)[2]
+liqLow    = ta.lowest(low,   swingLen)[2]
+bullSweep = low[1]  < liqLow  and close[1] > liqLow
+bearSweep = high[1] > liqHigh and close[1] < liqHigh
+
+// ══════════════════════════════════════════════════════════════════
+// DAILY PIVOT POINTS
+// ══════════════════════════════════════════════════════════════════
+pD_h = request.security(syminfo.tickerid, "D", high[1],  lookahead=barmerge.lookahead_off)
+pD_l = request.security(syminfo.tickerid, "D", low[1],   lookahead=barmerge.lookahead_off)
+pD_c = request.security(syminfo.tickerid, "D", close[1], lookahead=barmerge.lookahead_off)
+
+pvPP = (pD_h + pD_l + pD_c) / 3
+pvR1 = 2 * pvPP - pD_l
+pvS1 = 2 * pvPP - pD_h
+pvR2 = pvPP + (pD_h - pD_l)
+pvS2 = pvPP - (pD_h - pD_l)
+
+float _pvBufPts  = atrVal * pivotBuf
+float _pvDist0   = math.abs(close - pvPP)
+float _pvDist1   = math.abs(close - pvR1)
+float _pvDist2   = math.abs(close - pvS1)
+float _pvDist3   = math.abs(close - pvR2)
+float _pvDist4   = math.abs(close - pvS2)
+bool  nearPivot  = usePivotBonus and (_pvDist0 <= _pvBufPts or _pvDist1 <= _pvBufPts or _pvDist2 <= _pvBufPts or _pvDist3 <= _pvBufPts or _pvDist4 <= _pvBufPts)
+float _nearPvDist = math.min(math.min(math.min(_pvDist0, _pvDist1), math.min(_pvDist2, _pvDist3)), _pvDist4)
+string _nearPvLabel = _nearPvDist == _pvDist0 ? "PP " + str.tostring(math.round(pvPP, 1)) :
+     _nearPvDist == _pvDist1 ? "R1 " + str.tostring(math.round(pvR1, 1)) :
+     _nearPvDist == _pvDist2 ? "S1 " + str.tostring(math.round(pvS1, 1)) :
+     _nearPvDist == _pvDist3 ? "R2 " + str.tostring(math.round(pvR2, 1)) :
+     "S2 " + str.tostring(math.round(pvS2, 1))
+
+// ══════════════════════════════════════════════════════════════════
+// PCR (score input, not a gate)
+// ══════════════════════════════════════════════════════════════════
+pcrBullish = usePCR and pcrValue < 0.9
+pcrBearish = usePCR and pcrValue > 1.1
+pcrExtreme = usePCR and (pcrValue > 1.4 or pcrValue < 0.6)
+
+nearCallWall = hiCallStrike > 0 and math.abs(close - hiCallStrike) <= atrVal * 1.5
+nearPutFloor = hiPutStrike  > 0 and math.abs(close - hiPutStrike)  <= atrVal * 1.5
+float mpDist = useMaxPain and maxPainVal > 0 ? math.abs(close - maxPainVal) : na
+bool nearMaxPain = useMaxPain and maxPainVal > 0 and not na(mpDist) and mpDist <= atrVal * 2.0
+
+// ══════════════════════════════════════════════════════════════════
+// CIRCUIT BREAKER
+// ══════════════════════════════════════════════════════════════════
+var int  slHitsDay = 0
+var bool cbBlocked = false
+
+if isNewDay
+    slHitsDay := 0
+    cbBlocked := false
+
+// ══════════════════════════════════════════════════════════════════
+// 🌙 VERIFIED OVERNIGHT EDGE — the only mechanical edge here
+// IBS>=0.8 + green day + close>SMA200(D). Signal >=15:20 IST bar close.
+// 6y NIFTY: 274 tr, 74% win, PF 3.03 | OOS 77%/3.64 | 4y attrib PF 3.14.
+// NOT gated by the VIX-spike filter: its SMA200 regime filter already
+// handled every macro storm in the attribution study (zero trades 2026-03+).
+// ══════════════════════════════════════════════════════════════════
+oeD_o   = request.security(syminfo.tickerid, "D", open)
+oeD_h   = request.security(syminfo.tickerid, "D", high)
+oeD_l   = request.security(syminfo.tickerid, "D", low)
+oeD_c   = request.security(syminfo.tickerid, "D", close)
+oeSma   = request.security(syminfo.tickerid, "D", ta.sma(close, 200))
+
+oeIbs     = (oeD_c - oeD_l) / (oeD_h - oeD_l == 0 ? 1 : oeD_h - oeD_l)
+oeQualify = oeIbs >= oeIbsMin and (not oeNeedGrn or oeD_c > oeD_o) and oeD_c > oeSma
+
+// bar CLOSE time — an open-time check misses the last bar on 15m charts
+oeNowMin  = hour(time_close, "Asia/Kolkata") * 60 + minute(time_close, "Asia/Kolkata")
+oeWindow  = oeNowMin >= oeHH * 60 + oeMM
+oeNewDay  = ta.change(time("D")) != 0
+
+var bool oeInPos = false
+oeBuy  = useOEdge and oeQualify and oeWindow and not oeInPos
+oeSell = oeInPos and oeNewDay
+if oeBuy
+    oeInPos := true
+if oeSell
+    oeInPos := false
+
+// ══════════════════════════════════════════════════════════════════
+// AI CONFIDENCE SCORE
+// ══════════════════════════════════════════════════════════════════
+longScore  = 0
+shortScore = 0
+
+longScore  += stackBull ? 20 : ema9 > ema21 ? 10 : 0
+shortScore += stackBear ? 20 : ema9 < ema21 ? 10 : 0
+
+longScore  += aboveVWAP ? 8 : 0
+shortScore += belowVWAP ? 8 : 0
+
+longScore  += structBias >= 1  ? 12 : structBias == 0 ? 4 : 0
+shortScore += structBias <= -1 ? 12 : structBias == 0 ? 4 : 0
+
+longScore  += rsiVal > 60 ? 8 : rsiVal > 55 ? 5 : rsiVal > 50 ? 3 : 0
+shortScore += rsiVal < 40 ? 8 : rsiVal < 45 ? 5 : rsiVal < 50 ? 3 : 0
+
+longScore  += volOK ? 8 : 0
+shortScore += volOK ? 8 : 0
+
+longScore  += useLiqSweep and bullSweep ? 10 : 0
+shortScore += useLiqSweep and bearSweep ? 10 : 0
+
+// v2.7: symmetric FVG logic — a fresh gap in your direction means you are
+// chasing an extended move: no bonus. No fresh gap = orderly = +4.
+longScore  += bullFVG ? 0 : 4
+shortScore += bearFVG ? 0 : 4
+
+longScore  += inBullOB ? 10 : 0
+shortScore += inBearOB ? 10 : 0
+
+longScore  += htfBias >= 1  ? 8 : htfBias == 0 ? 4 : 0
+shortScore += htfBias <= -1 ? 8 : htfBias == 0 ? 4 : 0
+
+longScore  += nearPivot ? 6 : 0
+shortScore += nearPivot ? 6 : 0
+
+longScore  += nearPutFloor ? 6 : 0
+shortScore += nearCallWall ? 6 : 0
+longScore  += pcrBullish   ? 5 : 0
+shortScore += pcrBearish   ? 5 : 0
+
+longScore  += inOTELong  ? 10 : 0
+shortScore += inOTEShort ? 10 : 0
+
+longScore  += rsi1HUp   ? 5 : 0
+shortScore += rsi1HDown ? 5 : 0
+
+longScore  := math.min(longScore,  100)
+shortScore := math.min(shortScore, 100)
+
+// ══════════════════════════════════════════════════════════════════
+// SIGNAL ENGINE — v2.9 hard gates + two entry styles
+// ══════════════════════════════════════════════════════════════════
+hardLong  = longsEnabled and tradeWindow and kzOK and vixOK and vixSpikeOK and trendUp  and htfLongOK  and not cbBlocked
+hardShort =                 tradeWindow and kzOK and vixOK and vixSpikeOK and trendDown and htfShortOK and not cbBlocked
+
+momTrigL  = emaCrossUp   or orbBreakUp
+momTrigS  = emaCrossDown or orbBreakDown
+momLong   = hardLong  and momTrigL and aboveVWAP and vwapGateLong  and adxOK and tkLongOK  and longScore  >= minScore
+momShort  = hardShort and momTrigS and belowVWAP and vwapGateShort and adxOK and tkShortOK and shortScore >= minScore
+
+revCandleUp = close > open and close > close[1]
+revCandleDn = close < open and close < close[1]
+pbLong   = useOTE and hardLong  and inOTELong  and revCandleUp and longScore  >= minScore
+pbShort  = useOTE and hardShort and inOTEShort and revCandleDn and shortScore >= minScore
+
+longCondition  = momLong  or pbLong
+shortCondition = momShort or pbShort
+
+// ══════════════════════════════════════════════════════════════════
+// TRADE STATE (display only — no orders)
+// ══════════════════════════════════════════════════════════════════
+var float  entryPrice    = na
+var float  stopLoss      = na
+var float  takeProfit1   = na
+var float  takeProfit2   = na
+var int    entryBar      = na
+var bool   isLong        = false
+var bool   inTrade       = false
+var string lastSigDir    = "—"
+var string lastSigStyle  = "—"
+var float  lastSigEntry  = na
+var float  lastSigSL     = na
+var float  lastSigTP1    = na
+var int    lastSigScore  = 0
+var string lastSigStatus = "—"
+var line   _entryLine    = na
+var line   _slLine       = na
+var line   _tp1Line      = na
+var line   _tp2Line      = na
+
+// v2.9: LAST SIGNAL panel resets every morning — only today's signal shows.
+// (Positions can't carry overnight anyway — EOD force-close at 15:15.)
+if isNewDay
+    lastSigDir    := "—"
+    lastSigStyle  := "—"
+    lastSigEntry  := na
+    lastSigSL     := na
+    lastSigTP1    := na
+    lastSigScore  := 0
+    lastSigStatus := "—"
+    inTrade       := false
+
+bool evEntry = false
+
+if longCondition and not inTrade
+    _sl          = close - effectiveSlAtr
+    _risk        = close - _sl
+    entryPrice   := close
+    stopLoss     := _sl
+    takeProfit1  := close + _risk * tp1MultLong
+    takeProfit2  := close + _risk * tp2Mult
+    entryBar     := bar_index
+    isLong       := true
+    inTrade      := true
+    lastSigDir   := "▲ BUY CALL (CE)"
+    lastSigStyle := momLong ? "⚡ Momentum" : "🎯 Pullback"
+    lastSigEntry := close
+    lastSigSL    := _sl
+    lastSigTP1   := close + _risk * tp1MultLong
+    lastSigScore := longScore
+    lastSigStatus := "● In Trade"
+    evEntry := true
+
+if shortCondition and not inTrade
+    _sl          = close + effectiveSlAtr
+    _risk        = _sl - close
+    entryPrice   := close
+    stopLoss     := _sl
+    takeProfit1  := close - _risk * tp1Mult
+    takeProfit2  := close - _risk * tp2Mult
+    entryBar     := bar_index
+    isLong       := false
+    inTrade      := true
+    lastSigDir   := "▼ BUY PUT (PE)"
+    lastSigStyle := momShort ? "⚡ Momentum" : "🎯 Pullback"
+    lastSigEntry := close
+    lastSigSL    := _sl
+    lastSigTP1   := close - _risk * tp1Mult
+    lastSigScore := shortScore
+    lastSigStatus := "● In Trade"
+    evEntry := true
+
+bool evTP = false
+bool evSL = false
+
+if inTrade and not evEntry
+    // v2.7: force-close at 15:15 — intraday options position cannot carry
+    // overnight; without this the CB counter and trade state desynced.
+    if _t >= 1515
+        inTrade       := false
+        lastSigStatus := "🌙 EOD Close"
+    else if isLong
+        if high >= takeProfit1
+            inTrade       := false
+            lastSigStatus := "✅ TP Hit"
+            evTP := true
+        else if low <= stopLoss
+            inTrade       := false
+            lastSigStatus := "⛔ SL Hit"
+            evSL := true
+        else if emaCrossDown
+            inTrade       := false
+            lastSigStatus := "🔄 EMA Exit"
+    else
+        if low <= takeProfit1
+            inTrade       := false
+            lastSigStatus := "✅ TP Hit"
+            evTP := true
+        else if high >= stopLoss
+            inTrade       := false
+            lastSigStatus := "⛔ SL Hit"
+            evSL := true
+        else if emaCrossUp
+            inTrade       := false
+            lastSigStatus := "🔄 EMA Exit"
+
+if evSL
+    slHitsDay += 1
+    if useCB and slHitsDay >= cbMaxLoss
+        cbBlocked := true
+
+// ══════════════════════════════════════════════════════════════════
+// VISUALS
+// ══════════════════════════════════════════════════════════════════
+plot(ema9,   "EMA 9",   color=#2962FF, linewidth=1)
+plot(ema21,  "EMA 21",  color=#E91E63, linewidth=1)
+plot(ema200, "EMA 200", color=color.new(#FF9800, 0), linewidth=2)
+plot(vwapVal,"VWAP",    color=color.new(#9C27B0, 15), linewidth=2, style=plot.style_stepline)
+
+bool _showRecent = bar_index >= last_bar_index - 200
+
+plot(_showRecent and showORB and orbDone and not na(orbHigh) ? orbHigh : na, "ORB High", color=color.new(#FF9800, 25), linewidth=1, style=plot.style_stepline)
+plot(_showRecent and showORB and orbDone and not na(orbLow)  ? orbLow  : na, "ORB Low",  color=color.new(#FF9800, 25), linewidth=1, style=plot.style_stepline)
+
+plot(_showRecent and useOTE and oteWaitL and not na(oteLongHi)  ? oteLongHi  : na, "OTE Long Top",    color=color.new(#26A69A, 20), linewidth=2, style=plot.style_stepline)
+plot(_showRecent and useOTE and oteWaitL and not na(oteLongLo)  ? oteLongLo  : na, "OTE Long Bottom", color=color.new(#26A69A, 20), linewidth=2, style=plot.style_stepline)
+plot(_showRecent and useOTE and oteWaitS and not na(oteShortHi) ? oteShortHi : na, "OTE Short Top",    color=color.new(#EF5350, 20), linewidth=2, style=plot.style_stepline)
+plot(_showRecent and useOTE and oteWaitS and not na(oteShortLo) ? oteShortLo : na, "OTE Short Bottom", color=color.new(#EF5350, 20), linewidth=2, style=plot.style_stepline)
+
+plot(_showRecent and useMaxPain and maxPainVal > 0 ? maxPainVal : na, "Max Pain",  color=color.new(color.yellow, 20), linewidth=2, style=plot.style_stepline)
+plot(_showRecent and hiCallStrike > 0 ? hiCallStrike : na,            "Call Wall", color=color.new(#EF5350, 15),      linewidth=2, style=plot.style_stepline)
+plot(_showRecent and hiPutStrike  > 0 ? hiPutStrike  : na,            "Put Floor", color=color.new(#26A69A, 15),      linewidth=2, style=plot.style_stepline)
+
+plot(_showRecent and showZones and bullOBActive and not na(bullOBHigh) ? bullOBHigh : na, "Demand High", color=color.new(#26A69A, 40), linewidth=1, style=plot.style_stepline)
+plot(_showRecent and showZones and bullOBActive and not na(bullOBLow)  ? bullOBLow  : na, "Demand Low",  color=color.new(#26A69A, 40), linewidth=1, style=plot.style_stepline)
+plot(_showRecent and showZones and bearOBActive and not na(bearOBHigh) ? bearOBHigh : na, "Supply High", color=color.new(#EF5350, 40), linewidth=1, style=plot.style_stepline)
+plot(_showRecent and showZones and bearOBActive and not na(bearOBLow)  ? bearOBLow  : na, "Supply Low",  color=color.new(#EF5350, 40), linewidth=1, style=plot.style_stepline)
+
+if barstate.islast or barstate.isrealtime
+    line.delete(_entryLine)
+    line.delete(_slLine)
+    line.delete(_tp1Line)
+    line.delete(_tp2Line)
+    if showSLTP and inTrade and not na(entryPrice) and not na(entryBar)
+        _entryLine := line.new(entryBar, entryPrice,  bar_index, entryPrice,  xloc=xloc.bar_index, extend=extend.right, color=color.new(#5C6BC0, 20), style=line.style_dashed, width=1)
+        _slLine    := line.new(entryBar, stopLoss,    bar_index, stopLoss,    xloc=xloc.bar_index, extend=extend.right, color=color.new(#EF5350, 10), style=line.style_dashed, width=2)
+        _tp1Line   := line.new(entryBar, takeProfit1, bar_index, takeProfit1, xloc=xloc.bar_index, extend=extend.right, color=color.new(#26A69A, 10), style=line.style_dashed, width=2)
+        if useTP2 and not na(takeProfit2)
+            _tp2Line := line.new(entryBar, takeProfit2, bar_index, takeProfit2, xloc=xloc.bar_index, extend=extend.right, color=color.new(color.gray, 40), style=line.style_dotted, width=2)
+
+plotshape(showBOSlbl and bullBOS and not bullBOS[1] and not isCHOCH, "BOS ↑",   shape.arrowup,   location.belowbar, color.new(#26A69A, 0), size=size.tiny)
+plotshape(showBOSlbl and bullBOS and not bullBOS[1] and isCHOCH,     "CHOCH ↑", shape.arrowup,   location.belowbar, color.new(#FF9800, 0), size=size.small)
+plotshape(showBOSlbl and bearBOS and not bearBOS[1] and not isCHOCH, "BOS ↓",   shape.arrowdown, location.abovebar, color.new(#EF5350, 0), size=size.tiny)
+plotshape(showBOSlbl and bearBOS and not bearBOS[1] and isCHOCH,     "CHOCH ↓", shape.arrowdown, location.abovebar, color.new(#FF9800, 0), size=size.small)
+
+plot(_showRecent and showPivotLines ? pvPP : na, "Pivot PP", color=color.new(color.white, 30), linewidth=1, style=plot.style_stepline)
+plot(_showRecent and showPivotLines ? pvR1 : na, "Pivot R1", color=color.new(#EF5350, 40),     linewidth=1, style=plot.style_stepline)
+plot(_showRecent and showPivotLines ? pvS1 : na, "Pivot S1", color=color.new(#26A69A, 40),     linewidth=1, style=plot.style_stepline)
+plot(_showRecent and showPivotLines ? pvR2 : na, "Pivot R2", color=color.new(#EF5350, 65),     linewidth=1, style=plot.style_stepline)
+plot(_showRecent and showPivotLines ? pvS2 : na, "Pivot S2", color=color.new(#26A69A, 65),     linewidth=1, style=plot.style_stepline)
+
+plotshape(bullSweep,    "Bull Sweep",     shape.circle,       location.belowbar, color=color.new(#26A69A, 20), size=size.tiny)
+plotshape(bearSweep,    "Bear Sweep",     shape.circle,       location.abovebar, color=color.new(#EF5350, 20), size=size.tiny)
+plotshape(orbBreakUp,   "ORB Break Up",   shape.diamond,      location.belowbar, color=color.new(#FF9800, 0),  size=size.small)
+plotshape(orbBreakDown, "ORB Break Down", shape.diamond,      location.abovebar, color=color.new(#FF9800, 0),  size=size.small)
+plotshape(momLong,      "Buy ⚡",          shape.triangleup,   location.belowbar, color=#26A69A, size=size.normal, text="⚡", textcolor=#26A69A)
+plotshape(pbLong,       "Buy 🎯",          shape.triangleup,   location.belowbar, color=#26A69A, size=size.normal, text="OTE", textcolor=#26A69A)
+plotshape(momShort,     "Sell ⚡",         shape.triangledown, location.abovebar, color=#EF5350, size=size.normal, text="⚡", textcolor=#EF5350)
+plotshape(pbShort,      "Sell 🎯",         shape.triangledown, location.abovebar, color=#EF5350, size=size.normal, text="OTE", textcolor=#EF5350)
+plotshape(oeBuy,        "🌙 Overnight HOLD", shape.labelup,   location.belowbar, color=color.new(#00C853, 10), size=size.small, text="🌙HOLD", textcolor=color.white)
+plotshape(oeSell,       "🌙 Overnight EXIT", shape.labeldown, location.abovebar, color=color.new(#FF6D00, 10), size=size.small, text="🌙EXIT", textcolor=color.white)
+
+// ══════════════════════════════════════════════════════════════════
+// DASHBOARD — v2.9
+// ══════════════════════════════════════════════════════════════════
+var table dash = table.new(position.top_right, 2, 28, bgcolor=color.new(color.black, 65), border_color=color.new(color.gray, 50), border_width=1, frame_color=color.new(color.gray, 50), frame_width=1)
+
+if barstate.islast or barstate.isrealtime
+
+    table.cell(dash, 0, 0, "REVANCHE v3.0 ⚡",  text_color=color.white, text_size=size.small, bgcolor=color.new(color.navy, 20), text_halign=text.align_left)
+    _modeStr = isExpiryDay ? "⚡ EXPIRY" : "● LIVE"
+    _modeCol = isExpiryDay ? color.orange : color.lime
+    table.cell(dash, 1, 0, _modeStr, text_color=_modeCol, text_size=size.small, bgcolor=color.new(color.navy, 20), text_halign=text.align_center)
+
+    _kzStr = useKZGate ? (inKZ1 ? "KZ1 ● 9:45-11:30" : inKZ2 ? "KZ2 ● 13:30-15:00" : "No KZ ○ blocked") : (tradeWindow ? "9:45-14:45 ● open" : "outside window ○")
+    _kzCol = useKZGate ? ((inKZ1 or inKZ2) ? color.orange : color.red) : (tradeWindow ? color.lime : color.gray)
+    table.cell(dash, 0, 1, useKZGate ? "Kill Zone" : "Window", text_color=color.silver, text_size=size.small)
+    table.cell(dash, 1, 1, _kzStr,      text_color=_kzCol,       text_size=size.small)
+
+    _vixStr = not na(indiaVix) ? str.tostring(math.round(indiaVix, 1)) +
+         (vixSpiked and useVixSpike ? " 🔥SPIKE — no trades" :
+          indiaVix < vixMin ? " ⛔ Dead Mkt" : indiaVix >= vixMax ? " ⛔ Panic" :
+          vixWarning ? " ⚠ Half Size" : " ✅ OK") : "Loading…"
+    _vixCol = not na(indiaVix) ? ((vixSpiked and useVixSpike) or not vixOK ? color.red : vixWarning ? color.orange : color.lime) : color.gray
+    table.cell(dash, 0, 2, "India VIX", text_color=color.silver, text_size=size.small)
+    table.cell(dash, 1, 2, _vixStr,     text_color=_vixCol,      text_size=size.small)
+
+    _strStr = structBias == 1 ? "Bullish ↑ ✓" : structBias == -1 ? "Bearish ↓ ✓" : "Neutral ─"
+    _strCol = structBias == 1 ? color.lime    : structBias == -1 ? #EF5350       : color.red
+    table.cell(dash, 0, 3, "Structure", text_color=color.silver, text_size=size.small)
+    table.cell(dash, 1, 3, _strStr,     text_color=_strCol,      text_size=size.small)
+
+    _oteStr = inOTELong ? "🎯 OTE Long ✅" : inOTEShort ? "🎯 OTE Short ✅" :
+         oteWaitL ? "Waiting OTE Long…" : oteWaitS ? "Waiting OTE Short…" : "No OTE Active"
+    _oteCol = (inOTELong or inOTEShort) ? color.lime : (oteWaitL or oteWaitS) ? color.orange : color.gray
+    table.cell(dash, 0, 4, "OTE Zone",  text_color=color.silver, text_size=size.small)
+    table.cell(dash, 1, 4, _oteStr,     text_color=_oteCol,      text_size=size.small)
+
+    _htfStr = htfBias >= 1 ? "1H Bull ↑ ✓" : htfBias <= -1 ? "1H Bear ↓ ✓" : "1H Neutral"
+    _htfCol = htfBias >= 1 ? color.lime    : htfBias <= -1 ? #EF5350       : color.gray
+    table.cell(dash, 0, 5, "MTF 1H",   text_color=color.silver, text_size=size.small)
+    table.cell(dash, 1, 5, _htfStr,    text_color=_htfCol,      text_size=size.small)
+
+    _vwapStr = (aboveVWAP ? "Above ↑ " : "Below ↓ ") + str.tostring(math.round(vwapDistPct, 2)) + "%" +
+         ((not vwapGateLong and aboveVWAP) or (not vwapGateShort and belowVWAP) ? " ⛔ Extended" : " ✅")
+    _vwapCol = aboveVWAP ? color.lime : #EF5350
+    table.cell(dash, 0, 6, "VWAP Dist", text_color=color.silver, text_size=size.small)
+    table.cell(dash, 1, 6, _vwapStr,    text_color=_vwapCol,     text_size=size.small)
+
+    _adxStr = str.tostring(math.round(adxVal, 1)) + (useADX ? (adxVal >= adxMin ? " Trending ✅" : " Ranging (⚡ blocked)") : (adxVal >= adxMin ? " trending (info)" : " ranging (info)")) + (useTKGate ? (tenkanVal > kijunVal ? " | TK ↑" : tenkanVal < kijunVal ? " | TK ↓" : " | TK ─") : "")
+    _adxCol = adxVal >= adxMin ? color.lime : useADX ? color.orange : color.gray
+    table.cell(dash, 0, 7, useADX ? "ADX" : "ADX (no gate)",   text_color=color.silver, text_size=size.small)
+    table.cell(dash, 1, 7, _adxStr, text_color=_adxCol,      text_size=size.small)
+
+    _pcrStr = "PCR " + str.tostring(pcrValue) +
+         (pcrValue > 1.3 ? " → Bearish ↓" : pcrValue < 0.7 ? " → Bullish ↑" : " → Neutral") +
+         (pcrExtreme ? " ⚠" : "")
+    _pcrCol = pcrBearish ? #EF5350 : pcrBullish ? color.lime : color.gray
+    table.cell(dash, 0, 8, "PCR",   text_color=color.silver, text_size=size.small)
+    table.cell(dash, 1, 8, _pcrStr, text_color=_pcrCol,      text_size=size.small)
+
+    _oiStr = (hiCallStrike > 0 ? "CW:" + str.tostring(int(hiCallStrike)) + "  " : "") +
+             (hiPutStrike  > 0 ? "PF:" + str.tostring(int(hiPutStrike))  : "")
+    _oiStr := str.length(_oiStr) == 0 ? "Not set (enter daily)" : _oiStr
+    _oiCol = nearCallWall or nearPutFloor ? color.orange : color.gray
+    table.cell(dash, 0, 9, "OI Walls", text_color=color.silver, text_size=size.small)
+    table.cell(dash, 1, 9, _oiStr,     text_color=_oiCol,       text_size=size.small)
+
+    _rsiCol = rsiVal > 60 ? color.lime : rsiVal < 40 ? #EF5350 : color.gray
+    table.cell(dash, 0, 10, "RSI", text_color=color.silver, text_size=size.small)
+    table.cell(dash, 1, 10, str.tostring(math.round(rsiVal, 1)), text_color=_rsiCol, text_size=size.small)
+
+    _fvgStr = bullFVG ? "Bull FVG (chasing)" : bearFVG ? "Bear FVG (chasing)" : "No FVG ✓ (+4)"
+    _fvgCol = bullFVG or bearFVG ? color.orange : color.lime
+    table.cell(dash, 0, 11, "FVG", text_color=color.silver, text_size=size.small)
+    table.cell(dash, 1, 11, _fvgStr,    text_color=_fvgCol,      text_size=size.small)
+
+    _liqStr = bullSweep ? "Bull Sweep ↑" : bearSweep ? "Bear Sweep ↓" : "None"
+    _liqCol = bullSweep ? color.lime : bearSweep ? #EF5350 : color.gray
+    table.cell(dash, 0, 12, "Liq Sweep", text_color=color.silver, text_size=size.small)
+    table.cell(dash, 1, 12, _liqStr,     text_color=_liqCol,      text_size=size.small)
+
+    _pvStr = nearPivot ? "▶ " + _nearPvLabel + " ✅" : _nearPvLabel + " (" + str.tostring(math.round(_nearPvDist, 0)) + " pts)"
+    table.cell(dash, 0, 13, "Pivot", text_color=color.silver, text_size=size.small)
+    table.cell(dash, 1, 13, _pvStr,  text_color=nearPivot ? color.lime : color.gray, text_size=size.small)
+
+    table.cell(dash, 0, 14, "ORB", text_color=color.silver, text_size=size.small)
+    table.cell(dash, 1, 14, orbDone ? "Set ✓" : "Building…", text_color=orbDone ? color.lime : color.gray, text_size=size.small)
+
+    _lsCol = longScore >= minScore ? color.lime : longScore >= minScore - 10 ? color.orange : color.gray
+    table.cell(dash, 0, 15, "Long Score",  text_color=color.silver, text_size=size.small)
+    table.cell(dash, 1, 15, str.tostring(longScore) + "/100", text_color=_lsCol, text_size=size.small)
+
+    _ssCol = shortScore >= minScore ? #EF5350 : shortScore >= minScore - 10 ? color.orange : color.gray
+    table.cell(dash, 0, 16, "Short Score",  text_color=color.silver, text_size=size.small)
+    table.cell(dash, 1, 16, str.tostring(shortScore) + "/100", text_color=_ssCol, text_size=size.small)
+
+    table.cell(dash, 0, 17, "Lot Size",  text_color=color.silver, text_size=size.small)
+    table.cell(dash, 1, 17, "1 lot = " + str.tostring(niftyLotSize) + " qty" + (vixWarning ? " (⚠ use ½ lots)" : ""), text_color=vixWarning ? color.orange : color.lime, text_size=size.small)
+
+    _sigStr = longCondition ? (momLong ? "⚡" : "🎯") + " BUY CALL (CE) ▲" : shortCondition ? (momShort ? "⚡" : "🎯") + " BUY PUT (PE) ▼" : "— Watching —"
+    _sigCol = longCondition ? color.lime : shortCondition ? #EF5350 : color.gray
+    _sigBg  = longCondition ? color.new(color.lime, 70) : shortCondition ? color.new(#EF5350, 70) : color.new(color.black, 80)
+    table.cell(dash, 0, 18, "Signal (discr.)",  text_color=color.silver, text_size=size.small)
+    table.cell(dash, 1, 18, _sigStr,   text_color=_sigCol, text_size=size.small, bgcolor=_sigBg)
+
+    _oeStr = not useOEdge ? "off" : oeInPos ? "🌙 HOLDING → exit at open" : oeQualify and oeWindow ? "🌙 HOLD TONIGHT ✅" : oeQualify ? "Qualifying… (signal 15:20)" : "IBS " + str.tostring(oeIbs, "0.00") + " / need " + str.tostring(oeIbsMin, "0.0") + (oeD_c > oeSma ? "" : " ⛔ <SMA200")
+    _oeCol = oeInPos or (oeQualify and oeWindow) ? color.lime : oeQualify ? color.orange : color.gray
+    _oeBg  = oeQualify and oeWindow ? color.new(color.lime, 60) : color.new(color.black, 80)
+    table.cell(dash, 0, 19, "🌙 O/N EDGE ✓77%", text_color=color.white, text_size=size.small, bgcolor=color.new(#004D40, 30))
+    table.cell(dash, 1, 19, _oeStr, text_color=_oeCol, text_size=size.small, bgcolor=_oeBg)
+
+    table.cell(dash, 0, 20, "CB / Exit", text_color=color.silver, text_size=size.tiny)
+    table.cell(dash, 1, 20, (cbBlocked ? "⛔ CB LOCKED (" + str.tostring(slHitsDay) + " SL) | " : useCB ? str.tostring(slHitsDay) + "/" + str.tostring(cbMaxLoss) + " SL | " : "") + (useTP2 ? "50/50 TP1+TP2" : "100% @ TP1"), text_color=cbBlocked ? color.red : color.orange, text_size=size.tiny)
+
+    table.cell(dash, 0, 21, "── TODAY'S SIGNAL ──", text_color=color.new(color.silver, 30), text_size=size.tiny, bgcolor=color.new(color.gray, 85))
+    table.cell(dash, 1, 21, lastSigDir == "—" ? "none yet today" : lastSigStyle + " " + lastSigDir + " " + (lastSigScore > 0 ? str.tostring(lastSigScore) : ""),
+         text_color=str.contains(lastSigDir, "CALL") ? color.lime : str.contains(lastSigDir, "PUT") ? #EF5350 : color.gray,
+         text_size=size.tiny, bgcolor=color.new(color.gray, 85))
+
+    _entryStr = na(lastSigEntry) ? "—" : str.tostring(math.round(lastSigEntry, 1))
+    _slStr2   = na(lastSigSL)    ? "—" : str.tostring(math.round(lastSigSL, 1))
+    table.cell(dash, 0, 22, "Entry / SL", text_color=color.silver, text_size=size.tiny)
+    table.cell(dash, 1, 22, _entryStr + " / " + _slStr2, text_color=color.white, text_size=size.tiny)
+
+    _tp1Str = na(lastSigTP1) ? "—" : str.tostring(math.round(lastSigTP1, 1))
+    table.cell(dash, 0, 23, "TP1 Target", text_color=color.silver, text_size=size.tiny)
+    table.cell(dash, 1, 23, _tp1Str,      text_color=color.lime,   text_size=size.tiny)
+
+    table.cell(dash, 0, 24, "TP2 Target", text_color=color.silver, text_size=size.tiny)
+    table.cell(dash, 1, 24, useTP2 and not na(takeProfit2) and inTrade ? str.tostring(math.round(takeProfit2, 1)) : "—", text_color=color.new(#FF6F00, 0), text_size=size.tiny)
+
+    _mpStr = useMaxPain and maxPainVal > 0 ? str.tostring(int(maxPainVal)) + (nearMaxPain ? " ← Near! ⚠" : "") : "Not Set"
+    table.cell(dash, 0, 25, "Max Pain", text_color=color.silver, text_size=size.tiny)
+    table.cell(dash, 1, 25, _mpStr,     text_color=nearMaxPain ? color.yellow : color.gray, text_size=size.tiny)
+
+    _statCol = str.contains(lastSigStatus, "TP") ? color.lime : str.contains(lastSigStatus, "SL") ? color.red : str.contains(lastSigStatus, "In") ? color.orange : color.gray
+    table.cell(dash, 0, 26, "Status",      text_color=color.silver, text_size=size.tiny)
+    table.cell(dash, 1, 26, lastSigStatus, text_color=_statCol,     text_size=size.tiny)
+
+    _symWarn = str.contains(syminfo.ticker, "NIFTY") ? "" : "⚠ NOT NIFTY — built for NIFTY index"
+    table.cell(dash, 0, 27, "Note", text_color=color.silver, text_size=size.tiny)
+    table.cell(dash, 1, 27, _symWarn == "" ? "intraday sigs = discretionary (PF~1.1) — 🌙 is the edge" : _symWarn, text_color=_symWarn == "" ? color.gray : color.red, text_size=size.tiny)
+
+// ══════════════════════════════════════════════════════════════════
+// ALERTS
+// ══════════════════════════════════════════════════════════════════
+alertcondition(longCondition,                    "REVANCHE v2.9 — BUY CALL (CE)",       "REVANCHE v2.9: 📈 BUY CALL (CE) on {{ticker}} {{interval}}.")
+alertcondition(shortCondition,                   "REVANCHE v2.9 — BUY PUT (PE)",        "REVANCHE v2.9: 📉 BUY PUT (PE) on {{ticker}} {{interval}}.")
+alertcondition(inOTELong  and not inOTELong[1],  "REVANCHE v2.9 — OTE Long Zone Hit",   "REVANCHE v2.9: 🎯 Price entered OTE Long zone (62-79% Fib). Watch for reversal candle.")
+alertcondition(inOTEShort and not inOTEShort[1], "REVANCHE v2.9 — OTE Short Zone Hit",  "REVANCHE v2.9: 🎯 Price entered OTE Short zone (62-79% Fib). Watch for reversal candle.")
+alertcondition(bullBOS and not bullBOS[1],        "REVANCHE v2.9 — Bullish BOS/CHOCH",  "REVANCHE v2.9: Bullish structure break. OTE Long zone now active on {{ticker}}.")
+alertcondition(bearBOS and not bearBOS[1],        "REVANCHE v2.9 — Bearish BOS/CHOCH",  "REVANCHE v2.9: Bearish structure break. OTE Short zone now active on {{ticker}}.")
+alertcondition(bullSweep,                         "REVANCHE v2.9 — Bull Sweep",          "REVANCHE v2.9: Liq sweep below swing low on {{ticker}}. Watch for long reversal.")
+alertcondition(bearSweep,                         "REVANCHE v2.9 — Bear Sweep",          "REVANCHE v2.9: Liq sweep above swing high on {{ticker}}. Watch for short reversal.")
+alertcondition(isExpiryDay and isNewDay,          "REVANCHE v2.9 — Expiry Day",          "REVANCHE v2.9: Expiry Day (Tuesday). Tighter stops.")
+alertcondition(vixSpiked and isNewDay,            "REVANCHE v2.9 — 🔥 VIX Spike Day",    "REVANCHE v2.9: 🔥 VIX spiked >threshold yesterday — intraday entries OFF today (event-chop protection).")
+alertcondition(oeBuy,                             "REVANCHE v2.9 — 🌙 OVERNIGHT HOLD",   "REVANCHE v2.9: 🌙 VERIFIED EDGE fires — buy near close, sell next open (77% win OOS).")
+alertcondition(oeSell,                            "REVANCHE v2.9 — 🌙 OVERNIGHT EXIT",   "REVANCHE v2.9: 🌙 exit overnight position at the open.")
+
+if evEntry
+    alert("REVANCHE v2.9 " + lastSigStyle + " " + lastSigDir + " NIFTY @ " + str.tostring(math.round(lastSigEntry, 1)) + " | SL " + str.tostring(math.round(lastSigSL, 1)) + " | TP1 " + str.tostring(math.round(lastSigTP1, 1)) + " | score " + str.tostring(lastSigScore), alert.freq_once_per_bar_close)
+if evTP
+    alert("REVANCHE v2.9 ✅ TP1 HIT on NIFTY — book/trail", alert.freq_once_per_bar_close)
+if evSL
+    alert("REVANCHE v2.9 ⛔ SL HIT on NIFTY" + (cbBlocked ? " — CIRCUIT BREAKER LOCKED for today" : "") , alert.freq_once_per_bar_close)
+if oeBuy
+    alert("REVANCHE v2.9 🌙 OVERNIGHT EDGE: HOLD TONIGHT — IBS " + str.tostring(oeIbs, "0.00") + " | buy near close, sell next open | verified 77% win OOS, PF 3.6", alert.freq_once_per_bar_close)
+if oeSell
+    alert("REVANCHE v2.9 🌙 OVERNIGHT EDGE: EXIT at open", alert.freq_once_per_bar_close)

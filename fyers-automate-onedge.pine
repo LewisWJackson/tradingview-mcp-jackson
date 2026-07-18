@@ -1,0 +1,70 @@
+//@version=6
+// Fyers Automate — ON-EDGE overnight signal. Replaces the no-edge scalper
+// signal with the TESTED edge (NTPC PF 4.4, ASIANPAINT 2.6, SBIN 2.4, LT 2.1).
+// Logic matches fyers-paper-overnight.js and "ON-EDGE — Regime + IBS Status":
+//   BUY  near close (default 15:20 IST) when daily IBS >= 0.7 AND close > SMA200(D)
+//   SELL on the first bar of the next session (~9:15 IST open)
+// Use an INTRADAY chart (1–15 min) so the 15:20 entry bar exists. IBS is
+// provisional until the close — 15:20 is near-final by design, same as the
+// paper logger's 15:25 scan.
+indicator("Fyers Automate — ON-EDGE Overnight", overlay = true)
+
+// ── Inputs ──────────────────────────────────────────────────────────
+ibsThresh = input.float(0.7, "IBS threshold (need >=)")
+entryH    = input.int(15, "Entry check hour (IST)",   minval = 0, maxval = 23)
+entryM    = input.int(20, "Entry check minute (IST)", minval = 0, maxval = 59)
+qty       = input.int(1,  "Order quantity")
+secret    = input.string("changeme", "Webhook secret / passphrase")
+
+// Symbol: auto-derive from the chart (TradingView "NSE:NTPC" → Fyers
+// "NSE:NTPC-EQ"). For indices/F&O turn auto OFF and type the exact symbol.
+autoSym   = input.bool(true, "Use chart symbol automatically")
+fyrSuffix = input.string("-EQ", "Fyers suffix for equities")
+manualSym = input.string("NSE:NTPC-EQ", "Manual Fyers symbol (if auto OFF)")
+sym = autoSym ? syminfo.tickerid + fyrSuffix : manualSym
+
+// ── Daily gates (any intraday timeframe; current day updates intrabar) ──
+dH      = request.security(syminfo.tickerid, "D", high)
+dL      = request.security(syminfo.tickerid, "D", low)
+dC      = request.security(syminfo.tickerid, "D", close)
+sma200D = request.security(syminfo.tickerid, "D", ta.sma(close, 200))
+
+ibs     = (dC - dL) / (dH - dL == 0 ? 1 : dH - dL)
+qualify = ibs >= ibsThresh and dC > sma200D
+
+// ── Timing (IST wall clock, independent of chart/exchange timezone) ─
+// Use bar CLOSE time: alerts fire on bar close, and on a 15-min chart the
+// last bar OPENS at 15:15 — an open-time check against 15:20 never passes.
+nowMin   = hour(time_close, "Asia/Kolkata") * 60 + minute(time_close, "Asia/Kolkata")
+inWindow = nowMin >= entryH * 60 + entryM      // entry check → session end
+newDay   = ta.change(time("D")) != 0           // first intraday bar of a new day
+
+// One position at a time: BUY arms it, the next day's first bar disarms it.
+var bool inPos = false
+buyTrigger  = qualify and inWindow and not inPos
+sellTrigger = inPos and newDay
+if buyTrigger
+    inPos := true
+if sellTrigger
+    inPos := false
+
+// ── Visuals ─────────────────────────────────────────────────────────
+plot(sma200D, "SMA200 (D)", color.orange, linewidth = 2)
+plotshape(buyTrigger,  "BUY",  shape.triangleup,   location.belowbar, color.green, size = size.small)
+plotshape(sellTrigger, "SELL", shape.triangledown, location.abovebar, color.red,   size = size.small)
+
+// ── Webhook JSON for FYERS Automate ─────────────────────────────────
+// NOTE: confirm key names against your Automate webhook trigger config.
+// offlineOrder MUST be false under the new SEBI rules. CNC because the
+// position is held overnight (INTRADAY would be auto-squared at 15:15).
+buyMsg  = '{"secret":"' + secret + '","action":"BUY","symbol":"'  + sym + '","qty":' + str.tostring(qty) + ',"productType":"CNC","orderType":"MARKET","offlineOrder":false}'
+sellMsg = '{"secret":"' + secret + '","action":"SELL","symbol":"' + sym + '","qty":' + str.tostring(qty) + ',"productType":"CNC","orderType":"MARKET","offlineOrder":false}'
+
+if buyTrigger
+    alert(buyMsg,  alert.freq_once_per_bar_close)
+if sellTrigger
+    alert(sellMsg, alert.freq_once_per_bar_close)
+
+// Named conditions (show up in the TradingView alert dropdown)
+alertcondition(buyTrigger,  "ON-EDGE BUY (near close)", "ON-EDGE overnight BUY")
+alertcondition(sellTrigger, "ON-EDGE SELL (next open)", "ON-EDGE overnight SELL")

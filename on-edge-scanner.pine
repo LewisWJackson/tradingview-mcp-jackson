@@ -1,0 +1,152 @@
+//@version=6
+// ON-EDGE v3 SCANNER [NSE 20] - multi-stock overnight-edge screener.
+// Rule per stock (same as ON-EDGE v3 - Tight Overnight Edge):
+//   daily IBS >= threshold AND green day AND close > SMA200(D)
+//   -> "HOLD TONIGHT" candidate: buy near close, sell next open.
+// Research: NIFTY 6y 274tr 74% win PF 3.03 | OOS 77%/3.64 (backtest-meanrev*.js).
+// NOTE: default threshold 0.8 = v3 tight. The paper logger trades the looser
+// v2 rule (IBS>=0.7, no green gate) - set threshold 0.7 + green off to match it.
+// IBS on the CURRENT day is provisional until the 15:30 close - values move
+// fast in the last minutes (seen 0.13 -> 0.80 in 3 min on DIVISLAB 15-Jul).
+// Works on any chart/timeframe; scans its own symbol list, not the chart.
+indicator("ON-EDGE v3 Scanner [NSE 20]", shorttitle="ONE-SCAN", overlay = true)
+
+ibsThresh = input.float(0.8, "IBS threshold (0.8 = v3 tight, 0.7 = paper-log rule)", step = 0.05)
+needGreen = input.bool(true, "Require green day (v3; off = paper-log rule)")
+alertH    = input.int(15, "Alert window hour (IST)",   minval = 0, maxval = 23)
+alertM    = input.int(20, "Alert window minute (IST)", minval = 0, maxval = 59)
+tblPos    = input.string("top_right", "Table position", options = ["top_left","top_right","middle_left","middle_right","bottom_left","bottom_right"])
+compact   = input.bool(false, "Compact table (qualifiers only)")
+
+s01 = input.symbol("NSE:SBIN",       "Stock 1",  group = "Symbols")
+s02 = input.symbol("NSE:AXISBANK",   "Stock 2",  group = "Symbols")
+s03 = input.symbol("NSE:INDUSINDBK", "Stock 3",  group = "Symbols")
+s04 = input.symbol("NSE:BAJFINANCE", "Stock 4",  group = "Symbols")
+s05 = input.symbol("NSE:ASIANPAINT", "Stock 5",  group = "Symbols")
+s06 = input.symbol("NSE:LT",         "Stock 6",  group = "Symbols")
+s07 = input.symbol("NSE:NTPC",       "Stock 7",  group = "Symbols")
+s08 = input.symbol("NSE:SUNPHARMA",  "Stock 8",  group = "Symbols")
+s09 = input.symbol("NSE:DIVISLAB",   "Stock 9",  group = "Symbols")
+s10 = input.symbol("NSE:ADANIENT",   "Stock 10", group = "Symbols")
+s11 = input.symbol("NSE:GRASIM",     "Stock 11", group = "Symbols")
+s12 = input.symbol("NSE:DIXON",      "Stock 12", group = "Symbols")
+s13 = input.symbol("NSE:RELIANCE",   "Stock 13", group = "Symbols")
+s14 = input.symbol("NSE:ICICIBANK",  "Stock 14", group = "Symbols")
+s15 = input.symbol("NSE:HDFCBANK",   "Stock 15", group = "Symbols")
+s16 = input.symbol("NSE:TATAMOTORS", "Stock 16", group = "Symbols")
+s17 = input.symbol("NSE:MARUTI",     "Stock 17", group = "Symbols")
+s18 = input.symbol("NSE:BHARTIARTL", "Stock 18", group = "Symbols")
+s19 = input.symbol("NSE:KOTAKBANK",  "Stock 19", group = "Symbols")
+s20 = input.symbol("NSE:TITAN",      "Stock 20", group = "Symbols")
+
+// one security call per stock: daily O,H,L,C + SMA200
+f_scan(simple string sym) =>
+    [o, h, l, c, s] = request.security(sym, "D", [open, high, low, close, ta.sma(close, 200)])
+    ibs = (c - l) / (h - l == 0 ? 1 : h - l)
+    qual = ibs >= ibsThresh and (not needGreen or c > o) and c > s
+    [ibs, c > o, c > s, qual, c]
+
+[i01, g01, t01, q01, c01] = f_scan(s01)
+[i02, g02, t02, q02, c02] = f_scan(s02)
+[i03, g03, t03, q03, c03] = f_scan(s03)
+[i04, g04, t04, q04, c04] = f_scan(s04)
+[i05, g05, t05, q05, c05] = f_scan(s05)
+[i06, g06, t06, q06, c06] = f_scan(s06)
+[i07, g07, t07, q07, c07] = f_scan(s07)
+[i08, g08, t08, q08, c08] = f_scan(s08)
+[i09, g09, t09, q09, c09] = f_scan(s09)
+[i10, g10, t10, q10, c10] = f_scan(s10)
+[i11, g11, t11, q11, c11] = f_scan(s11)
+[i12, g12, t12, q12, c12] = f_scan(s12)
+[i13, g13, t13, q13, c13] = f_scan(s13)
+[i14, g14, t14, q14, c14] = f_scan(s14)
+[i15, g15, t15, q15, c15] = f_scan(s15)
+[i16, g16, t16, q16, c16] = f_scan(s16)
+[i17, g17, t17, q17, c17] = f_scan(s17)
+[i18, g18, t18, q18, c18] = f_scan(s18)
+[i19, g19, t19, q19, c19] = f_scan(s19)
+[i20, g20, t20, q20, c20] = f_scan(s20)
+
+f_name(simple string sym) =>
+    a = str.split(sym, ":")
+    array.size(a) > 1 ? array.get(a, 1) : sym
+
+// window state (bar CLOSE time - the time_close lesson)
+nowMin   = hour(time_close, "Asia/Kolkata") * 60 + minute(time_close, "Asia/Kolkata")
+inWindow = nowMin >= alertH * 60 + alertM
+
+var table t = table.new(tblPos == "top_left" ? position.top_left : tblPos == "top_right" ? position.top_right : tblPos == "middle_left" ? position.middle_left : tblPos == "middle_right" ? position.middle_right : tblPos == "bottom_left" ? position.bottom_left : position.bottom_right, 5, 22, border_color = color.gray, border_width = 1)
+
+f_row(int row, simple string sym, float ibs, bool grn, bool trd, bool qual, float px) =>
+    if not compact or qual
+        okBg = qual ? color.new(color.green, 55) : color.new(color.black, 55)
+        table.cell(t, 0, row, f_name(sym),                text_color = color.white, bgcolor = okBg, text_size = size.small, text_halign = text.align_left)
+        table.cell(t, 1, row, str.tostring(ibs, "0.00"),  text_color = ibs >= ibsThresh ? color.lime : color.gray, bgcolor = okBg, text_size = size.small)
+        table.cell(t, 2, row, grn ? "grn" : "red",        text_color = grn ? color.lime : #EF5350, bgcolor = okBg, text_size = size.small)
+        table.cell(t, 3, row, trd ? ">200" : "<200",      text_color = trd ? color.lime : #EF5350, bgcolor = okBg, text_size = size.small)
+        table.cell(t, 4, row, qual ? "HOLD" : "-",        text_color = qual ? color.yellow : color.gray, bgcolor = okBg, text_size = size.small)
+
+nQual = (q01?1:0)+(q02?1:0)+(q03?1:0)+(q04?1:0)+(q05?1:0)+(q06?1:0)+(q07?1:0)+(q08?1:0)+(q09?1:0)+(q10?1:0)+(q11?1:0)+(q12?1:0)+(q13?1:0)+(q14?1:0)+(q15?1:0)+(q16?1:0)+(q17?1:0)+(q18?1:0)+(q19?1:0)+(q20?1:0)
+
+if barstate.islast or barstate.isrealtime
+    hdr = color.new(color.navy, 20)
+    table.cell(t, 0, 0, "ON-EDGE SCAN",  text_color = color.white, bgcolor = hdr, text_size = size.small, text_halign = text.align_left)
+    table.cell(t, 1, 0, "IBS",           text_color = color.silver, bgcolor = hdr, text_size = size.small)
+    table.cell(t, 2, 0, "day",           text_color = color.silver, bgcolor = hdr, text_size = size.small)
+    table.cell(t, 3, 0, "trend",         text_color = color.silver, bgcolor = hdr, text_size = size.small)
+    table.cell(t, 4, 0, str.tostring(nQual) + (inWindow ? " LIVE" : " prov."), text_color = nQual > 0 ? color.yellow : color.silver, bgcolor = hdr, text_size = size.small)
+    f_row(1,  s01, i01, g01, t01, q01, c01)
+    f_row(2,  s02, i02, g02, t02, q02, c02)
+    f_row(3,  s03, i03, g03, t03, q03, c03)
+    f_row(4,  s04, i04, g04, t04, q04, c04)
+    f_row(5,  s05, i05, g05, t05, q05, c05)
+    f_row(6,  s06, i06, g06, t06, q06, c06)
+    f_row(7,  s07, i07, g07, t07, q07, c07)
+    f_row(8,  s08, i08, g08, t08, q08, c08)
+    f_row(9,  s09, i09, g09, t09, q09, c09)
+    f_row(10, s10, i10, g10, t10, q10, c10)
+    f_row(11, s11, i11, g11, t11, q11, c11)
+    f_row(12, s12, i12, g12, t12, q12, c12)
+    f_row(13, s13, i13, g13, t13, q13, c13)
+    f_row(14, s14, i14, g14, t14, q14, c14)
+    f_row(15, s15, i15, g15, t15, q15, c15)
+    f_row(16, s16, i16, g16, t16, q16, c16)
+    f_row(17, s17, i17, g17, t17, q17, c17)
+    f_row(18, s18, i18, g18, t18, q18, c18)
+    f_row(19, s19, i19, g19, t19, q19, c19)
+    f_row(20, s20, i20, g20, t20, q20, c20)
+
+// one aggregated alert per day, fired on the first confirmed bar closing at/after the window
+f_add(string acc, simple string sym, float ibs, bool qual) =>
+    qual ? acc + (str.length(acc) > 0 ? ", " : "") + f_name(sym) + " (IBS " + str.tostring(ibs, "0.00") + ")" : acc
+
+qualList = ""
+qualList := f_add(qualList, s01, i01, q01)
+qualList := f_add(qualList, s02, i02, q02)
+qualList := f_add(qualList, s03, i03, q03)
+qualList := f_add(qualList, s04, i04, q04)
+qualList := f_add(qualList, s05, i05, q05)
+qualList := f_add(qualList, s06, i06, q06)
+qualList := f_add(qualList, s07, i07, q07)
+qualList := f_add(qualList, s08, i08, q08)
+qualList := f_add(qualList, s09, i09, q09)
+qualList := f_add(qualList, s10, i10, q10)
+qualList := f_add(qualList, s11, i11, q11)
+qualList := f_add(qualList, s12, i12, q12)
+qualList := f_add(qualList, s13, i13, q13)
+qualList := f_add(qualList, s14, i14, q14)
+qualList := f_add(qualList, s15, i15, q15)
+qualList := f_add(qualList, s16, i16, q16)
+qualList := f_add(qualList, s17, i17, q17)
+qualList := f_add(qualList, s18, i18, q18)
+qualList := f_add(qualList, s19, i19, q19)
+qualList := f_add(qualList, s20, i20, q20)
+
+var string lastAlertDay = ""
+dayStr = str.tostring(year(time, "Asia/Kolkata")) + "-" + str.tostring(month(time, "Asia/Kolkata")) + "-" + str.tostring(dayofmonth(time, "Asia/Kolkata"))
+fireAlert = inWindow and barstate.isconfirmed and dayStr != lastAlertDay and nQual > 0
+if fireAlert
+    lastAlertDay := dayStr
+    alert("ON-EDGE SCAN " + str.tostring(nQual) + " qualifier(s) for tonight: " + qualList + " - buy near close, sell next open (v3 rule)", alert.freq_once_per_bar_close)
+
+alertcondition(nQual > 0, "ON-EDGE Scanner - any qualifier", "ON-EDGE Scanner: at least one stock qualifies for tonight")
