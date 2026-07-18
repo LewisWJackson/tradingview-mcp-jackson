@@ -61,17 +61,29 @@ function calcEMA(closes, period) {
   return ema;
 }
 
+// Wilder's smoothed RSI — matches TradingView's ta.rsi() (and thus the
+// Pine "Fyers Automate" indicator) bar-for-bar. The previous version summed
+// only the last `period` diffs (Cutler's RSI), which disagrees with Wilder's
+// RSI especially at short lengths — the two could cross the 70/30 gates on
+// different bars, so the live bot and the chart signal wouldn't match.
 function calcRSI(closes, period = 3) {
   if (closes.length < period + 1) return 50;
-  let gains = 0,
-    losses = 0;
-  for (let i = closes.length - period; i < closes.length; i++) {
+  let avgGain = 0,
+    avgLoss = 0;
+  for (let i = 1; i <= period; i++) {
     const diff = closes[i] - closes[i - 1];
-    if (diff > 0) gains += diff;
-    else losses -= diff;
+    avgGain += Math.max(diff, 0);
+    avgLoss += Math.max(-diff, 0);
   }
-  if (losses === 0) return 100;
-  const rs = gains / losses;
+  avgGain /= period;
+  avgLoss /= period;
+  for (let i = period + 1; i < closes.length; i++) {
+    const diff = closes[i] - closes[i - 1];
+    avgGain = (avgGain * (period - 1) + Math.max(diff, 0)) / period;
+    avgLoss = (avgLoss * (period - 1) + Math.max(-diff, 0)) / period;
+  }
+  if (avgLoss === 0) return 100;
+  const rs = avgGain / avgLoss;
   return 100 - 100 / (1 + rs);
 }
 

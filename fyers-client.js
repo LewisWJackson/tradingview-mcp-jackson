@@ -111,6 +111,15 @@ export const getOrders = () => request("GET", "/orders");
 export const getQuotes = (symbols) =>
   request("GET", `/quotes?symbols=${encodeURIComponent(symbols)}`, null, DATA_BASE);
 
+// Option chain with OI per strike. symbol e.g. "NSE:NIFTY50-INDEX".
+export const getOptionChain = (symbol, strikecount = 25) =>
+  request(
+    "GET",
+    `/options-chain-v3?symbol=${encodeURIComponent(symbol)}&strikecount=${strikecount}`,
+    null,
+    DATA_BASE,
+  );
+
 // Intraday OHLCV candles. resolution "1" = 1-min. Returns [{ts,open,high,low,close,vol}].
 export async function getHistory(symbol, resolution = "1", days = 1) {
   const to = new Date();
