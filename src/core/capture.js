@@ -83,17 +83,54 @@ export async function captureScreenshot({ region, filename, method } = {}) {
       };
   }
 
+  // Validate/clamp the clip: a zero-size, fractional, or out-of-viewport clip
+  // can make CDP Page.captureScreenshot stall indefinitely (observed
+  // 2026-07-18: region "chart" hung for 30 minutes after the window was
+  // resized). Degenerate clips fall back to a full capture instead.
+  if (clip) {
+    const viewport = await evaluate(
+      `({ w: window.innerWidth, h: window.innerHeight })`
+    );
+    clip.x = Math.max(0, Math.round(clip.x));
+    clip.y = Math.max(0, Math.round(clip.y));
+    clip.width = Math.round(Math.min(clip.width, (viewport?.w || 0) - clip.x));
+    clip.height = Math.round(Math.min(clip.height, (viewport?.h || 0) - clip.y));
+    if (!(clip.width >= 1 && clip.height >= 1)) clip = undefined;
+  }
+
+  const captureWithTimeout = (params, ms) =>
+    Promise.race([
+      client.Page.captureScreenshot(params),
+      new Promise((_, reject) =>
+        setTimeout(
+          () => reject(new Error(`Page.captureScreenshot timed out after ${ms / 1000}s`)),
+          ms
+        )
+      ),
+    ]);
+
   const params = { format: "png" };
   if (clip) params.clip = clip;
 
-  const { data } = await client.Page.captureScreenshot(params);
+  let data;
+  let clipped_fallback = false;
+  try {
+    ({ data } = await captureWithTimeout(params, 15000));
+  } catch (err) {
+    if (!params.clip) throw err;
+    // Clipped capture failed/hung — retry once unclipped rather than dying.
+    ({ data } = await captureWithTimeout({ format: "png" }, 15000));
+    clipped_fallback = true;
+  }
   writeFileSync(filePath, Buffer.from(data, "base64"));
 
   return {
     success: true,
     method: "cdp",
     file_path: filePath,
-    region,
+    region: clipped_fallback ? "full" : region,
+    requested_region: region,
+    clipped_fallback,
     size_bytes: Buffer.from(data, "base64").length,
   };
 }
