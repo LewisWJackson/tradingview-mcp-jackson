@@ -207,6 +207,31 @@ export async function launch({ port, kill_existing } = {}) {
     } catch { /* ignore */ }
   }
 
+  if (!tvPath && platform === 'win32') {
+    // Microsoft Store (MSIX) installs are ACL-locked to the App Model — they cannot be
+    // launched with custom argv (e.g. --remote-debugging-port) from an unpackaged process.
+    // ShellExecute, scheduled tasks, and Invoke-CommandInDesktopPackage were all tried and
+    // either hang or fail with "operation was canceled by the user" (MSIX activation requires
+    // interactive consent that no automated caller can satisfy). Copying the package out of
+    // WindowsApps and launching the copy directly was also tried — the exe crashes immediately
+    // because it depends on running under its package identity. As of 2026 TradingView no
+    // longer ships a standalone Windows installer at all (tradingview.com/desktop serves only
+    // the .msix), so there is no way to get CDP into the Desktop app on Windows.
+    //
+    // Fall back to driving the TradingView *web app* in a real browser instead — it's the same
+    // Electron/Chromium shell and exposes the identical window.TradingViewApi, and a normal
+    // browser accepts --remote-debugging-port just fine.
+    try {
+      const psOut = execSync(
+        'powershell -NoProfile -NonInteractive -Command "(Get-AppxPackage -Name \'*TradingView*\' | Select-Object -First 1).PackageFullName"',
+        { timeout: 8000 }
+      ).toString().trim();
+      if (psOut) {
+        return launchBrowserFallback({ cdpPort, killFirst, platform, packageId: psOut });
+      }
+    } catch { /* Get-AppxPackage lookup failed — fall through to not-found error below */ }
+  }
+
   if (!tvPath) {
     throw new Error(`TradingView not found on ${platform}. Searched: ${candidates.join(', ')}. Launch manually with: /path/to/TradingView --remote-debugging-port=${cdpPort}`);
   }
@@ -221,31 +246,100 @@ export async function launch({ port, kill_existing } = {}) {
 
   const child = spawn(tvPath, [`--remote-debugging-port=${cdpPort}`], { detached: true, stdio: 'ignore' });
   child.unref();
+  const childPid = child.pid;
 
-  for (let i = 0; i < 15; i++) {
+  const ready = await waitForCdp(cdpPort);
+  if (ready) {
+    return {
+      success: true, platform, binary: tvPath, pid: childPid,
+      cdp_port: cdpPort, cdp_url: `http://localhost:${cdpPort}`,
+      browser: ready.Browser, user_agent: ready['User-Agent'],
+    };
+  }
+
+  return {
+    success: true, platform, binary: tvPath, pid: childPid, cdp_port: cdpPort, cdp_ready: false,
+    warning: 'TradingView launched but CDP not responding yet. It may still be loading. Try tv_health_check in a few seconds.',
+  };
+}
+
+async function waitForCdp(cdpPort, attempts = 15) {
+  for (let i = 0; i < attempts; i++) {
     await new Promise(r => setTimeout(r, 1000));
     try {
       const http = await import('http');
-      const ready = await new Promise((resolve) => {
+      const body = await new Promise((resolve) => {
         http.get(`http://localhost:${cdpPort}/json/version`, (res) => {
           let data = '';
           res.on('data', (chunk) => data += chunk);
           res.on('end', () => resolve(data));
         }).on('error', () => resolve(null));
       });
-      if (ready) {
-        const info = JSON.parse(ready);
-        return {
-          success: true, platform, binary: tvPath, pid: child.pid,
-          cdp_port: cdpPort, cdp_url: `http://localhost:${cdpPort}`,
-          browser: info.Browser, user_agent: info['User-Agent'],
-        };
-      }
+      if (body) return JSON.parse(body);
     } catch { /* retry */ }
   }
+  return null;
+}
 
+async function launchBrowserFallback({ cdpPort, killFirst, platform, packageId }) {
+  const browserCandidates = [
+    `${process.env.PROGRAMFILES}\\Google\\Chrome\\Application\\chrome.exe`,
+    `${process.env['PROGRAMFILES(X86)']}\\Google\\Chrome\\Application\\chrome.exe`,
+    `${process.env.LOCALAPPDATA}\\Google\\Chrome\\Application\\chrome.exe`,
+    `${process.env.PROGRAMFILES}\\Microsoft\\Edge\\Application\\msedge.exe`,
+    `${process.env['PROGRAMFILES(X86)']}\\Microsoft\\Edge\\Application\\msedge.exe`,
+  ];
+  const browserPath = browserCandidates.find(p => p && existsSync(p));
+
+  if (!browserPath) {
+    throw new Error(
+      `TradingView is installed from the Microsoft Store (${packageId}), which cannot be launched with ` +
+      `--remote-debugging-port programmatically — Windows requires interactive consent to activate packaged ` +
+      `apps, and TradingView no longer ships a standalone Windows installer. No Chrome or Edge install was ` +
+      `found either to fall back to the web app. Install Chrome or Edge, or launch a browser manually with ` +
+      `--remote-debugging-port=${cdpPort} pointed at https://www.tradingview.com/chart/.`
+    );
+  }
+
+  const profileDir = `${process.env.LOCALAPPDATA}\\tradingview-mcp\\browser-profile`;
+
+  if (killFirst) {
+    try {
+      execSync(
+        `powershell -NoProfile -NonInteractive -Command "Get-CimInstance Win32_Process | ` +
+        `Where-Object { $_.CommandLine -like '*${profileDir.replace(/\\/g, '\\\\')}*' } | ` +
+        `ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"`,
+        { timeout: 8000 }
+      );
+      await new Promise(r => setTimeout(r, 1000));
+    } catch { /* none running */ }
+  }
+
+  const child = spawn(browserPath, [
+    `--remote-debugging-port=${cdpPort}`,
+    `--user-data-dir=${profileDir}`,
+    '--no-first-run',
+    '--no-default-browser-check',
+    'https://www.tradingview.com/chart/',
+  ], { detached: true, stdio: 'ignore' });
+  child.unref();
+  const childPid = child.pid;
+
+  const ready = await waitForCdp(cdpPort);
+  const base = {
+    success: true, platform, method: 'browser_fallback', binary: browserPath, pid: childPid,
+    cdp_port: cdpPort, cdp_url: `http://localhost:${cdpPort}`,
+    note: `TradingView Desktop (${packageId}) is Microsoft Store-only and can't accept --remote-debugging-port, ` +
+      `so this launched the TradingView web app in a browser instead — it exposes the same window.TradingViewApi. ` +
+      `If this is the first launch, log into TradingView in that browser window to get your real charts, ` +
+      `watchlists, and layouts; the profile at ${profileDir} persists your session for next time.`,
+  };
+
+  if (ready) {
+    return { ...base, browser: ready.Browser, user_agent: ready['User-Agent'] };
+  }
   return {
-    success: true, platform, binary: tvPath, pid: child.pid, cdp_port: cdpPort, cdp_ready: false,
-    warning: 'TradingView launched but CDP not responding yet. It may still be loading. Try tv_health_check in a few seconds.',
+    ...base, cdp_ready: false,
+    warning: 'Browser launched but CDP not responding yet. It may still be loading. Try tv_health_check in a few seconds.',
   };
 }
