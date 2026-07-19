@@ -29,5 +29,9 @@ register('pane', {
         return core.setSymbol({ index: positionals[0], symbol: positionals[1] });
       },
     }],
+    ['quotes', {
+      description: 'Read every pane\'s last bar in one concurrent snapshot (no bid/ask)',
+      handler: () => core.getAllQuotes(),
+    }],
   ]),
 });

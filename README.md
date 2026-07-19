@@ -286,6 +286,31 @@ Full command list: `tv --help`
 
 ---
 
+## Standalone Scripts
+
+`scripts/` also holds one-off Node scripts that drive the CLI's `core` module
+directly (bypassing the MCP server) for tasks too specific to be general MCP
+tools:
+
+| Script | What it does |
+|--------|--------------|
+| `fetch_option_chain.mjs` | Scrapes TradingView's Options Chain page (±10 strikes, nearest expiration) for a set of tickers, filters to `ask <= $0.45`, and writes the results into an external project's contract registry. Built for the FATTAH detector (`~/fattah/detector/tracked_contracts.json`) — see `skills/option-chain-navigate/SKILL.md` for the manual navigation path this automates, and its own file header for the DOM structure (`data-strike`, `data-cell-id`) it relies on. Run: `node scripts/fetch_option_chain.mjs [TICKER ...]` (defaults to all six FATTAH tickers). |
+| `pine_pull.js` / `pine_push.js` | Pull/push Pine Script source to/from the editor without going through the MCP tool layer. |
+
+---
+
+## Skills
+
+`skills/` holds Claude Code skill files documenting confirmed, repeatable UI
+automation paths against TradingView Desktop — coordinates, known failure
+modes, and fixes, verified live rather than guessed:
+
+| Skill | Covers |
+|-------|--------|
+| `option-chain-navigate/SKILL.md` | Opening a ticker's option chain, setting the strike range, selecting a contract, and reaching its own candlestick chart + native screenshot. Also documents the confirmed `OPRA:`/`OPRA_DLY:` symbol formats and TradingView's duplicate-hidden-DOM-panel and ad-banner gotchas. |
+
+---
+
 ## Troubleshooting
 
 | Problem | Solution |
