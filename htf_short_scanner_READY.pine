@@ -1,0 +1,443 @@
+//@version=6
+indicator("TraderXO — HTF Short Scanner", overlay=false, max_boxes_count=0, max_lines_count=0, max_labels_count=0)
+
+// ─── PARAMETERS ────────────────────────────────────────────────────────────
+drop_lookback = input.int(25,    "Prior Drop Lookback (bars)",   group="Setup Criteria", minval=10, maxval=60)
+drop_min_pct  = input.float(25.0,"Min Prior Drop %",             group="Setup Criteria", minval=10, maxval=80, step=1.0)
+flag_bars     = input.int(12,    "Dead Cat Bounce Bars",         group="Setup Criteria", minval=5,  maxval=30)
+flag_max_pct  = input.float(18.0,"Max Bounce Range %",           group="Setup Criteria", minval=5,  maxval=40, step=0.5)
+vol_dry_mult  = input.float(0.9, "Vol Dry-Up Multiplier",        group="Setup Criteria", minval=0.3,maxval=1.5, step=0.1)
+near_bd_pct   = input.float(5.0, "Near Breakdown Threshold %",   group="Setup Criteria", minval=1,  maxval=15, step=0.5)
+
+// ─── SYMBOLS ───────────────────────────────────────────────────────────────
+sym01 = input.symbol("BINANCE:ETHUSDT",   "Asset 01", group="Assets")
+sym02 = input.symbol("BINANCE:SOLUSDT",   "Asset 02", group="Assets")
+sym03 = input.symbol("BINANCE:BNBUSDT",   "Asset 03", group="Assets")
+sym04 = input.symbol("BINANCE:AVAXUSDT",  "Asset 04", group="Assets")
+sym05 = input.symbol("BINANCE:LINKUSDT",  "Asset 05", group="Assets")
+sym06 = input.symbol("BINANCE:DOTUSDT",   "Asset 06", group="Assets")
+sym07 = input.symbol("BINANCE:ADAUSDT",   "Asset 07", group="Assets")
+sym08 = input.symbol("BINANCE:ATOMUSDT",  "Asset 08", group="Assets")
+sym09 = input.symbol("BINANCE:NEARUSDT",  "Asset 09", group="Assets")
+sym10 = input.symbol("BINANCE:APTUSDT",   "Asset 10", group="Assets")
+sym11 = input.symbol("BINANCE:ARBUSDT",   "Asset 11", group="Assets")
+sym12 = input.symbol("BINANCE:OPUSDT",    "Asset 12", group="Assets")
+sym13 = input.symbol("BINANCE:SUIUSDT",   "Asset 13", group="Assets")
+sym14 = input.symbol("BINANCE:INJUSDT",   "Asset 14", group="Assets")
+sym15 = input.symbol("BINANCE:LDOUSDT",   "Asset 15", group="Assets")
+sym16 = input.symbol("BINANCE:AAVEUSDT",  "Asset 16", group="Assets")
+sym17 = input.symbol("BINANCE:UNIUSDT",   "Asset 17", group="Assets")
+sym18 = input.symbol("BINANCE:SANDUSDT",  "Asset 18", group="Assets")
+sym19 = input.symbol("BINANCE:GALAUSDT",  "Asset 19", group="Assets")
+sym20 = input.symbol("BINANCE:POLUSDT",   "Asset 20", group="Assets")
+
+// ─── MARKET REGIME ENGINE (BTC Weekly) ────────────────────────────────────
+f_btc_regime() =>
+    ema50_w   = ta.ema(close, 50)
+    ema200_w  = ta.ema(close, 200)
+    [_, _, h] = ta.macd(close, 12, 26, 9)
+    rsi14_w   = ta.rsi(close, 14)
+    hi52      = ta.highest(close, 52)
+    dd_from_ath = hi52 > 0 ? (hi52 - close) / hi52 * 100 : 0.0
+    // Bear score: each condition adds points
+    s1 = close < ema50_w  ? 2 : 0   // below weekly EMA50
+    s2 = close < ema200_w ? 3 : 0   // below weekly EMA200 (heavy weight)
+    s3 = h < 0            ? 1 : 0   // weekly MACD histogram negative
+    s4 = rsi14_w < 50     ? 1 : 0   // weekly RSI below midline
+    s5 = dd_from_ath > 30 ? 2 : dd_from_ath > 20 ? 1 : 0  // drawdown from ATH
+    s6 = ema50_w < ema200_w ? 1 : 0  // weekly death cross
+    bear_score = s1 + s2 + s3 + s4 + s5 + s6
+    [close, ema50_w, ema200_w, h, rsi14_w, dd_from_ath, bear_score]
+
+[btc_w_close, btc_ema50_w, btc_ema200_w, btc_hist_w, btc_rsi_w, btc_dd, bear_score] =
+     request.security("BINANCE:BTCUSDT", "W", f_btc_regime())
+
+regime_bear   = bear_score >= 6
+regime_trans  = bear_score >= 3 and bear_score < 6
+regime_bull   = bear_score < 3
+
+// ─── BEAR FLAG DETECTION FUNCTION ─────────────────────────────────────────
+f_bear_htf() =>
+    vol_ma20  = ta.sma(volume, 20)
+    ema200    = ta.ema(close, 200)
+    below_200 = close < ema200
+
+    // Prior sharp drop: how far did price fall from the recent high?
+    recent_high    = ta.highest(high, drop_lookback)[1]
+    prior_drop_pct = recent_high > 0 ? (recent_high - close[1]) / recent_high * 100 : 0.0
+    has_prior_drop = prior_drop_pct >= drop_min_pct
+
+    // Dead cat bounce: tight consolidation after the drop (all [1] to exclude current bar)
+    flag_high_raw = ta.highest(high, flag_bars)[1]
+    flag_low_raw  = ta.lowest(low,   flag_bars)[1]
+    flag_mid      = (flag_high_raw + flag_low_raw) / 2.0
+    fl_rng        = flag_mid > 0 ? (flag_high_raw - flag_low_raw) / flag_mid * 100 : 999.0
+    bounce_tight  = fl_rng <= flag_max_pct
+
+    // Volume dry-up during bounce (no conviction in the relief rally)
+    vol_flag_avg = ta.sma(volume, flag_bars)[1]
+    dryup        = vol_flag_avg < vol_ma20 * vol_dry_mult
+
+    // Distance to breakdown: how close is price to the flag LOW (support)?
+    to_bd         = flag_low_raw > 0 ? (close - flag_low_raw) / close * 100 : 999.0
+    near_breakdown = to_bd >= 0.0 and to_bd <= near_bd_pct
+
+    // Status tiers
+    ready    = below_200 and has_prior_drop and bounce_tight and dryup and near_breakdown
+    forming  = below_200 and has_prior_drop and bounce_tight and dryup and not near_breakdown
+    watching = below_200 and has_prior_drop and not bounce_tight
+
+    [close, prior_drop_pct, fl_rng, dryup, to_bd, ready, forming, watching]
+
+// ─── FETCH DAILY DATA ──────────────────────────────────────────────────────
+[c01,dp01,fl01,dy01,tb01,rd01,fm01,wt01] = request.security(sym01,"D",f_bear_htf())
+[c02,dp02,fl02,dy02,tb02,rd02,fm02,wt02] = request.security(sym02,"D",f_bear_htf())
+[c03,dp03,fl03,dy03,tb03,rd03,fm03,wt03] = request.security(sym03,"D",f_bear_htf())
+[c04,dp04,fl04,dy04,tb04,rd04,fm04,wt04] = request.security(sym04,"D",f_bear_htf())
+[c05,dp05,fl05,dy05,tb05,rd05,fm05,wt05] = request.security(sym05,"D",f_bear_htf())
+[c06,dp06,fl06,dy06,tb06,rd06,fm06,wt06] = request.security(sym06,"D",f_bear_htf())
+[c07,dp07,fl07,dy07,tb07,rd07,fm07,wt07] = request.security(sym07,"D",f_bear_htf())
+[c08,dp08,fl08,dy08,tb08,rd08,fm08,wt08] = request.security(sym08,"D",f_bear_htf())
+[c09,dp09,fl09,dy09,tb09,rd09,fm09,wt09] = request.security(sym09,"D",f_bear_htf())
+[c10,dp10,fl10,dy10,tb10,rd10,fm10,wt10] = request.security(sym10,"D",f_bear_htf())
+[c11,dp11,fl11,dy11,tb11,rd11,fm11,wt11] = request.security(sym11,"D",f_bear_htf())
+[c12,dp12,fl12,dy12,tb12,rd12,fm12,wt12] = request.security(sym12,"D",f_bear_htf())
+[c13,dp13,fl13,dy13,tb13,rd13,fm13,wt13] = request.security(sym13,"D",f_bear_htf())
+[c14,dp14,fl14,dy14,tb14,rd14,fm14,wt14] = request.security(sym14,"D",f_bear_htf())
+[c15,dp15,fl15,dy15,tb15,rd15,fm15,wt15] = request.security(sym15,"D",f_bear_htf())
+[c16,dp16,fl16,dy16,tb16,rd16,fm16,wt16] = request.security(sym16,"D",f_bear_htf())
+[c17,dp17,fl17,dy17,tb17,rd17,fm17,wt17] = request.security(sym17,"D",f_bear_htf())
+[c18,dp18,fl18,dy18,tb18,rd18,fm18,wt18] = request.security(sym18,"D",f_bear_htf())
+[c19,dp19,fl19,dy19,tb19,rd19,fm19,wt19] = request.security(sym19,"D",f_bear_htf())
+[c20,dp20,fl20,dy20,tb20,rd20,fm20,wt20] = request.security(sym20,"D",f_bear_htf())
+
+// ─── HELPERS ───────────────────────────────────────────────────────────────
+f_ticker(sym) =>
+    parts = str.split(sym, ":")
+    array.size(parts) > 1 ? array.get(parts, 1) : sym
+
+f_price_fmt(p) =>
+    p >= 1000 ? str.tostring(p, "#,###.0") : p >= 1 ? str.tostring(p, "#.##") : str.tostring(p, "#.####")
+
+f_row_bg(rd, fm) =>
+    rd ? color.new(color.red, 72) : fm ? color.new(color.orange, 82) : color.new(color.black, 45)
+
+f_status_txt(rd, fm, wt) =>
+    rd ? "🔴 SHORT READY" : fm ? "🔻 FORMING" : wt ? "👀 WATCHING" : "—  no setup"
+
+f_status_bg(rd, fm, wt) =>
+    rd ? color.new(color.red, 5) : fm ? color.new(color.orange, 15) : wt ? color.new(color.yellow, 25) : color.new(color.gray, 65)
+
+f_status_tc(rd, fm, wt) =>
+    rd ? color.white : fm ? color.black : wt ? color.black : color.new(color.gray, 15)
+
+// ─── TABLE ─────────────────────────────────────────────────────────────────
+var table t = table.new(position.top_left, 7, 24,
+     bgcolor=color.new(color.black, 15),
+     border_width=1, border_color=color.new(color.gray, 55),
+     frame_width=2,  frame_color=color.new(color.gray, 35))
+
+if barstate.islast
+    // ── REGIME HEADER (rows 0-1) ──
+    regime_txt   = regime_bear ? "🐻 BEAR MARKET" : regime_trans ? "⚠️ TRANSITION" : "🐂 BULL MARKET"
+    regime_bg    = regime_bear ? color.new(color.red, 15) : regime_trans ? color.new(color.orange, 20) : color.new(color.green, 20)
+    regime_tc    = color.white
+    bias_txt     = regime_bear ? "BIAS: SHORT ▼" : regime_trans ? "BIAS: NEUTRAL" : "BIAS: LONG ▲"
+    bias_bg      = regime_bear ? color.new(color.red, 30) : regime_trans ? color.new(color.orange, 30) : color.new(color.green, 30)
+    score_txt    = "Score: " + str.tostring(bear_score) + "/10"
+    btc_vs_txt   = btc_w_close > btc_ema200_w ? "BTC > EMA200W ✓" : "BTC < EMA200W ✗"
+    dd_txt       = "DD: -" + str.tostring(btc_dd, "#.0") + "% ATH"
+    rsi_txt      = "RSI: " + str.tostring(btc_rsi_w, "#.0")
+
+    table.cell(t, 0, 0, "🌍 MARKET REGIME", text_color=regime_tc, bgcolor=regime_bg, text_size=size.small, text_halign=text.align_left)
+    table.cell(t, 1, 0, regime_txt,          text_color=regime_tc, bgcolor=regime_bg, text_size=size.small, text_halign=text.align_center)
+    table.cell(t, 2, 0, bias_txt,            text_color=regime_tc, bgcolor=bias_bg,   text_size=size.small, text_halign=text.align_center)
+    table.cell(t, 3, 0, score_txt,           text_color=regime_tc, bgcolor=regime_bg, text_size=size.small, text_halign=text.align_center)
+    table.cell(t, 4, 0, btc_vs_txt,          text_color=regime_tc, bgcolor=regime_bg, text_size=size.small, text_halign=text.align_center)
+    table.cell(t, 5, 0, dd_txt,              text_color=regime_tc, bgcolor=regime_bg, text_size=size.small, text_halign=text.align_center)
+    table.cell(t, 6, 0, rsi_txt,             text_color=regime_tc, bgcolor=regime_bg, text_size=size.small, text_halign=text.align_center)
+
+    // ── COLUMN HEADERS (row 1) ──
+    hbg = color.new(#3e0000, 0)
+    htc = color.white
+    table.cell(t, 0, 1, "ASSET",        text_color=htc, bgcolor=hbg, text_size=size.small, text_halign=text.align_center)
+    table.cell(t, 1, 1, "PRICE",        text_color=htc, bgcolor=hbg, text_size=size.small, text_halign=text.align_center)
+    table.cell(t, 2, 1, "PRIOR DROP",   text_color=htc, bgcolor=hbg, text_size=size.small, text_halign=text.align_center)
+    table.cell(t, 3, 1, "BOUNCE RANGE", text_color=htc, bgcolor=hbg, text_size=size.small, text_halign=text.align_center)
+    table.cell(t, 4, 1, "VOL DRY-UP",   text_color=htc, bgcolor=hbg, text_size=size.small, text_halign=text.align_center)
+    table.cell(t, 5, 1, "TO BREAK",     text_color=htc, bgcolor=hbg, text_size=size.small, text_halign=text.align_center)
+    table.cell(t, 6, 1, "STATUS",       text_color=htc, bgcolor=hbg, text_size=size.small, text_halign=text.align_center)
+
+    // ── DATA ROWS (2-21) ──
+    tc = color.new(color.white, 5)
+    bg = f_row_bg(rd01,fm01)
+    table.cell(t,0,2,f_ticker(sym01),text_color=tc,bgcolor=bg,text_size=size.small)
+    table.cell(t,1,2,f_price_fmt(c01),text_color=tc,bgcolor=bg,text_size=size.small)
+    table.cell(t,2,2,"-"+str.tostring(dp01,"#.0")+"%",text_color=dp01>=drop_min_pct?color.new(color.red,10):color.new(color.gray,25),bgcolor=bg,text_size=size.small)
+    table.cell(t,3,2,str.tostring(fl01,"#.0")+"%",text_color=fl01<=flag_max_pct?color.new(#00e676,0):color.new(color.orange,10),bgcolor=bg,text_size=size.small)
+    table.cell(t,4,2,dy01?"✓ DRY":"✗ WET",text_color=dy01?color.new(#00e676,0):color.new(color.orange,10),bgcolor=bg,text_size=size.small)
+    table.cell(t,5,2,tb01<999?str.tostring(tb01,"#.1")+"%":"far",text_color=tc,bgcolor=bg,text_size=size.small)
+    table.cell(t,6,2,f_status_txt(rd01,fm01,wt01),text_color=f_status_tc(rd01,fm01,wt01),bgcolor=f_status_bg(rd01,fm01,wt01),text_size=size.small)
+    bg:=f_row_bg(rd02,fm02)
+    table.cell(t,0,3,f_ticker(sym02),text_color=tc,bgcolor=bg,text_size=size.small)
+    table.cell(t,1,3,f_price_fmt(c02),text_color=tc,bgcolor=bg,text_size=size.small)
+    table.cell(t,2,3,"-"+str.tostring(dp02,"#.0")+"%",text_color=dp02>=drop_min_pct?color.new(color.red,10):color.new(color.gray,25),bgcolor=bg,text_size=size.small)
+    table.cell(t,3,3,str.tostring(fl02,"#.0")+"%",text_color=fl02<=flag_max_pct?color.new(#00e676,0):color.new(color.orange,10),bgcolor=bg,text_size=size.small)
+    table.cell(t,4,3,dy02?"✓ DRY":"✗ WET",text_color=dy02?color.new(#00e676,0):color.new(color.orange,10),bgcolor=bg,text_size=size.small)
+    table.cell(t,5,3,tb02<999?str.tostring(tb02,"#.1")+"%":"far",text_color=tc,bgcolor=bg,text_size=size.small)
+    table.cell(t,6,3,f_status_txt(rd02,fm02,wt02),text_color=f_status_tc(rd02,fm02,wt02),bgcolor=f_status_bg(rd02,fm02,wt02),text_size=size.small)
+    bg:=f_row_bg(rd03,fm03)
+    table.cell(t,0,4,f_ticker(sym03),text_color=tc,bgcolor=bg,text_size=size.small)
+    table.cell(t,1,4,f_price_fmt(c03),text_color=tc,bgcolor=bg,text_size=size.small)
+    table.cell(t,2,4,"-"+str.tostring(dp03,"#.0")+"%",text_color=dp03>=drop_min_pct?color.new(color.red,10):color.new(color.gray,25),bgcolor=bg,text_size=size.small)
+    table.cell(t,3,4,str.tostring(fl03,"#.0")+"%",text_color=fl03<=flag_max_pct?color.new(#00e676,0):color.new(color.orange,10),bgcolor=bg,text_size=size.small)
+    table.cell(t,4,4,dy03?"✓ DRY":"✗ WET",text_color=dy03?color.new(#00e676,0):color.new(color.orange,10),bgcolor=bg,text_size=size.small)
+    table.cell(t,5,4,tb03<999?str.tostring(tb03,"#.1")+"%":"far",text_color=tc,bgcolor=bg,text_size=size.small)
+    table.cell(t,6,4,f_status_txt(rd03,fm03,wt03),text_color=f_status_tc(rd03,fm03,wt03),bgcolor=f_status_bg(rd03,fm03,wt03),text_size=size.small)
+    bg:=f_row_bg(rd04,fm04)
+    table.cell(t,0,5,f_ticker(sym04),text_color=tc,bgcolor=bg,text_size=size.small)
+    table.cell(t,1,5,f_price_fmt(c04),text_color=tc,bgcolor=bg,text_size=size.small)
+    table.cell(t,2,5,"-"+str.tostring(dp04,"#.0")+"%",text_color=dp04>=drop_min_pct?color.new(color.red,10):color.new(color.gray,25),bgcolor=bg,text_size=size.small)
+    table.cell(t,3,5,str.tostring(fl04,"#.0")+"%",text_color=fl04<=flag_max_pct?color.new(#00e676,0):color.new(color.orange,10),bgcolor=bg,text_size=size.small)
+    table.cell(t,4,5,dy04?"✓ DRY":"✗ WET",text_color=dy04?color.new(#00e676,0):color.new(color.orange,10),bgcolor=bg,text_size=size.small)
+    table.cell(t,5,5,tb04<999?str.tostring(tb04,"#.1")+"%":"far",text_color=tc,bgcolor=bg,text_size=size.small)
+    table.cell(t,6,5,f_status_txt(rd04,fm04,wt04),text_color=f_status_tc(rd04,fm04,wt04),bgcolor=f_status_bg(rd04,fm04,wt04),text_size=size.small)
+    bg:=f_row_bg(rd05,fm05)
+    table.cell(t,0,6,f_ticker(sym05),text_color=tc,bgcolor=bg,text_size=size.small)
+    table.cell(t,1,6,f_price_fmt(c05),text_color=tc,bgcolor=bg,text_size=size.small)
+    table.cell(t,2,6,"-"+str.tostring(dp05,"#.0")+"%",text_color=dp05>=drop_min_pct?color.new(color.red,10):color.new(color.gray,25),bgcolor=bg,text_size=size.small)
+    table.cell(t,3,6,str.tostring(fl05,"#.0")+"%",text_color=fl05<=flag_max_pct?color.new(#00e676,0):color.new(color.orange,10),bgcolor=bg,text_size=size.small)
+    table.cell(t,4,6,dy05?"✓ DRY":"✗ WET",text_color=dy05?color.new(#00e676,0):color.new(color.orange,10),bgcolor=bg,text_size=size.small)
+    table.cell(t,5,6,tb05<999?str.tostring(tb05,"#.1")+"%":"far",text_color=tc,bgcolor=bg,text_size=size.small)
+    table.cell(t,6,6,f_status_txt(rd05,fm05,wt05),text_color=f_status_tc(rd05,fm05,wt05),bgcolor=f_status_bg(rd05,fm05,wt05),text_size=size.small)
+    bg:=f_row_bg(rd06,fm06)
+    table.cell(t,0,7,f_ticker(sym06),text_color=tc,bgcolor=bg,text_size=size.small)
+    table.cell(t,1,7,f_price_fmt(c06),text_color=tc,bgcolor=bg,text_size=size.small)
+    table.cell(t,2,7,"-"+str.tostring(dp06,"#.0")+"%",text_color=dp06>=drop_min_pct?color.new(color.red,10):color.new(color.gray,25),bgcolor=bg,text_size=size.small)
+    table.cell(t,3,7,str.tostring(fl06,"#.0")+"%",text_color=fl06<=flag_max_pct?color.new(#00e676,0):color.new(color.orange,10),bgcolor=bg,text_size=size.small)
+    table.cell(t,4,7,dy06?"✓ DRY":"✗ WET",text_color=dy06?color.new(#00e676,0):color.new(color.orange,10),bgcolor=bg,text_size=size.small)
+    table.cell(t,5,7,tb06<999?str.tostring(tb06,"#.1")+"%":"far",text_color=tc,bgcolor=bg,text_size=size.small)
+    table.cell(t,6,7,f_status_txt(rd06,fm06,wt06),text_color=f_status_tc(rd06,fm06,wt06),bgcolor=f_status_bg(rd06,fm06,wt06),text_size=size.small)
+    bg:=f_row_bg(rd07,fm07)
+    table.cell(t,0,8,f_ticker(sym07),text_color=tc,bgcolor=bg,text_size=size.small)
+    table.cell(t,1,8,f_price_fmt(c07),text_color=tc,bgcolor=bg,text_size=size.small)
+    table.cell(t,2,8,"-"+str.tostring(dp07,"#.0")+"%",text_color=dp07>=drop_min_pct?color.new(color.red,10):color.new(color.gray,25),bgcolor=bg,text_size=size.small)
+    table.cell(t,3,8,str.tostring(fl07,"#.0")+"%",text_color=fl07<=flag_max_pct?color.new(#00e676,0):color.new(color.orange,10),bgcolor=bg,text_size=size.small)
+    table.cell(t,4,8,dy07?"✓ DRY":"✗ WET",text_color=dy07?color.new(#00e676,0):color.new(color.orange,10),bgcolor=bg,text_size=size.small)
+    table.cell(t,5,8,tb07<999?str.tostring(tb07,"#.1")+"%":"far",text_color=tc,bgcolor=bg,text_size=size.small)
+    table.cell(t,6,8,f_status_txt(rd07,fm07,wt07),text_color=f_status_tc(rd07,fm07,wt07),bgcolor=f_status_bg(rd07,fm07,wt07),text_size=size.small)
+    bg:=f_row_bg(rd08,fm08)
+    table.cell(t,0,9,f_ticker(sym08),text_color=tc,bgcolor=bg,text_size=size.small)
+    table.cell(t,1,9,f_price_fmt(c08),text_color=tc,bgcolor=bg,text_size=size.small)
+    table.cell(t,2,9,"-"+str.tostring(dp08,"#.0")+"%",text_color=dp08>=drop_min_pct?color.new(color.red,10):color.new(color.gray,25),bgcolor=bg,text_size=size.small)
+    table.cell(t,3,9,str.tostring(fl08,"#.0")+"%",text_color=fl08<=flag_max_pct?color.new(#00e676,0):color.new(color.orange,10),bgcolor=bg,text_size=size.small)
+    table.cell(t,4,9,dy08?"✓ DRY":"✗ WET",text_color=dy08?color.new(#00e676,0):color.new(color.orange,10),bgcolor=bg,text_size=size.small)
+    table.cell(t,5,9,tb08<999?str.tostring(tb08,"#.1")+"%":"far",text_color=tc,bgcolor=bg,text_size=size.small)
+    table.cell(t,6,9,f_status_txt(rd08,fm08,wt08),text_color=f_status_tc(rd08,fm08,wt08),bgcolor=f_status_bg(rd08,fm08,wt08),text_size=size.small)
+    bg:=f_row_bg(rd09,fm09)
+    table.cell(t,0,10,f_ticker(sym09),text_color=tc,bgcolor=bg,text_size=size.small)
+    table.cell(t,1,10,f_price_fmt(c09),text_color=tc,bgcolor=bg,text_size=size.small)
+    table.cell(t,2,10,"-"+str.tostring(dp09,"#.0")+"%",text_color=dp09>=drop_min_pct?color.new(color.red,10):color.new(color.gray,25),bgcolor=bg,text_size=size.small)
+    table.cell(t,3,10,str.tostring(fl09,"#.0")+"%",text_color=fl09<=flag_max_pct?color.new(#00e676,0):color.new(color.orange,10),bgcolor=bg,text_size=size.small)
+    table.cell(t,4,10,dy09?"✓ DRY":"✗ WET",text_color=dy09?color.new(#00e676,0):color.new(color.orange,10),bgcolor=bg,text_size=size.small)
+    table.cell(t,5,10,tb09<999?str.tostring(tb09,"#.1")+"%":"far",text_color=tc,bgcolor=bg,text_size=size.small)
+    table.cell(t,6,10,f_status_txt(rd09,fm09,wt09),text_color=f_status_tc(rd09,fm09,wt09),bgcolor=f_status_bg(rd09,fm09,wt09),text_size=size.small)
+    bg:=f_row_bg(rd10,fm10)
+    table.cell(t,0,11,f_ticker(sym10),text_color=tc,bgcolor=bg,text_size=size.small)
+    table.cell(t,1,11,f_price_fmt(c10),text_color=tc,bgcolor=bg,text_size=size.small)
+    table.cell(t,2,11,"-"+str.tostring(dp10,"#.0")+"%",text_color=dp10>=drop_min_pct?color.new(color.red,10):color.new(color.gray,25),bgcolor=bg,text_size=size.small)
+    table.cell(t,3,11,str.tostring(fl10,"#.0")+"%",text_color=fl10<=flag_max_pct?color.new(#00e676,0):color.new(color.orange,10),bgcolor=bg,text_size=size.small)
+    table.cell(t,4,11,dy10?"✓ DRY":"✗ WET",text_color=dy10?color.new(#00e676,0):color.new(color.orange,10),bgcolor=bg,text_size=size.small)
+    table.cell(t,5,11,tb10<999?str.tostring(tb10,"#.1")+"%":"far",text_color=tc,bgcolor=bg,text_size=size.small)
+    table.cell(t,6,11,f_status_txt(rd10,fm10,wt10),text_color=f_status_tc(rd10,fm10,wt10),bgcolor=f_status_bg(rd10,fm10,wt10),text_size=size.small)
+    bg:=f_row_bg(rd11,fm11)
+    table.cell(t,0,12,f_ticker(sym11),text_color=tc,bgcolor=bg,text_size=size.small)
+    table.cell(t,1,12,f_price_fmt(c11),text_color=tc,bgcolor=bg,text_size=size.small)
+    table.cell(t,2,12,"-"+str.tostring(dp11,"#.0")+"%",text_color=dp11>=drop_min_pct?color.new(color.red,10):color.new(color.gray,25),bgcolor=bg,text_size=size.small)
+    table.cell(t,3,12,str.tostring(fl11,"#.0")+"%",text_color=fl11<=flag_max_pct?color.new(#00e676,0):color.new(color.orange,10),bgcolor=bg,text_size=size.small)
+    table.cell(t,4,12,dy11?"✓ DRY":"✗ WET",text_color=dy11?color.new(#00e676,0):color.new(color.orange,10),bgcolor=bg,text_size=size.small)
+    table.cell(t,5,12,tb11<999?str.tostring(tb11,"#.1")+"%":"far",text_color=tc,bgcolor=bg,text_size=size.small)
+    table.cell(t,6,12,f_status_txt(rd11,fm11,wt11),text_color=f_status_tc(rd11,fm11,wt11),bgcolor=f_status_bg(rd11,fm11,wt11),text_size=size.small)
+    bg:=f_row_bg(rd12,fm12)
+    table.cell(t,0,13,f_ticker(sym12),text_color=tc,bgcolor=bg,text_size=size.small)
+    table.cell(t,1,13,f_price_fmt(c12),text_color=tc,bgcolor=bg,text_size=size.small)
+    table.cell(t,2,13,"-"+str.tostring(dp12,"#.0")+"%",text_color=dp12>=drop_min_pct?color.new(color.red,10):color.new(color.gray,25),bgcolor=bg,text_size=size.small)
+    table.cell(t,3,13,str.tostring(fl12,"#.0")+"%",text_color=fl12<=flag_max_pct?color.new(#00e676,0):color.new(color.orange,10),bgcolor=bg,text_size=size.small)
+    table.cell(t,4,13,dy12?"✓ DRY":"✗ WET",text_color=dy12?color.new(#00e676,0):color.new(color.orange,10),bgcolor=bg,text_size=size.small)
+    table.cell(t,5,13,tb12<999?str.tostring(tb12,"#.1")+"%":"far",text_color=tc,bgcolor=bg,text_size=size.small)
+    table.cell(t,6,13,f_status_txt(rd12,fm12,wt12),text_color=f_status_tc(rd12,fm12,wt12),bgcolor=f_status_bg(rd12,fm12,wt12),text_size=size.small)
+    bg:=f_row_bg(rd13,fm13)
+    table.cell(t,0,14,f_ticker(sym13),text_color=tc,bgcolor=bg,text_size=size.small)
+    table.cell(t,1,14,f_price_fmt(c13),text_color=tc,bgcolor=bg,text_size=size.small)
+    table.cell(t,2,14,"-"+str.tostring(dp13,"#.0")+"%",text_color=dp13>=drop_min_pct?color.new(color.red,10):color.new(color.gray,25),bgcolor=bg,text_size=size.small)
+    table.cell(t,3,14,str.tostring(fl13,"#.0")+"%",text_color=fl13<=flag_max_pct?color.new(#00e676,0):color.new(color.orange,10),bgcolor=bg,text_size=size.small)
+    table.cell(t,4,14,dy13?"✓ DRY":"✗ WET",text_color=dy13?color.new(#00e676,0):color.new(color.orange,10),bgcolor=bg,text_size=size.small)
+    table.cell(t,5,14,tb13<999?str.tostring(tb13,"#.1")+"%":"far",text_color=tc,bgcolor=bg,text_size=size.small)
+    table.cell(t,6,14,f_status_txt(rd13,fm13,wt13),text_color=f_status_tc(rd13,fm13,wt13),bgcolor=f_status_bg(rd13,fm13,wt13),text_size=size.small)
+    bg:=f_row_bg(rd14,fm14)
+    table.cell(t,0,15,f_ticker(sym14),text_color=tc,bgcolor=bg,text_size=size.small)
+    table.cell(t,1,15,f_price_fmt(c14),text_color=tc,bgcolor=bg,text_size=size.small)
+    table.cell(t,2,15,"-"+str.tostring(dp14,"#.0")+"%",text_color=dp14>=drop_min_pct?color.new(color.red,10):color.new(color.gray,25),bgcolor=bg,text_size=size.small)
+    table.cell(t,3,15,str.tostring(fl14,"#.0")+"%",text_color=fl14<=flag_max_pct?color.new(#00e676,0):color.new(color.orange,10),bgcolor=bg,text_size=size.small)
+    table.cell(t,4,15,dy14?"✓ DRY":"✗ WET",text_color=dy14?color.new(#00e676,0):color.new(color.orange,10),bgcolor=bg,text_size=size.small)
+    table.cell(t,5,15,tb14<999?str.tostring(tb14,"#.1")+"%":"far",text_color=tc,bgcolor=bg,text_size=size.small)
+    table.cell(t,6,15,f_status_txt(rd14,fm14,wt14),text_color=f_status_tc(rd14,fm14,wt14),bgcolor=f_status_bg(rd14,fm14,wt14),text_size=size.small)
+    bg:=f_row_bg(rd15,fm15)
+    table.cell(t,0,16,f_ticker(sym15),text_color=tc,bgcolor=bg,text_size=size.small)
+    table.cell(t,1,16,f_price_fmt(c15),text_color=tc,bgcolor=bg,text_size=size.small)
+    table.cell(t,2,16,"-"+str.tostring(dp15,"#.0")+"%",text_color=dp15>=drop_min_pct?color.new(color.red,10):color.new(color.gray,25),bgcolor=bg,text_size=size.small)
+    table.cell(t,3,16,str.tostring(fl15,"#.0")+"%",text_color=fl15<=flag_max_pct?color.new(#00e676,0):color.new(color.orange,10),bgcolor=bg,text_size=size.small)
+    table.cell(t,4,16,dy15?"✓ DRY":"✗ WET",text_color=dy15?color.new(#00e676,0):color.new(color.orange,10),bgcolor=bg,text_size=size.small)
+    table.cell(t,5,16,tb15<999?str.tostring(tb15,"#.1")+"%":"far",text_color=tc,bgcolor=bg,text_size=size.small)
+    table.cell(t,6,16,f_status_txt(rd15,fm15,wt15),text_color=f_status_tc(rd15,fm15,wt15),bgcolor=f_status_bg(rd15,fm15,wt15),text_size=size.small)
+    bg:=f_row_bg(rd16,fm16)
+    table.cell(t,0,17,f_ticker(sym16),text_color=tc,bgcolor=bg,text_size=size.small)
+    table.cell(t,1,17,f_price_fmt(c16),text_color=tc,bgcolor=bg,text_size=size.small)
+    table.cell(t,2,17,"-"+str.tostring(dp16,"#.0")+"%",text_color=dp16>=drop_min_pct?color.new(color.red,10):color.new(color.gray,25),bgcolor=bg,text_size=size.small)
+    table.cell(t,3,17,str.tostring(fl16,"#.0")+"%",text_color=fl16<=flag_max_pct?color.new(#00e676,0):color.new(color.orange,10),bgcolor=bg,text_size=size.small)
+    table.cell(t,4,17,dy16?"✓ DRY":"✗ WET",text_color=dy16?color.new(#00e676,0):color.new(color.orange,10),bgcolor=bg,text_size=size.small)
+    table.cell(t,5,17,tb16<999?str.tostring(tb16,"#.1")+"%":"far",text_color=tc,bgcolor=bg,text_size=size.small)
+    table.cell(t,6,17,f_status_txt(rd16,fm16,wt16),text_color=f_status_tc(rd16,fm16,wt16),bgcolor=f_status_bg(rd16,fm16,wt16),text_size=size.small)
+    bg:=f_row_bg(rd17,fm17)
+    table.cell(t,0,18,f_ticker(sym17),text_color=tc,bgcolor=bg,text_size=size.small)
+    table.cell(t,1,18,f_price_fmt(c17),text_color=tc,bgcolor=bg,text_size=size.small)
+    table.cell(t,2,18,"-"+str.tostring(dp17,"#.0")+"%",text_color=dp17>=drop_min_pct?color.new(color.red,10):color.new(color.gray,25),bgcolor=bg,text_size=size.small)
+    table.cell(t,3,18,str.tostring(fl17,"#.0")+"%",text_color=fl17<=flag_max_pct?color.new(#00e676,0):color.new(color.orange,10),bgcolor=bg,text_size=size.small)
+    table.cell(t,4,18,dy17?"✓ DRY":"✗ WET",text_color=dy17?color.new(#00e676,0):color.new(color.orange,10),bgcolor=bg,text_size=size.small)
+    table.cell(t,5,18,tb17<999?str.tostring(tb17,"#.1")+"%":"far",text_color=tc,bgcolor=bg,text_size=size.small)
+    table.cell(t,6,18,f_status_txt(rd17,fm17,wt17),text_color=f_status_tc(rd17,fm17,wt17),bgcolor=f_status_bg(rd17,fm17,wt17),text_size=size.small)
+    bg:=f_row_bg(rd18,fm18)
+    table.cell(t,0,19,f_ticker(sym18),text_color=tc,bgcolor=bg,text_size=size.small)
+    table.cell(t,1,19,f_price_fmt(c18),text_color=tc,bgcolor=bg,text_size=size.small)
+    table.cell(t,2,19,"-"+str.tostring(dp18,"#.0")+"%",text_color=dp18>=drop_min_pct?color.new(color.red,10):color.new(color.gray,25),bgcolor=bg,text_size=size.small)
+    table.cell(t,3,19,str.tostring(fl18,"#.0")+"%",text_color=fl18<=flag_max_pct?color.new(#00e676,0):color.new(color.orange,10),bgcolor=bg,text_size=size.small)
+    table.cell(t,4,19,dy18?"✓ DRY":"✗ WET",text_color=dy18?color.new(#00e676,0):color.new(color.orange,10),bgcolor=bg,text_size=size.small)
+    table.cell(t,5,19,tb18<999?str.tostring(tb18,"#.1")+"%":"far",text_color=tc,bgcolor=bg,text_size=size.small)
+    table.cell(t,6,19,f_status_txt(rd18,fm18,wt18),text_color=f_status_tc(rd18,fm18,wt18),bgcolor=f_status_bg(rd18,fm18,wt18),text_size=size.small)
+    bg:=f_row_bg(rd19,fm19)
+    table.cell(t,0,20,f_ticker(sym19),text_color=tc,bgcolor=bg,text_size=size.small)
+    table.cell(t,1,20,f_price_fmt(c19),text_color=tc,bgcolor=bg,text_size=size.small)
+    table.cell(t,2,20,"-"+str.tostring(dp19,"#.0")+"%",text_color=dp19>=drop_min_pct?color.new(color.red,10):color.new(color.gray,25),bgcolor=bg,text_size=size.small)
+    table.cell(t,3,20,str.tostring(fl19,"#.0")+"%",text_color=fl19<=flag_max_pct?color.new(#00e676,0):color.new(color.orange,10),bgcolor=bg,text_size=size.small)
+    table.cell(t,4,20,dy19?"✓ DRY":"✗ WET",text_color=dy19?color.new(#00e676,0):color.new(color.orange,10),bgcolor=bg,text_size=size.small)
+    table.cell(t,5,20,tb19<999?str.tostring(tb19,"#.1")+"%":"far",text_color=tc,bgcolor=bg,text_size=size.small)
+    table.cell(t,6,20,f_status_txt(rd19,fm19,wt19),text_color=f_status_tc(rd19,fm19,wt19),bgcolor=f_status_bg(rd19,fm19,wt19),text_size=size.small)
+    bg:=f_row_bg(rd20,fm20)
+    table.cell(t,0,21,f_ticker(sym20),text_color=tc,bgcolor=bg,text_size=size.small)
+    table.cell(t,1,21,f_price_fmt(c20),text_color=tc,bgcolor=bg,text_size=size.small)
+    table.cell(t,2,21,"-"+str.tostring(dp20,"#.0")+"%",text_color=dp20>=drop_min_pct?color.new(color.red,10):color.new(color.gray,25),bgcolor=bg,text_size=size.small)
+    table.cell(t,3,21,str.tostring(fl20,"#.0")+"%",text_color=fl20<=flag_max_pct?color.new(#00e676,0):color.new(color.orange,10),bgcolor=bg,text_size=size.small)
+    table.cell(t,4,21,dy20?"✓ DRY":"✗ WET",text_color=dy20?color.new(#00e676,0):color.new(color.orange,10),bgcolor=bg,text_size=size.small)
+    table.cell(t,5,21,tb20<999?str.tostring(tb20,"#.1")+"%":"far",text_color=tc,bgcolor=bg,text_size=size.small)
+    table.cell(t,6,21,f_status_txt(rd20,fm20,wt20),text_color=f_status_tc(rd20,fm20,wt20),bgcolor=f_status_bg(rd20,fm20,wt20),text_size=size.small)
+
+    // ── FOOTER ──
+    n_ready   = (rd01?1:0)+(rd02?1:0)+(rd03?1:0)+(rd04?1:0)+(rd05?1:0)+(rd06?1:0)+(rd07?1:0)+(rd08?1:0)+(rd09?1:0)+(rd10?1:0)+(rd11?1:0)+(rd12?1:0)+(rd13?1:0)+(rd14?1:0)+(rd15?1:0)+(rd16?1:0)+(rd17?1:0)+(rd18?1:0)+(rd19?1:0)+(rd20?1:0)
+    n_forming = (fm01?1:0)+(fm02?1:0)+(fm03?1:0)+(fm04?1:0)+(fm05?1:0)+(fm06?1:0)+(fm07?1:0)+(fm08?1:0)+(fm09?1:0)+(fm10?1:0)+(fm11?1:0)+(fm12?1:0)+(fm13?1:0)+(fm14?1:0)+(fm15?1:0)+(fm16?1:0)+(fm17?1:0)+(fm18?1:0)+(fm19?1:0)+(fm20?1:0)
+    footer    = "🔴 " + str.tostring(n_ready) + " SHORT READY   ·   🔻 " + str.tostring(n_forming) + " FORMING   ·   Bear Flag Scanner [TraderXO]"
+    fbg = color.new(#3e0000, 20)
+    table.cell(t,0,22,footer,text_color=color.white,bgcolor=fbg,text_size=size.tiny)
+    table.cell(t,1,22,"",bgcolor=fbg)
+    table.cell(t,2,22,"",bgcolor=fbg)
+    table.cell(t,3,22,"",bgcolor=fbg)
+    table.cell(t,4,22,"",bgcolor=fbg)
+    table.cell(t,5,22,"",bgcolor=fbg)
+    table.cell(t,6,22,"",bgcolor=fbg)
+    // Regime warning if not confirmed bear
+    if not regime_bear
+        warn_txt = regime_trans ? "⚠️  TRANSITION — short setups carry higher risk" : "🐂  BULL MARKET — shorting is counter-trend, reduce size"
+        warn_bg  = regime_trans ? color.new(color.orange, 30) : color.new(color.green, 30)
+        table.cell(t,0,23,warn_txt,text_color=color.white,bgcolor=warn_bg,text_size=size.tiny)
+        table.cell(t,1,23,"",bgcolor=warn_bg)
+        table.cell(t,2,23,"",bgcolor=warn_bg)
+        table.cell(t,3,23,"",bgcolor=warn_bg)
+        table.cell(t,4,23,"",bgcolor=warn_bg)
+        table.cell(t,5,23,"",bgcolor=warn_bg)
+        table.cell(t,6,23,"",bgcolor=warn_bg)
+
+// ─── ALERT ENGINE ──────────────────────────────────────────────────────────
+rd01_new=rd01 and not rd01[1]  rd02_new=rd02 and not rd02[1]  rd03_new=rd03 and not rd03[1]
+rd04_new=rd04 and not rd04[1]  rd05_new=rd05 and not rd05[1]  rd06_new=rd06 and not rd06[1]
+rd07_new=rd07 and not rd07[1]  rd08_new=rd08 and not rd08[1]  rd09_new=rd09 and not rd09[1]
+rd10_new=rd10 and not rd10[1]  rd11_new=rd11 and not rd11[1]  rd12_new=rd12 and not rd12[1]
+rd13_new=rd13 and not rd13[1]  rd14_new=rd14 and not rd14[1]  rd15_new=rd15 and not rd15[1]
+rd16_new=rd16 and not rd16[1]  rd17_new=rd17 and not rd17[1]  rd18_new=rd18 and not rd18[1]
+rd19_new=rd19 and not rd19[1]  rd20_new=rd20 and not rd20[1]
+
+dq = '"'
+f_short_msg(name, price_s, dp, fl, tb, score) =>
+    "{" + dq + "content" + dq + ":" + dq +
+    "🔴 **SHORT READY: " + name + "**\\n" +
+    "Price: $" + price_s + "\\n" +
+    "Prior Drop: -" + str.tostring(dp,"#.0") + "%\\n" +
+    "Bounce Range: " + str.tostring(fl,"#.0") + "%\\n" +
+    "To Breakdown: " + str.tostring(tb,"#.1") + "%\\n" +
+    "Market Regime Score: " + str.tostring(score) + "/10\\n" +
+    "▶ Short on breakdown below dead-cat-bounce low\\n" +
+    "📊 Bear Flag Scanner [TraderXO]" + dq + "}"
+
+if rd01_new
+    alert(f_short_msg(f_ticker(sym01),f_price_fmt(c01),dp01,fl01,tb01,bear_score),alert.freq_once_per_bar)
+if rd02_new
+    alert(f_short_msg(f_ticker(sym02),f_price_fmt(c02),dp02,fl02,tb02,bear_score),alert.freq_once_per_bar)
+if rd03_new
+    alert(f_short_msg(f_ticker(sym03),f_price_fmt(c03),dp03,fl03,tb03,bear_score),alert.freq_once_per_bar)
+if rd04_new
+    alert(f_short_msg(f_ticker(sym04),f_price_fmt(c04),dp04,fl04,tb04,bear_score),alert.freq_once_per_bar)
+if rd05_new
+    alert(f_short_msg(f_ticker(sym05),f_price_fmt(c05),dp05,fl05,tb05,bear_score),alert.freq_once_per_bar)
+if rd06_new
+    alert(f_short_msg(f_ticker(sym06),f_price_fmt(c06),dp06,fl06,tb06,bear_score),alert.freq_once_per_bar)
+if rd07_new
+    alert(f_short_msg(f_ticker(sym07),f_price_fmt(c07),dp07,fl07,tb07,bear_score),alert.freq_once_per_bar)
+if rd08_new
+    alert(f_short_msg(f_ticker(sym08),f_price_fmt(c08),dp08,fl08,tb08,bear_score),alert.freq_once_per_bar)
+if rd09_new
+    alert(f_short_msg(f_ticker(sym09),f_price_fmt(c09),dp09,fl09,tb09,bear_score),alert.freq_once_per_bar)
+if rd10_new
+    alert(f_short_msg(f_ticker(sym10),f_price_fmt(c10),dp10,fl10,tb10,bear_score),alert.freq_once_per_bar)
+if rd11_new
+    alert(f_short_msg(f_ticker(sym11),f_price_fmt(c11),dp11,fl11,tb11,bear_score),alert.freq_once_per_bar)
+if rd12_new
+    alert(f_short_msg(f_ticker(sym12),f_price_fmt(c12),dp12,fl12,tb12,bear_score),alert.freq_once_per_bar)
+if rd13_new
+    alert(f_short_msg(f_ticker(sym13),f_price_fmt(c13),dp13,fl13,tb13,bear_score),alert.freq_once_per_bar)
+if rd14_new
+    alert(f_short_msg(f_ticker(sym14),f_price_fmt(c14),dp14,fl14,tb14,bear_score),alert.freq_once_per_bar)
+if rd15_new
+    alert(f_short_msg(f_ticker(sym15),f_price_fmt(c15),dp15,fl15,tb15,bear_score),alert.freq_once_per_bar)
+if rd16_new
+    alert(f_short_msg(f_ticker(sym16),f_price_fmt(c16),dp16,fl16,tb16,bear_score),alert.freq_once_per_bar)
+if rd17_new
+    alert(f_short_msg(f_ticker(sym17),f_price_fmt(c17),dp17,fl17,tb17,bear_score),alert.freq_once_per_bar)
+if rd18_new
+    alert(f_short_msg(f_ticker(sym18),f_price_fmt(c18),dp18,fl18,tb18,bear_score),alert.freq_once_per_bar)
+if rd19_new
+    alert(f_short_msg(f_ticker(sym19),f_price_fmt(c19),dp19,fl19,tb19,bear_score),alert.freq_once_per_bar)
+if rd20_new
+    alert(f_short_msg(f_ticker(sym20),f_price_fmt(c20),dp20,fl20,tb20,bear_score),alert.freq_once_per_bar)
+
+any_short_ready = rd01_new or rd02_new or rd03_new or rd04_new or rd05_new or rd06_new or rd07_new or rd08_new or rd09_new or rd10_new or rd11_new or rd12_new or rd13_new or rd14_new or rd15_new or rd16_new or rd17_new or rd18_new or rd19_new or rd20_new
+alertcondition(any_short_ready, title="Bear Flag Scanner — ANY Short READY", message="Bear Flag SHORT READY — check scanner table")
+alertcondition(rd01_new,  title="SHORT READY: ETH",    message="Bear Flag SHORT READY: ETHUSDT")
+alertcondition(rd02_new,  title="SHORT READY: SOL",    message="Bear Flag SHORT READY: SOLUSDT")
+alertcondition(rd03_new,  title="SHORT READY: BNB",    message="Bear Flag SHORT READY: BNBUSDT")
+alertcondition(rd04_new,  title="SHORT READY: AVAX",   message="Bear Flag SHORT READY: AVAXUSDT")
+alertcondition(rd05_new,  title="SHORT READY: LINK",   message="Bear Flag SHORT READY: LINKUSDT")
+alertcondition(rd06_new,  title="SHORT READY: DOT",    message="Bear Flag SHORT READY: DOTUSDT")
+alertcondition(rd07_new,  title="SHORT READY: ADA",    message="Bear Flag SHORT READY: ADAUSDT")
+alertcondition(rd08_new,  title="SHORT READY: ATOM",   message="Bear Flag SHORT READY: ATOMUSDT")
+alertcondition(rd09_new,  title="SHORT READY: NEAR",   message="Bear Flag SHORT READY: NEARUSDT")
+alertcondition(rd10_new,  title="SHORT READY: APT",    message="Bear Flag SHORT READY: APTUSDT")
+alertcondition(rd11_new,  title="SHORT READY: ARB",    message="Bear Flag SHORT READY: ARBUSDT")
+alertcondition(rd12_new,  title="SHORT READY: OP",     message="Bear Flag SHORT READY: OPUSDT")
+alertcondition(rd13_new,  title="SHORT READY: SUI",    message="Bear Flag SHORT READY: SUIUSDT")
+alertcondition(rd14_new,  title="SHORT READY: INJ",    message="Bear Flag SHORT READY: INJUSDT")
+alertcondition(rd15_new,  title="SHORT READY: LDO",    message="Bear Flag SHORT READY: LDOUSDT")
+alertcondition(rd16_new,  title="SHORT READY: AAVE",   message="Bear Flag SHORT READY: AAVEUSDT")
+alertcondition(rd17_new,  title="SHORT READY: UNI",    message="Bear Flag SHORT READY: UNIUSDT")
+alertcondition(rd18_new,  title="SHORT READY: SAND",   message="Bear Flag SHORT READY: SANDUSDT")
+alertcondition(rd19_new,  title="SHORT READY: GALA",   message="Bear Flag SHORT READY: GALAUSDT")
+alertcondition(rd20_new,  title="SHORT READY: POL",    message="Bear Flag SHORT READY: POLUSDT")
+
+plot(na)

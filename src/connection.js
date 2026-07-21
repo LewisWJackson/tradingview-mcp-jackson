@@ -71,9 +71,11 @@ export async function connect() {
 async function findChartTarget() {
   const resp = await fetch(`http://${CDP_HOST}:${CDP_PORT}/json/list`);
   const targets = await resp.json();
-  // Prefer targets with tradingview.com/chart in the URL
+  // Prefer targets with tradingview.com/chart in the URL.
+  // Fallback must require an http(s) tradingview.com URL: a bare /tradingview/i also matches
+  // the file:// shell pages served from the WindowsApps install path, which have no TradingViewApi.
   return targets.find(t => t.type === 'page' && /tradingview\.com\/chart/i.test(t.url))
-    || targets.find(t => t.type === 'page' && /tradingview/i.test(t.url))
+    || targets.find(t => t.type === 'page' && /^https?:\/\/[^/]*tradingview\.com\//i.test(t.url))
     || null;
 }
 
