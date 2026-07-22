@@ -1,8 +1,8 @@
-# TradingView MCP Jackson
+# Trading View Pharm
 
-If you found this from the YouTube video — welcome. This is the improved fork. Everything you need is below.
+A toolkit for trading PharmD_KS's NQ newsletter setups: a live setup monitor with confluence scoring, a performance journal, and native alert sync — built on top of a TradingView MCP server (80+ tools that read and control TradingView Desktop via Chrome DevTools Protocol).
 
-Built on top of the original [tradingview-mcp](https://github.com/tradesdontlie/tradingview-mcp) by [@tradesdontlie](https://github.com/tradesdontlie). Full credit to them for the foundation. This fork adds a morning brief workflow, a rules config, and fixes the launch bug on TradingView Desktop v2.14+.
+Lineage: this started as [tradingview-mcp-jackson](https://github.com/LewisWJackson/tradingview-mcp-jackson) by [@LewisWJackson](https://github.com/LewisWJackson), itself a fork of [tradingview-mcp](https://github.com/tradesdontlie/tradingview-mcp) by [@tradesdontlie](https://github.com/tradesdontlie). Full credit to both for the foundation. The Jackson fork added the morning brief workflow, rules config, and the v2.14+ launch fix; this project adds the Pharm layer on top.
 
 > [!WARNING]
 > **Not affiliated with TradingView Inc. or Anthropic.** This tool connects to your locally running TradingView Desktop app via Chrome DevTools Protocol. Review the [Disclaimer](#disclaimer) before use.
@@ -15,7 +15,37 @@ Built on top of the original [tradingview-mcp](https://github.com/tradesdontlie/
 
 ---
 
-## What's New in This Fork
+## The Pharm Layer
+
+The point of this project. `/pharm` (a Claude Code skill) parses the daily newsletter, draws the levels on the chart, and writes the setups to a structured file; the monitor watches the live chart and tells you when a setup actually triggers; the journal tells you which setups pay.
+
+| File | What it does |
+|------|-------------|
+| `pharm-setups.json` | Structured LBAF/LAAF setups — zone, direction, rating, targets, invalidation. Written automatically by the `/pharm` skill when a newsletter drops. |
+| `pharm-monitor.js` | Live monitor. Polls the chart via CDP, runs the LBAF/LAAF trigger state machine, scores confluence (VWAP / EMA 9–20 / RSI 14 / Trend Speed) at the moment of trigger, fires a macOS notification on **confirmed** triggers only, then tracks each trade to target or invalidation and records the R-multiple. |
+| `pharm-journal.js` | Analytics over the trade log — win-rate, expectancy, and net R broken down by rating, setup type, direction, and confluence score. `--html` writes a dashboard. |
+| `pharm-alert-sync.js` | Browser-injected helper (via `ui_evaluate`) that creates/deletes native TradingView early-warning price alerts. Only touches alerts tagged `[PHARM]`. |
+| `pharm-start.command` / `pharm-journal.command` | Double-click launchers for the monitor and the journal report. |
+
+**Daily workflow:**
+
+1. Newsletter drops → run `/pharm` in Claude Code — draws the levels and updates `pharm-setups.json`
+2. Double-click `pharm-start.command` (or `node pharm-monitor.js`) — monitor runs against the live chart
+3. Get a macOS notification when a setup confirms, with its confluence score
+4. `node pharm-journal.js --html` — see which setups actually pay for you
+
+```bash
+node pharm-monitor.js            # live loop (default 15s poll)
+node pharm-monitor.js --once     # single evaluation tick, then exit
+node pharm-monitor.js --interval 30
+node pharm-journal.js --html     # report + pharm-journal.html dashboard
+```
+
+State lives in `pharm-monitor-state.json`, trade lifecycle in `pharm-monitor-log.json`. The monitor requires TradingView Desktop running with CDP (port 9222), same as the MCP server, and reads whatever timeframe the chart is on — set your execution timeframe before going live.
+
+---
+
+## What's In the Jackson Fork
 
 | Feature | What it does |
 |---------|-------------|
@@ -32,9 +62,9 @@ Built on top of the original [tradingview-mcp](https://github.com/tradesdontlie/
 Paste this into Claude Code and it will handle everything:
 
 ```
-Set up TradingView MCP Jackson for me. 
-Clone https://github.com/LewisWJackson/tradingview-mcp-jackson.git to ~/tradingview-mcp-jackson, run npm install, then add it to my MCP config at ~/.claude/.mcp.json (merge with any existing servers, don't overwrite them). 
-The config block is: { "mcpServers": { "tradingview": { "command": "node", "args": ["/Users/YOUR_USERNAME/tradingview-mcp-jackson/src/server.js"] } } } — replace YOUR_USERNAME with my actual username.
+Set up Trading View Pharm for me. 
+Clone https://github.com/cunning-folk/tradingview-mcp-jackson.git to ~/trading-view-pharm, run npm install, then add it to my MCP config at ~/.claude/.mcp.json (merge with any existing servers, don't overwrite them). 
+The config block is: { "mcpServers": { "tradingview": { "command": "node", "args": ["/Users/YOUR_USERNAME/trading-view-pharm/src/server.js"] } } } — replace YOUR_USERNAME with my actual username.
 Then copy rules.example.json to rules.json and open it so I can fill in my trading rules.
 Finally restart and verify with tv_health_check.
 ```
@@ -57,8 +87,8 @@ Or follow the manual steps below.
 ### 1. Clone and install
 
 ```bash
-git clone https://github.com/LewisWJackson/tradingview-mcp-jackson.git ~/tradingview-mcp-jackson
-cd ~/tradingview-mcp-jackson
+git clone https://github.com/cunning-folk/tradingview-mcp-jackson.git ~/trading-view-pharm
+cd ~/trading-view-pharm
 npm install
 ```
 
@@ -103,7 +133,7 @@ Add to `~/.claude/.mcp.json` (merge with any existing servers):
   "mcpServers": {
     "tradingview": {
       "command": "node",
-      "args": ["/Users/YOUR_USERNAME/tradingview-mcp-jackson/src/server.js"]
+      "args": ["/Users/YOUR_USERNAME/trading-view-pharm/src/server.js"]
     }
   }
 }
@@ -317,7 +347,7 @@ Claude Code  ←→  MCP Server (stdio)  ←→  CDP (port 9222)  ←→  Tradin
 
 ## Credits
 
-This fork is built on [tradingview-mcp](https://github.com/tradesdontlie/tradingview-mcp) by [@tradesdontlie](https://github.com/tradesdontlie). The original tool is the foundation — go star their repo.
+Built on [tradingview-mcp-jackson](https://github.com/LewisWJackson/tradingview-mcp-jackson) by [@LewisWJackson](https://github.com/LewisWJackson), which is built on [tradingview-mcp](https://github.com/tradesdontlie/tradingview-mcp) by [@tradesdontlie](https://github.com/tradesdontlie). The original tools are the foundation — go star their repos.
 
 ---
 

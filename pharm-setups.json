@@ -1,0 +1,55 @@
+{
+  "instrument": "CME_MINI:MNQ1!",
+  "source": "PharmD_KS daily 7/22 + weekly 7/19",
+  "generated": "2026-07-21",
+  "risk": {
+    "max_risk_R": 1,
+    "max_adds": 2,
+    "_rule": "Total risk for the WHOLE idea is fixed before entry #1 — planned scale-ins must fit inside max_risk_R, never extend it. Adds are earned by confirmation (reclaim / higher low / fresh trigger), NEVER by drawdown. No adds while underwater; below invalidation there are only exits. Any setup may override these with its own max_risk_R / max_adds."
+  },
+  "note": "THE DECISION POINT. After the merciless bid off 28691-28718, NQ built a top-heavy primary distribution almost exactly between the 247-269 and 369-397 weekly levels (365 = high of day). This range most likely decides the next ~800 handles. Clean break + SUSTAIN above 369-397 = clearly bullish (Pharm leans firmly with bulls, still trades both ways intraday); a breakdown of today's profile = distributive, lean seller. Buyers control ultra-short TF but 'objectively very little has been accomplished.' React, don't predict. Sellers could defend a 247-269 long by ~29335 if distribution is complete.",
+  "setups": [
+    {
+      "id": "nq-29247-29269-lbaf",
+      "type": "LBAF",
+      "dir": "long",
+      "zone": [29247, 29269],
+      "rating": "A/A-",
+      "targets": [29369, 29488],
+      "invalidation": 29181,
+      "note": "PRIMARY. Hold or LBAF of 247-269 back toward 369-397 (rotational within the decision range). Sellers may defend ~29335 if the distribution is complete/distributive. Inv = flip to resistance + persistent weakness -> 181."
+    },
+    {
+      "id": "nq-29369-29397-lbaf",
+      "type": "LBAF",
+      "dir": "long",
+      "zone": [29369, 29397],
+      "rating": "B/B-",
+      "targets": [29488, 29685],
+      "invalidation": 29335,
+      "note": "True GAP-UP-AND-GO / sustain above 369-397 = long until proven wrong. First major target 488-500, then 685, 30069. This is the bullish resolution of the decision range. Inv = back below into the range."
+    },
+    {
+      "id": "nq-29350-29365-laaf",
+      "type": "LAAF",
+      "dir": "short",
+      "zone": [29350, 29365],
+      "rating": "B+/A-",
+      "targets": [29269, 29247],
+      "invalidation": 29400,
+      "note": "LAAF of today's high (365) broadly looking for 247-269. The longer volume builds in the range without a break higher, the more distributive it looks. Inv = sustain above 369-397."
+    },
+    {
+      "id": "nq-29247-29269-laaf",
+      "type": "LAAF",
+      "dir": "short",
+      "zone": [29247, 29269],
+      "rating": "B-",
+      "targets": [29181, 29079],
+      "invalidation": 29369,
+      "max_risk_R": 0.75,
+      "max_adds": 1,
+      "note": "Short persistent weakness that flips 247-269 to resistance -> 181 (demand 181-247 first), then below 181 reasonably clean to 050-079 (29025 hon, 945-969, 896-910). Reduced risk/adds: this fights the short-term uptrend and Pharm requires sellers to take out today's low WITH continuation to get meaningfully bearish. Inv = reclaim 369-397."
+    }
+  ]
+}
