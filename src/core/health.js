@@ -3,7 +3,7 @@
  */
 import { getClient, getTargetInfo, evaluate } from '../connection.js';
 import { existsSync } from 'fs';
-import { execSync, spawn } from 'child_process';
+import { execFileSync, execSync, spawn } from 'child_process';
 
 export async function healthCheck() {
   await getClient();
@@ -197,6 +197,44 @@ export async function launch({ port, kill_existing } = {}) {
     } catch { /* ignore */ }
   }
 
+  // Automatically discover the Microsoft Store / MSIX installation.
+  // The WindowsApps path contains a version number, so resolve it
+  // dynamically every time tv_launch is called.
+  if (!tvPath && platform === 'win32') {
+    try {
+      const psScript = [
+        "$pkg = Get-AppxPackage TradingView.Desktop | Sort-Object Version -Descending | Select-Object -First 1",
+        "if ($pkg) {",
+        "  $exe = Get-ChildItem -LiteralPath $pkg.InstallLocation -Filter TradingView.exe -Recurse -File -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty FullName",
+        "  if ($exe) { [Console]::Out.Write($exe) }",
+        "}",
+      ].join('; ');
+
+      const found = execFileSync(
+        'powershell.exe',
+        [
+          '-NoLogo',
+          '-NoProfile',
+          '-NonInteractive',
+          '-ExecutionPolicy',
+          'Bypass',
+          '-Command',
+          psScript,
+        ],
+        {
+          encoding: 'utf8',
+          timeout: 10000,
+          windowsHide: true,
+        },
+      ).trim();
+
+      if (found && existsSync(found)) {
+        tvPath = found;
+      }
+    } catch {
+      // Ignore MSIX discovery errors and continue with existing fallbacks.
+    }
+  }
   if (!tvPath && platform === 'darwin') {
     try {
       const found = execSync('mdfind "kMDItemFSName == TradingView.app" | head -1', { timeout: 5000 }).toString().trim();
