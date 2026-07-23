@@ -3,7 +3,8 @@
  */
 import { getClient, getTargetInfo, evaluate } from '../connection.js';
 import { existsSync } from 'fs';
-import { execFileSync, execSync, spawn } from 'child_process';
+import { execSync, spawn } from 'child_process';
+import { discoverTradingViewBinary } from './tradingview-binary.js';
 
 export async function healthCheck() {
   await getClient();
@@ -164,87 +165,9 @@ export async function launch({ port, kill_existing } = {}) {
   const killFirst = kill_existing !== false;
   const platform = process.platform;
 
-  const pathMap = {
-    darwin: [
-      '/Applications/TradingView.app/Contents/MacOS/TradingView',
-      `${process.env.HOME}/Applications/TradingView.app/Contents/MacOS/TradingView`,
-    ],
-    win32: [
-      `${process.env.LOCALAPPDATA}\\TradingView\\TradingView.exe`,
-      `${process.env.PROGRAMFILES}\\TradingView\\TradingView.exe`,
-      `${process.env['PROGRAMFILES(X86)']}\\TradingView\\TradingView.exe`,
-    ],
-    linux: [
-      '/opt/TradingView/tradingview',
-      '/opt/TradingView/TradingView',
-      `${process.env.HOME}/.local/share/TradingView/TradingView`,
-      '/usr/bin/tradingview',
-      '/snap/tradingview/current/tradingview',
-    ],
-  };
-
-  let tvPath = null;
-  const candidates = pathMap[platform] || pathMap.linux;
-  for (const p of candidates) {
-    if (p && existsSync(p)) { tvPath = p; break; }
-  }
-
-  if (!tvPath) {
-    try {
-      const cmd = platform === 'win32' ? 'where TradingView.exe' : 'which tradingview';
-      tvPath = execSync(cmd, { timeout: 3000 }).toString().trim().split('\n')[0];
-      if (tvPath && !existsSync(tvPath)) tvPath = null;
-    } catch { /* ignore */ }
-  }
-
-  // Automatically discover the Microsoft Store / MSIX installation.
-  // The WindowsApps path contains a version number, so resolve it
-  // dynamically every time tv_launch is called.
-  if (!tvPath && platform === 'win32') {
-    try {
-      const psScript = [
-        "$pkg = Get-AppxPackage TradingView.Desktop | Sort-Object Version -Descending | Select-Object -First 1",
-        "if ($pkg) {",
-        "  $exe = Get-ChildItem -LiteralPath $pkg.InstallLocation -Filter TradingView.exe -Recurse -File -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty FullName",
-        "  if ($exe) { [Console]::Out.Write($exe) }",
-        "}",
-      ].join('; ');
-
-      const found = execFileSync(
-        'powershell.exe',
-        [
-          '-NoLogo',
-          '-NoProfile',
-          '-NonInteractive',
-          '-ExecutionPolicy',
-          'Bypass',
-          '-Command',
-          psScript,
-        ],
-        {
-          encoding: 'utf8',
-          timeout: 10000,
-          windowsHide: true,
-        },
-      ).trim();
-
-      if (found && existsSync(found)) {
-        tvPath = found;
-      }
-    } catch {
-      // Ignore MSIX discovery errors and continue with existing fallbacks.
-    }
-  }
-  if (!tvPath && platform === 'darwin') {
-    try {
-      const found = execSync('mdfind "kMDItemFSName == TradingView.app" | head -1', { timeout: 5000 }).toString().trim();
-      if (found) {
-        const candidate = `${found}/Contents/MacOS/TradingView`;
-        if (existsSync(candidate)) tvPath = candidate;
-      }
-    } catch { /* ignore */ }
-  }
-
+  const discovery = discoverTradingViewBinary({ platform });
+  const tvPath = discovery.path;
+  const candidates = discovery.candidates;
   if (!tvPath) {
     throw new Error(`TradingView not found on ${platform}. Searched: ${candidates.join(', ')}. Launch manually with: /path/to/TradingView --remote-debugging-port=${cdpPort}`);
   }
