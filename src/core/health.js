@@ -4,6 +4,7 @@
 import { getClient, getTargetInfo, evaluate } from '../connection.js';
 import { existsSync } from 'fs';
 import { execSync, spawn } from 'child_process';
+import { discoverTradingViewBinary } from './tradingview-binary.js';
 
 export async function healthCheck() {
   await getClient();
@@ -164,49 +165,9 @@ export async function launch({ port, kill_existing } = {}) {
   const killFirst = kill_existing !== false;
   const platform = process.platform;
 
-  const pathMap = {
-    darwin: [
-      '/Applications/TradingView.app/Contents/MacOS/TradingView',
-      `${process.env.HOME}/Applications/TradingView.app/Contents/MacOS/TradingView`,
-    ],
-    win32: [
-      `${process.env.LOCALAPPDATA}\\TradingView\\TradingView.exe`,
-      `${process.env.PROGRAMFILES}\\TradingView\\TradingView.exe`,
-      `${process.env['PROGRAMFILES(X86)']}\\TradingView\\TradingView.exe`,
-    ],
-    linux: [
-      '/opt/TradingView/tradingview',
-      '/opt/TradingView/TradingView',
-      `${process.env.HOME}/.local/share/TradingView/TradingView`,
-      '/usr/bin/tradingview',
-      '/snap/tradingview/current/tradingview',
-    ],
-  };
-
-  let tvPath = null;
-  const candidates = pathMap[platform] || pathMap.linux;
-  for (const p of candidates) {
-    if (p && existsSync(p)) { tvPath = p; break; }
-  }
-
-  if (!tvPath) {
-    try {
-      const cmd = platform === 'win32' ? 'where TradingView.exe' : 'which tradingview';
-      tvPath = execSync(cmd, { timeout: 3000 }).toString().trim().split('\n')[0];
-      if (tvPath && !existsSync(tvPath)) tvPath = null;
-    } catch { /* ignore */ }
-  }
-
-  if (!tvPath && platform === 'darwin') {
-    try {
-      const found = execSync('mdfind "kMDItemFSName == TradingView.app" | head -1', { timeout: 5000 }).toString().trim();
-      if (found) {
-        const candidate = `${found}/Contents/MacOS/TradingView`;
-        if (existsSync(candidate)) tvPath = candidate;
-      }
-    } catch { /* ignore */ }
-  }
-
+  const discovery = discoverTradingViewBinary({ platform });
+  const tvPath = discovery.path;
+  const candidates = discovery.candidates;
   if (!tvPath) {
     throw new Error(`TradingView not found on ${platform}. Searched: ${candidates.join(', ')}. Launch manually with: /path/to/TradingView --remote-debugging-port=${cdpPort}`);
   }
