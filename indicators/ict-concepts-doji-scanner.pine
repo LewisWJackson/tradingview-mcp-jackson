@@ -1,0 +1,291 @@
+//@version=6
+indicator("ICT Concepts + Doji Scanner [Keagan]", overlay=true, max_lines_count=500, max_boxes_count=500, max_labels_count=500)
+
+// ============================================================
+// INPUTS
+// ============================================================
+grpStruct = "Structure"
+swingLen        = input.int(5, "Swing Lookback (bars each side)", minval=1, group=grpStruct)
+showBias        = input.bool(true, "Show Bias Table", group=grpStruct)
+showBOS         = input.bool(true, "Show Break of Structure", group=grpStruct)
+showSweep       = input.bool(true, "Show Liquidity Sweeps", group=grpStruct)
+showFVG         = input.bool(true, "Show Fair Value Gaps", group=grpStruct)
+showOB          = input.bool(true, "Show Order Blocks", group=grpStruct)
+showEQ          = input.bool(true, "Show Equilibrium / Premium-Discount", group=grpStruct)
+obLookback      = input.int(20, "Order Block Search Lookback (bars)", minval=1, maxval=50, group=grpStruct)
+
+grpDoji = "Doji Patterns"
+showDoji        = input.bool(true, "Show Green/Red Doji", group=grpDoji)
+showLongLegged  = input.bool(true, "Show Long-Legged Doji", group=grpDoji)
+showCross       = input.bool(true, "Show Cross Doji (green) / Inverted Cross Doji (red)", group=grpDoji)
+showDragonfly   = input.bool(true, "Show Green Dragonfly Doji", group=grpDoji)
+showGravestone  = input.bool(true, "Show Red Gravestone Doji", group=grpDoji)
+dojiBodyMaxPct      = input.float(10.0, "Doji Max Body (% of candle range)", minval=0.1, maxval=50, group=grpDoji) / 100
+oppWickMaxPct       = input.float(10.0, "Dragonfly/Gravestone Max Opposite Wick (% of range)", minval=0, maxval=40, group=grpDoji) / 100
+longLeggedWickMinPct= input.float(35.0, "Long-Legged Min Wick Each Side (% of range)", minval=10, maxval=49, group=grpDoji) / 100
+crossSymTolPct      = input.float(15.0, "Cross Doji Wick Symmetry Tolerance (% of range)", minval=1, maxval=40, group=grpDoji) / 100
+
+grpRT = "Real-Time (Unconfirmed)"
+showLiveSwing   = input.bool(true, "Show Live Swing High/Low (no confirmation lag)", group=grpRT)
+showLiveBOS     = input.bool(true, "Show Live BOS (reacts intrabar, unconfirmed)", group=grpRT)
+
+// ============================================================
+// STRUCTURE: swing pivots, bias, BOS, liquidity sweeps
+// ============================================================
+ph = ta.pivothigh(high, swingLen, swingLen)
+pl = ta.pivotlow(low, swingLen, swingLen)
+
+var float lastSwingHigh = na
+var float prevSwingHigh = na
+var int   lastSwingHighBar = na
+
+var float lastSwingLow = na
+var float prevSwingLow = na
+var int   lastSwingLowBar = na
+
+if not na(ph)
+    prevSwingHigh := lastSwingHigh
+    lastSwingHigh := ph
+    lastSwingHighBar := bar_index - swingLen
+
+if not na(pl)
+    prevSwingLow := lastSwingLow
+    lastSwingLow := pl
+    lastSwingLowBar := bar_index - swingLen
+
+// Live (unconfirmed) swing high/low — a rolling extreme that needs no
+// right-side confirmation bars, so it reacts to price immediately/intrabar
+// instead of lagging swingLen bars behind like the confirmed pivots above.
+rtWindow = swingLen * 2 + 1
+liveSwingHigh = ta.highest(high, rtWindow)
+liveSwingLow  = ta.lowest(low, rtWindow)
+
+plot(showLiveSwing ? liveSwingHigh : na, title="Live Swing High", color=color.new(color.yellow, 55), style=plot.style_circles, linewidth=1)
+plot(showLiveSwing ? liveSwingLow  : na, title="Live Swing Low",  color=color.new(color.orange, 55), style=plot.style_circles, linewidth=1)
+
+liveCrossUp   = ta.crossover(close, liveSwingHigh[1])
+liveCrossDown = ta.crossunder(close, liveSwingLow[1])
+liveBullBOS = showLiveBOS and liveCrossUp
+liveBearBOS = showLiveBOS and liveCrossDown
+
+plotshape(liveBullBOS, title="Live BOS Up",   style=shape.triangleup,   location=location.belowbar, color=color.yellow, text="BOS?", textcolor=color.yellow, size=size.tiny)
+plotshape(liveBearBOS, title="Live BOS Down", style=shape.triangledown, location=location.abovebar, color=color.orange, text="BOS?", textcolor=color.orange, size=size.tiny)
+
+var string bias = "Range"
+if not na(lastSwingHigh) and not na(prevSwingHigh) and not na(lastSwingLow) and not na(prevSwingLow)
+    if lastSwingHigh > prevSwingHigh and lastSwingLow > prevSwingLow
+        bias := "Uptrend"
+    else if lastSwingHigh < prevSwingHigh and lastSwingLow < prevSwingLow
+        bias := "Downtrend"
+    else
+        bias := "Range"
+
+// Break of Structure
+// bar_index guards below stop this from stacking duplicate lines/labels: since
+// `close` is the live/still-forming price in real time, ta.crossover can flip
+// true more than once on the same unconfirmed bar as price chops around the
+// level. The guard lets it fire on the first tick that trips it (no waiting
+// for bar close) but only once per bar.
+var int lastBullBosBar = na
+var int lastBearBosBar = na
+
+crossedAboveHigh = ta.crossover(close, lastSwingHigh)
+crossedBelowLow  = ta.crossunder(close, lastSwingLow)
+bullBOS = showBOS and not na(lastSwingHigh) and crossedAboveHigh and bar_index != lastBullBosBar
+bearBOS = showBOS and not na(lastSwingLow) and crossedBelowLow and bar_index != lastBearBosBar
+
+if bullBOS
+    lastBullBosBar := bar_index
+    line.new(lastSwingHighBar, lastSwingHigh, bar_index, lastSwingHigh, color=color.new(color.lime, 0), style=line.style_solid, width=1)
+    label.new(bar_index, lastSwingHigh, "BOS", style=label.style_label_down, color=color.new(color.lime, 80), textcolor=color.lime, size=size.tiny)
+
+if bearBOS
+    lastBearBosBar := bar_index
+    line.new(lastSwingLowBar, lastSwingLow, bar_index, lastSwingLow, color=color.new(color.red, 0), style=line.style_solid, width=1)
+    label.new(bar_index, lastSwingLow, "BOS", style=label.style_label_up, color=color.new(color.red, 80), textcolor=color.red, size=size.tiny)
+
+// Liquidity sweeps — wick beyond a swing level that closes back inside it
+var float lastSweptHigh = na
+var float lastSweptLow = na
+
+sweepHigh = showSweep and not na(lastSwingHigh) and high > lastSwingHigh and close < lastSwingHigh and lastSwingHigh != lastSweptHigh
+sweepLow  = showSweep and not na(lastSwingLow) and low < lastSwingLow and close > lastSwingLow and lastSwingLow != lastSweptLow
+
+if sweepHigh
+    lastSweptHigh := lastSwingHigh
+    label.new(bar_index, high, "Liquidity Sweep", style=label.style_label_down, color=color.new(color.orange, 70), textcolor=color.orange, size=size.tiny)
+
+if sweepLow
+    lastSweptLow := lastSwingLow
+    label.new(bar_index, low, "Liquidity Sweep", style=label.style_label_up, color=color.new(color.orange, 70), textcolor=color.orange, size=size.tiny)
+
+// ============================================================
+// FAIR VALUE GAPS (3-candle imbalance)
+// Boxes extend right only while unmitigated; once price trades back
+// through the gap, the box freezes in place instead of stacking forever.
+// ============================================================
+var box[]   bullFvgBox = array.new_box()
+var float[] bullFvgBot = array.new_float()
+var box[]   bearFvgBox = array.new_box()
+var float[] bearFvgTop = array.new_float()
+
+// bar_index guards for the same intrabar-repaint reason as BOS above: `low`/
+// `high` are live on the still-forming bar, so the gap condition could flip
+// true on more than one tick of the same bar without this.
+var int lastBullFvgBar = na
+var int lastBearFvgBar = na
+
+bullishFVG = showFVG and low > high[2] and bar_index != lastBullFvgBar
+bearishFVG = showFVG and high < low[2] and bar_index != lastBearFvgBar
+
+if bullishFVG
+    lastBullFvgBar := bar_index
+    b = box.new(bar_index[2], low, bar_index, high[2], border_color=color.new(color.lime, 60), bgcolor=color.new(color.lime, 88))
+    label.new(bar_index[1], (low + high[2]) / 2, "FVG", style=label.style_label_left, color=color.new(color.lime, 100), textcolor=color.lime, size=size.tiny)
+    array.push(bullFvgBox, b)
+    array.push(bullFvgBot, high[2])
+
+if bearishFVG
+    lastBearFvgBar := bar_index
+    b = box.new(bar_index[2], low[2], bar_index, high, border_color=color.new(color.red, 60), bgcolor=color.new(color.red, 88))
+    label.new(bar_index[1], (low[2] + high) / 2, "FVG", style=label.style_label_left, color=color.new(color.red, 100), textcolor=color.red, size=size.tiny)
+    array.push(bearFvgBox, b)
+    array.push(bearFvgTop, low[2])
+
+if showFVG and array.size(bullFvgBox) > 0
+    for j = array.size(bullFvgBox) - 1 to 0
+        bx = array.get(bullFvgBox, j)
+        bot = array.get(bullFvgBot, j)
+        box.set_right(bx, bar_index)
+        if low <= bot
+            array.remove(bullFvgBox, j)
+            array.remove(bullFvgBot, j)
+if showFVG and array.size(bearFvgBox) > 0
+    for j = array.size(bearFvgBox) - 1 to 0
+        bx = array.get(bearFvgBox, j)
+        top = array.get(bearFvgTop, j)
+        box.set_right(bx, bar_index)
+        if high >= top
+            array.remove(bearFvgBox, j)
+            array.remove(bearFvgTop, j)
+
+// ============================================================
+// ORDER BLOCKS — last opposite-colour candle before a BOS impulse
+// Boxes extend right only while unmitigated (price hasn't closed back through).
+// ============================================================
+var box[]   bullObBox = array.new_box()
+var float[] bullObBot = array.new_float()
+var box[]   bearObBox = array.new_box()
+var float[] bearObTop = array.new_float()
+
+if bullBOS and showOB
+    var bool obFoundUp = false
+    obFoundUp := false
+    for i = 1 to obLookback
+        if not obFoundUp and close[i] < open[i]
+            ob = box.new(bar_index[i], high[i], bar_index, low[i], border_color=color.new(color.teal, 40), bgcolor=color.new(color.teal, 85))
+            label.new(bar_index[i], low[i], "OB", style=label.style_label_up, color=color.new(color.teal, 100), textcolor=color.teal, size=size.tiny)
+            array.push(bullObBox, ob)
+            array.push(bullObBot, low[i])
+            obFoundUp := true
+
+if bearBOS and showOB
+    var bool obFoundDown = false
+    obFoundDown := false
+    for i = 1 to obLookback
+        if not obFoundDown and close[i] > open[i]
+            ob = box.new(bar_index[i], high[i], bar_index, low[i], border_color=color.new(color.maroon, 40), bgcolor=color.new(color.maroon, 85))
+            label.new(bar_index[i], high[i], "OB", style=label.style_label_down, color=color.new(color.maroon, 100), textcolor=color.maroon, size=size.tiny)
+            array.push(bearObBox, ob)
+            array.push(bearObTop, high[i])
+            obFoundDown := true
+
+if showOB and array.size(bullObBox) > 0
+    for j = array.size(bullObBox) - 1 to 0
+        bx = array.get(bullObBox, j)
+        bot = array.get(bullObBot, j)
+        box.set_right(bx, bar_index)
+        if close < bot
+            array.remove(bullObBox, j)
+            array.remove(bullObBot, j)
+if showOB and array.size(bearObBox) > 0
+    for j = array.size(bearObBox) - 1 to 0
+        bx = array.get(bearObBox, j)
+        top = array.get(bearObTop, j)
+        box.set_right(bx, bar_index)
+        if close > top
+            array.remove(bearObBox, j)
+            array.remove(bearObTop, j)
+
+// ============================================================
+// EQUILIBRIUM / PREMIUM-DISCOUNT — midpoint of the active swing range
+// ============================================================
+var line eqLine = na
+var box  premiumBox = na
+var box  discountBox = na
+
+rangeValid = showEQ and not na(lastSwingHigh) and not na(lastSwingLow) and lastSwingHigh > lastSwingLow
+if rangeValid
+    eqLevel = (lastSwingHigh + lastSwingLow) / 2
+    leftBar = math.min(lastSwingHighBar, lastSwingLowBar)
+
+    if not na(eqLine)
+        line.delete(eqLine)
+    eqLine := line.new(leftBar, eqLevel, bar_index, eqLevel, color=color.new(color.gray, 30), style=line.style_dashed, width=1)
+
+    if not na(premiumBox)
+        box.delete(premiumBox)
+    premiumBox := box.new(leftBar, lastSwingHigh, bar_index, eqLevel, border_color=na, bgcolor=color.new(color.red, 93))
+
+    if not na(discountBox)
+        box.delete(discountBox)
+    discountBox := box.new(leftBar, eqLevel, bar_index, lastSwingLow, border_color=na, bgcolor=color.new(color.lime, 93))
+
+// ============================================================
+// BIAS TABLE
+// ============================================================
+if showBias and barstate.islast
+    var table biasTable = table.new(position.top_right, 1, 1, border_width=1)
+    biasColor = bias == "Uptrend" ? color.new(color.lime, 70) : bias == "Downtrend" ? color.new(color.red, 70) : color.new(color.gray, 70)
+    table.cell(biasTable, 0, 0, "BIAS: " + bias, text_color=color.white, bgcolor=biasColor)
+
+// ============================================================
+// DOJI PATTERN DETECTION
+// ============================================================
+// Classification is mutually exclusive per candle, checked in this priority:
+// Dragonfly > Gravestone > Cross (symmetric wicks) > Long-Legged (long but asymmetric wicks) > plain Doji (fallback)
+bodyHigh = math.max(open, close)
+bodyLow  = math.min(open, close)
+bodySize = bodyHigh - bodyLow
+candleRange = high - low
+isGreen = close >= open
+isRed   = close < open
+
+bodyPct  = candleRange > 0 ? bodySize / candleRange : 1.0
+upperPct = candleRange > 0 ? (high - bodyHigh) / candleRange : 0.0
+lowerPct = candleRange > 0 ? (bodyLow - low) / candleRange : 0.0
+
+isDojiBase     = candleRange > 0 and bodyPct <= dojiBodyMaxPct
+isDragonfly    = isDojiBase and upperPct <= oppWickMaxPct and lowerPct > oppWickMaxPct
+isGravestone   = isDojiBase and lowerPct <= oppWickMaxPct and upperPct > oppWickMaxPct
+isCross        = isDojiBase and not isDragonfly and not isGravestone and upperPct > oppWickMaxPct and lowerPct > oppWickMaxPct and math.abs(upperPct - lowerPct) <= crossSymTolPct
+isLongLegged   = isDojiBase and not isDragonfly and not isGravestone and not isCross and upperPct >= longLeggedWickMinPct and lowerPct >= longLeggedWickMinPct
+isPlainDoji    = isDojiBase and not isDragonfly and not isGravestone and not isCross and not isLongLegged
+
+markGreenDoji      = showDoji and isPlainDoji and isGreen
+markRedDoji        = showDoji and isPlainDoji and isRed
+markGreenLongLegged= showLongLegged and isLongLegged and isGreen
+markRedLongLegged  = showLongLegged and isLongLegged and isRed
+markGreenCross     = showCross and isCross and isGreen
+markRedCross       = showCross and isCross and isRed
+markGreenDragonfly = showDragonfly and isDragonfly and isGreen
+markRedGravestone  = showGravestone and isGravestone and isRed
+
+plotshape(markGreenDoji,       title="Green Doji",              style=shape.circle,  location=location.belowbar, color=color.lime,   text="D",   textcolor=color.lime,   size=size.tiny)
+plotshape(markRedDoji,         title="Red Doji",                style=shape.circle,  location=location.abovebar, color=color.red,    text="D",   textcolor=color.red,    size=size.tiny)
+plotshape(markGreenLongLegged, title="Green Long-Legged Doji",  style=shape.circle,  location=location.belowbar, color=color.lime,   text="LLD", textcolor=color.lime,   size=size.tiny)
+plotshape(markRedLongLegged,   title="Red Long-Legged Doji",    style=shape.circle,  location=location.abovebar, color=color.red,    text="LLD", textcolor=color.red,    size=size.tiny)
+plotshape(markGreenCross,      title="Green Cross Doji",        style=shape.xcross,  location=location.belowbar, color=color.lime,   text="X",   textcolor=color.lime,   size=size.tiny)
+plotshape(markRedCross,        title="Red Inverted Cross Doji", style=shape.xcross,  location=location.abovebar, color=color.red,    text="X",   textcolor=color.red,    size=size.tiny)
+plotshape(markGreenDragonfly,  title="Green Dragonfly Doji",    style=shape.triangleup,   location=location.belowbar, color=color.aqua,   text="DF",  textcolor=color.aqua,   size=size.tiny)
+plotshape(markRedGravestone,   title="Red Gravestone Doji",     style=shape.triangledown, location=location.abovebar, color=color.fuchsia,text="GS",  textcolor=color.fuchsia,size=size.tiny)

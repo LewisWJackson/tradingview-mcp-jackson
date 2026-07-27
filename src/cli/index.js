@@ -9,6 +9,9 @@
  * Pipe-friendly: every command outputs JSON for use with jq.
  */
 
+// Load .env (PUSHOVER_*, ANTHROPIC_*, ALERT_* — see .env.example) before anything else
+import "dotenv/config";
+
 // Register all commands
 import "./commands/health.js";
 import "./commands/chart.js";
@@ -26,6 +29,7 @@ import "./commands/pane.js";
 import "./commands/tab.js";
 import "./commands/stream.js";
 import "./commands/morning.js";
+import "./commands/trade_alert.js";
 
 // Run
 import { run } from "./router.js";

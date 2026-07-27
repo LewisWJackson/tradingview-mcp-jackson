@@ -1,6 +1,7 @@
 {
   "watchlist": ["BTCUSD", "ETHUSD", "SOLUSD"],
   "default_timeframe": "240",
+  "scan_timeframes": ["240", "60", "15"],
 
   "bias_criteria": {
     "bullish": [
