@@ -22,6 +22,9 @@
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import CDP from 'chrome-remote-interface';
+// Same snippet the server injects — imported, not copied, so the test cannot
+// pass against a finder that differs from the shipped one.
+import { FIND_MONACO } from '../src/core/pine.js';
 
 let client;
 let Runtime;
@@ -690,34 +693,7 @@ describe('TradingView MCP — Full E2E (70 tools)', () => {
       return false;
     }
 
-    const FIND_MONACO = `
-      (function findMonacoEditor() {
-        var container = document.querySelector('.monaco-editor.pine-editor-monaco');
-        if (!container) return null;
-        var el = container;
-        var fiberKey;
-        for (var i = 0; i < 20; i++) {
-          if (!el) break;
-          fiberKey = Object.keys(el).find(function(k) { return k.startsWith('__reactFiber$'); });
-          if (fiberKey) break;
-          el = el.parentElement;
-        }
-        if (!fiberKey) return null;
-        var current = el[fiberKey];
-        for (var d = 0; d < 15; d++) {
-          if (!current) break;
-          if (current.memoizedProps && current.memoizedProps.value && current.memoizedProps.value.monacoEnv) {
-            var env = current.memoizedProps.value.monacoEnv;
-            if (env.editor && typeof env.editor.getEditors === 'function') {
-              var editors = env.editor.getEditors();
-              if (editors.length > 0) return { editor: editors[0], env: env };
-            }
-          }
-          current = current.return;
-        }
-        return null;
-      })()
-    `;
+
 
     it('pine_get_source — read editor code', async () => {
       const ready = await ensureEditor();
