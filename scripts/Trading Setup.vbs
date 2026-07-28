@@ -6,6 +6,10 @@ scriptDir = Left(WScript.ScriptFullName, InStrRev(WScript.ScriptFullName, "\"))
 ' 0. Voice greeting
 oVoice.Speak "Good morning. Starting your trading session."
 
+' 0a. Start voice typing widget (node server + Chrome app window)
+oShell.Run "cmd /c node ""C:\Users\ricke\voice-server.js"" >nul 2>&1", 0, False
+WScript.Sleep 2000
+
 ' 1. Launch TradingView with CDP (hidden PS window, wait for it to finish activating)
 oShell.Run "powershell -NoProfile -ExecutionPolicy Bypass -File """ & scriptDir & "launch_tv_debug.ps1""", 0, True
 
