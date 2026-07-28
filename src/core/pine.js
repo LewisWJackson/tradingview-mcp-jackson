@@ -6,30 +6,55 @@
 import { evaluate, evaluateAsync, getClient } from '../connection.js';
 
 // ── Monaco finder (injected into TV page) ──
-const FIND_MONACO = `
+// Two things here are load-bearing and were both wrong before:
+//
+//   1. There can be MORE THAN ONE `.monaco-editor.pine-editor-monaco` element.
+//      The first is a bare wrapper with no React fiber anywhere above it, so
+//      taking querySelector's result and giving up when the fiber walk fails
+//      reports "Pine Editor not open" while it is plainly open on screen.
+//      Every container has to be tried.
+//
+//   2. `editors[0]` is NOT necessarily the editor you can see. Monaco keeps a
+//      hidden zero-size instance around; setValue() on it succeeds and changes
+//      nothing visible, and a subsequent "Add to chart" compiles the stale
+//      source. Pick the instance that is actually rendered.
+// Exported so tests inject the same snippet that ships, rather than keeping a
+// copy that silently rots out of sync with it.
+export const FIND_MONACO = `
   (function findMonacoEditor() {
-    var container = document.querySelector('.monaco-editor.pine-editor-monaco');
-    if (!container) return null;
-    var el = container;
-    var fiberKey;
-    for (var i = 0; i < 20; i++) {
-      if (!el) break;
-      fiberKey = Object.keys(el).find(function(k) { return k.startsWith('__reactFiber$'); });
-      if (fiberKey) break;
-      el = el.parentElement;
-    }
-    if (!fiberKey) return null;
-    var current = el[fiberKey];
-    for (var d = 0; d < 15; d++) {
-      if (!current) break;
-      if (current.memoizedProps && current.memoizedProps.value && current.memoizedProps.value.monacoEnv) {
-        var env = current.memoizedProps.value.monacoEnv;
-        if (env.editor && typeof env.editor.getEditors === 'function') {
-          var editors = env.editor.getEditors();
-          if (editors.length > 0) return { editor: editors[0], env: env };
-        }
+    var containers = document.querySelectorAll('.monaco-editor.pine-editor-monaco');
+    for (var c = 0; c < containers.length; c++) {
+      var el = containers[c];
+      var fiberKey;
+      for (var i = 0; i < 20; i++) {
+        if (!el) break;
+        fiberKey = Object.keys(el).find(function(k) { return k.startsWith('__reactFiber$'); });
+        if (fiberKey) break;
+        el = el.parentElement;
       }
-      current = current.return;
+      if (!fiberKey) continue;
+      var current = el[fiberKey];
+      for (var d = 0; d < 15; d++) {
+        if (!current) break;
+        if (current.memoizedProps && current.memoizedProps.value && current.memoizedProps.value.monacoEnv) {
+          var env = current.memoizedProps.value.monacoEnv;
+          if (env.editor && typeof env.editor.getEditors === 'function') {
+            var editors = env.editor.getEditors();
+            // Deliberately no fallback to editors[0]. The hidden instances
+            // survive in the DOM after the panel is closed, so falling back to
+            // one would make "is the editor ready?" answer yes on a closed
+            // panel and send writes into a buffer nobody can see.
+            var visible = editors.filter(function(e) {
+              var node = e.getDomNode && e.getDomNode();
+              if (!node) return false;
+              var rect = node.getBoundingClientRect();
+              return rect.width > 0 && rect.height > 0;
+            });
+            if (visible.length > 0) return { editor: visible[0], env: env };
+          }
+        }
+        current = current.return;
+      }
     }
     return null;
   })()
@@ -40,14 +65,49 @@ const FIND_MONACO = `
  * Returns true if editor is accessible, false on timeout.
  */
 export async function ensurePineEditorOpen() {
-  const already = await evaluate(`
+  // The parens around the interpolation are load-bearing. FIND_MONACO begins
+  // with a newline, so `return ${FIND_MONACO} !== null` puts a line break
+  // straight after `return` and automatic semicolon insertion turns the whole
+  // thing into a bare `return;` — the finder never runs and this reports the
+  // editor as unavailable forever, however open it is. The `var m = ...` call
+  // sites below are assignments and so were never affected by this.
+  const isReady = () => evaluate(`(function() { return (${FIND_MONACO}) !== null; })()`);
+  const waitReady = async (attempts) => {
+    for (let i = 0; i < attempts; i++) {
+      await new Promise(r => setTimeout(r, 200));
+      if (await isReady()) return true;
+    }
+    return false;
+  };
+
+  if (await isReady()) return true;
+
+  // Order matters, and only one of these may fire. The Pine button TOGGLES, so
+  // firing it after something else already opened the panel closes it again and
+  // the poll then times out on a panel we just shut.
+  //
+  // The button is tried first because it is the only path measured to work on
+  // this build: dispatching the sequence opens the editor in under 2s, whereas
+  // bottomWidgetBar.activateScriptEditorTab() was a no-op for 14s straight.
+  // (Same object is missing hideWidget entirely, so treat it as unreliable.)
+  //
+  // btn.click() on its own is not enough — TradingView binds to the pointer /
+  // mouse sequence, not the synthetic `click` that HTMLElement.click() fires.
+  await evaluate(`
     (function() {
-      var m = ${FIND_MONACO};
-      return m !== null;
+      var btn = document.querySelector('[data-name="pine-dialog-button"]')
+        || document.querySelector('[aria-label="Pine"]');
+      if (!btn) return;
+      ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click'].forEach(function(type) {
+        var Ctor = type.indexOf('pointer') === 0 && typeof PointerEvent === 'function'
+          ? PointerEvent : MouseEvent;
+        btn.dispatchEvent(new Ctor(type, { bubbles: true, cancelable: true, view: window }));
+      });
     })()
   `);
-  if (already) return true;
+  if (await waitReady(25)) return true;
 
+  // Fallback for builds where the button is absent or shaped differently.
   await evaluate(`
     (function() {
       var bwb = window.TradingView && window.TradingView.bottomWidgetBar;
@@ -57,20 +117,7 @@ export async function ensurePineEditorOpen() {
     })()
   `);
 
-  await evaluate(`
-    (function() {
-      var btn = document.querySelector('[aria-label="Pine"]')
-        || document.querySelector('[data-name="pine-dialog-button"]');
-      if (btn) btn.click();
-    })()
-  `);
-
-  for (let i = 0; i < 50; i++) {
-    await new Promise(r => setTimeout(r, 200));
-    const ready = await evaluate(`(function() { return ${FIND_MONACO} !== null; })()`);
-    if (ready) return true;
-  }
-  return false;
+  return waitReady(25);
 }
 
 // ── Pure / offline functions ──
