@@ -59,6 +59,20 @@ function wv(path) {
 /** Sleep for ms */
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
+/**
+ * Close a bottom panel via the real tool.
+ *
+ * bottomWidgetBar.hideWidget was removed in TradingView 3.3, and calling it
+ * inside a try/catch swallows the TypeError — which used to leave the Strategy
+ * Tester wedged open on every chart the suite touched.
+ */
+async function closeBottomPanel(panel) {
+  try {
+    const { openPanel } = await import('../src/core/ui.js');
+    await openPanel({ panel, action: 'close' });
+  } catch { /* best effort */ }
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 
 describe('TradingView MCP — Full E2E (70 tools)', () => {
@@ -625,7 +639,7 @@ describe('TradingView MCP — Full E2E (70 tools)', () => {
       assert.ok(typeof data.panel_found === 'boolean', 'Strategy panel detection works');
 
       // Close it
-      await evaluate(`try { ${BOTTOM_BAR}.hideWidget('backtesting'); } catch(e) {}`);
+      await closeBottomPanel('strategy-tester');
     });
 
     it('data_get_trades — trade list (panel-dependent)', async () => {
@@ -636,7 +650,7 @@ describe('TradingView MCP — Full E2E (70 tools)', () => {
         !!(document.querySelector('[data-name="backtesting"]') || document.querySelector('[class*="strategyReport"]'))
       `);
       assert.ok(typeof panelExists === 'boolean', 'Panel detection works');
-      await evaluate(`try { ${BOTTOM_BAR}.hideWidget('backtesting'); } catch(e) {}`);
+      await closeBottomPanel('strategy-tester');
     });
 
     it('data_get_equity — equity curve (panel-dependent)', async () => {
@@ -647,7 +661,7 @@ describe('TradingView MCP — Full E2E (70 tools)', () => {
         !!(document.querySelector('[data-name="backtesting"]') || document.querySelector('[class*="strategyReport"]'))
       `);
       assert.ok(typeof panelExists === 'boolean', 'Panel detection works');
-      await evaluate(`try { ${BOTTOM_BAR}.hideWidget('backtesting'); } catch(e) {}`);
+      await closeBottomPanel('strategy-tester');
     });
   });
 
@@ -664,7 +678,7 @@ describe('TradingView MCP — Full E2E (70 tools)', () => {
     after(async () => {
       // Restore editor state
       if (!editorWasOpen) {
-        await evaluate(`try { ${BOTTOM_BAR}.hideWidget('pine-editor'); } catch(e) {}`);
+        await closeBottomPanel('pine-editor');
         await sleep(300);
       }
     });

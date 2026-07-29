@@ -90,32 +90,46 @@ function scoreTarget(state) {
  * live chart API. Returns null if the window can't be probed in time.
  */
 async function probeTarget(target) {
-  let probe = null;
+  let timer = null;
+
+  // The socket is closed by this chain rather than by the caller's finally: on
+  // timeout the race has already moved on, so a finally out there can run while
+  // this is still connecting and leave an orphaned socket open — which keeps the
+  // event loop alive long after the process meant to exit.
+  const connect = (async () => {
+    const client = await CDP({ host: CDP_HOST, port: CDP_PORT, target: target.id });
+    try {
+      const { result } = await client.Runtime.evaluate({
+        expression: `(function () {
+          try {
+            return {
+              focused: document.hasFocus(),
+              visible: document.visibilityState === 'visible',
+              apiReady: !!(window.TradingViewApi && window.TradingViewApi._activeChartWidgetWV),
+            };
+          } catch (e) { return null; }
+        })()`,
+        returnByValue: true,
+      });
+      return result?.value ?? null;
+    } finally {
+      try { await client.close(); } catch { /* ignore */ }
+    }
+  })();
+  // A failure arriving after the race settled must not go unhandled.
+  connect.catch(() => {});
+
   try {
-    const state = await Promise.race([
-      (async () => {
-        probe = await CDP({ host: CDP_HOST, port: CDP_PORT, target: target.id });
-        const { result } = await probe.Runtime.evaluate({
-          expression: `(function () {
-            try {
-              return {
-                focused: document.hasFocus(),
-                visible: document.visibilityState === 'visible',
-                apiReady: !!(window.TradingViewApi && window.TradingViewApi._activeChartWidgetWV),
-              };
-            } catch (e) { return null; }
-          })()`,
-          returnByValue: true,
-        });
-        return result?.value ?? null;
-      })(),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('probe timeout')), PROBE_TIMEOUT)),
+    return await Promise.race([
+      connect,
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error('probe timeout')), PROBE_TIMEOUT);
+      }),
     ]);
-    return state;
   } catch {
     return null;
   } finally {
-    if (probe) { try { await probe.close(); } catch { /* ignore */ } }
+    clearTimeout(timer);
   }
 }
 
