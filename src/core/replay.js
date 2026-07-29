@@ -63,6 +63,47 @@ export async function autoplay({ speed } = {}) {
   return { success: true, autoplay_active: !!isAutoplay, delay_ms: currentDelay };
 }
 
+/**
+ * stopReplay() opens a "Leave current replay?" confirmation and does nothing
+ * until it is answered, so it cannot be trusted on its own. Dismiss the dialog
+ * (declining the "Save this replay" checkbox, which is ticked by default) and
+ * report whether it actually went away.
+ */
+async function dismissLeaveReplayDialog() {
+  return evaluate(`
+    (function() {
+      var dialog = document.querySelector('[data-name="replay-exit-confirm"], [class*="dialog"]');
+      if (!dialog || !/leave current replay/i.test(dialog.textContent || '')) return 'no_dialog';
+      var save = dialog.querySelector('input[type="checkbox"]');
+      if (save && save.checked) save.click();
+      var buttons = dialog.querySelectorAll('button');
+      for (var i = 0; i < buttons.length; i++) {
+        if (/^\\s*leave\\s*$/i.test(buttons[i].textContent || '')) { buttons[i].click(); return 'confirmed'; }
+      }
+      return 'dialog_without_leave_button';
+    })()
+  `);
+}
+
+/** Last resort: drop each chart model back to realtime directly, no dialog. */
+async function forceModelsToRealtime() {
+  return evaluate(`
+    (function() {
+      try {
+        var widgets = window.TradingViewApi._chartWidgetCollection.getAll();
+        var switched = 0;
+        for (var i = 0; i < widgets.length; i++) {
+          try {
+            var m = widgets[i].model();
+            if (typeof m.switchToRealtime === 'function') { m.switchToRealtime(); switched++; }
+          } catch (e) { /* skip this pane */ }
+        }
+        return switched;
+      } catch (e) { return 0; }
+    })()
+  `);
+}
+
 export async function stop() {
   const rp = await getReplayApi();
   const started = await evaluate(wv(`${rp}.isReplayStarted()`));
@@ -71,9 +112,35 @@ export async function stop() {
     try { await evaluate(`${rp}.hideReplayToolbar()`); } catch {}
     return { success: true, action: 'already_stopped' };
   }
+
   await evaluate(`${rp}.stopReplay()`);
-  try { await evaluate(`${rp}.hideReplayToolbar()`); } catch {}
-  return { success: true, action: 'replay_stopped' };
+  await new Promise(r => setTimeout(r, 500));
+  const dialog = await dismissLeaveReplayDialog();
+  await new Promise(r => setTimeout(r, 500));
+
+  try { await evaluate(`${rp}.goToRealtime()`); } catch { /* ignore */ }
+
+  let stillRunning = await evaluate(wv(`${rp}.isReplayStarted()`));
+  let forced = 0;
+  if (stillRunning) {
+    // Leaving a chart parked in replay makes every symbol read "doesn't
+    // exist", so fall back rather than reporting a stop that didn't happen.
+    forced = await forceModelsToRealtime();
+    await new Promise(r => setTimeout(r, 1000));
+    stillRunning = await evaluate(wv(`${rp}.isReplayStarted()`));
+  }
+
+  try { await evaluate(`${rp}.hideReplayToolbar()`); } catch { /* ignore */ }
+
+  return {
+    success: !stillRunning,
+    action: stillRunning ? 'replay_stop_failed' : 'replay_stopped',
+    confirm_dialog: dialog,
+    panes_forced_to_realtime: forced,
+    ...(stillRunning && {
+      warning: 'Replay is still active. The chart may show "This symbol doesn\'t exist" until it exits replay — dismiss the "Leave current replay?" dialog on the chart.',
+    }),
+  };
 }
 
 export async function trade({ action }) {

@@ -159,9 +159,59 @@ export async function uiState() {
   return { success: true, ...state };
 }
 
-export async function launch({ port, kill_existing } = {}) {
-  const cdpPort = port || 9222;
-  const killFirst = kill_existing !== false;
+/**
+ * Launch an MSIX/Store-packaged app by AUMID.
+ *
+ * The exe under "Program Files\WindowsApps" passes existsSync but cannot be
+ * spawned directly — the directory ACLs reject it with EPERM. Activating the
+ * package through the shell's activation manager works and forwards argv,
+ * which is what we need to get --remote-debugging-port through.
+ *
+ * Returns the new process id, or null if it could not be parsed.
+ */
+function activatePackagedApp(aumid, args) {
+  const ps = `
+$ErrorActionPreference = 'Stop'
+Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public static class TvActivator {
+    [ComImport, Guid("2e941141-7f97-4756-ba1d-9decde894a3d"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    interface IApplicationActivationManager {
+        [PreserveSig]
+        int ActivateApplication([MarshalAs(UnmanagedType.LPWStr)] string appUserModelId,
+                                [MarshalAs(UnmanagedType.LPWStr)] string arguments,
+                                uint options, out uint processId);
+    }
+    [ComImport, Guid("45BA127D-10A8-46EA-8AB7-56EA9078943C")]
+    class ApplicationActivationManager { }
+    public static uint Activate(string aumid, string args) {
+        var mgr = (IApplicationActivationManager)(new ApplicationActivationManager());
+        uint pid;
+        int hr = mgr.ActivateApplication(aumid, args, 0, out pid);
+        if (hr < 0) throw new Exception("ActivateApplication failed: 0x" + hr.ToString("X8"));
+        return pid;
+    }
+}
+'@
+[TvActivator]::Activate('${aumid}', '${args}')
+`;
+  // -EncodedCommand sidesteps nested-quote mangling between cmd, PowerShell and C#.
+  const encoded = Buffer.from(ps, 'utf16le').toString('base64');
+  const out = execSync(`powershell -NoProfile -STA -EncodedCommand ${encoded}`, { timeout: 20000 })
+    .toString().trim();
+  const pid = parseInt(out.split('\n').pop().trim(), 10);
+  return Number.isNaN(pid) ? null : pid;
+}
+
+/**
+ * Locate TradingView on this machine, without launching it.
+ *
+ * Returns { path, aumid, candidates }. On success exactly one of path/aumid is
+ * set: `aumid` means a Store/MSIX install, which must be shell-activated rather
+ * than spawned. Both null means TradingView was not found.
+ */
+export function detectTradingView() {
   const platform = process.platform;
 
   const pathMap = {
@@ -184,6 +234,7 @@ export async function launch({ port, kill_existing } = {}) {
   };
 
   let tvPath = null;
+  let tvAumid = null; // set instead of tvPath when TradingView is a Store/MSIX install
   const candidates = pathMap[platform] || pathMap.linux;
   for (const p of candidates) {
     if (p && existsSync(p)) { tvPath = p; break; }
@@ -207,7 +258,32 @@ export async function launch({ port, kill_existing } = {}) {
     } catch { /* ignore */ }
   }
 
-  if (!tvPath) {
+  // Store install: resolve the AUMID rather than a path — the packaged exe is
+  // present on disk but not directly spawnable, so it has to be shell-activated.
+  if (!tvPath && platform === 'win32') {
+    try {
+      const found = execSync(
+        'powershell -NoProfile -Command "(Get-StartApps | Where-Object { $_.Name -like \'*TradingView*\' } | Select-Object -First 1).AppID"',
+        { timeout: 5000 }
+      ).toString().trim().split('\n')[0].trim();
+      if (found) tvAumid = found;
+    } catch { /* ignore */ }
+  }
+
+  return { path: tvPath, aumid: tvAumid, candidates };
+}
+
+export async function launch({ port, kill_existing } = {}) {
+  const cdpPort = Number.parseInt(port, 10) || 9222;
+  if (cdpPort < 1 || cdpPort > 65535) {
+    throw new Error(`Invalid CDP port: ${port}. Must be between 1 and 65535.`);
+  }
+  const killFirst = kill_existing !== false;
+  const platform = process.platform;
+
+  const { path: tvPath, aumid: tvAumid, candidates } = detectTradingView();
+
+  if (!tvPath && !tvAumid) {
     throw new Error(`TradingView not found on ${platform}. Searched: ${candidates.join(', ')}. Launch manually with: /path/to/TradingView --remote-debugging-port=${cdpPort}`);
   }
 
@@ -219,8 +295,14 @@ export async function launch({ port, kill_existing } = {}) {
     } catch { /* may not be running */ }
   }
 
-  const child = spawn(tvPath, [`--remote-debugging-port=${cdpPort}`], { detached: true, stdio: 'ignore' });
-  child.unref();
+  let launchedPid = null;
+  if (tvAumid) {
+    launchedPid = activatePackagedApp(tvAumid, `--remote-debugging-port=${cdpPort}`);
+  } else {
+    const child = spawn(tvPath, [`--remote-debugging-port=${cdpPort}`], { detached: true, stdio: 'ignore' });
+    child.unref();
+    launchedPid = child.pid;
+  }
 
   for (let i = 0; i < 15; i++) {
     await new Promise(r => setTimeout(r, 1000));
@@ -236,7 +318,7 @@ export async function launch({ port, kill_existing } = {}) {
       if (ready) {
         const info = JSON.parse(ready);
         return {
-          success: true, platform, binary: tvPath, pid: child.pid,
+          success: true, platform, binary: tvPath || tvAumid, pid: launchedPid,
           cdp_port: cdpPort, cdp_url: `http://localhost:${cdpPort}`,
           browser: info.Browser, user_agent: info['User-Agent'],
         };
@@ -245,7 +327,7 @@ export async function launch({ port, kill_existing } = {}) {
   }
 
   return {
-    success: true, platform, binary: tvPath, pid: child.pid, cdp_port: cdpPort, cdp_ready: false,
+    success: true, platform, binary: tvPath || tvAumid, pid: launchedPid, cdp_port: cdpPort, cdp_ready: false,
     warning: 'TradingView launched but CDP not responding yet. It may still be loading. Try tv_health_check in a few seconds.',
   };
 }

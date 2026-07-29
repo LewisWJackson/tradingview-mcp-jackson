@@ -68,13 +68,80 @@ export async function connect() {
   throw new Error(`CDP connection failed after ${MAX_RETRIES} attempts: ${lastError?.message}`);
 }
 
+// Scoring weights for choosing between several open TradingView windows.
+// apiReady dominates: a focused window whose chart API hasn't initialised is
+// useless to every tool, so a ready background window beats it. Focus then
+// breaks the tie between windows that are equally usable.
+const SCORE_API_READY = 4;
+const SCORE_FOCUSED = 2;
+const SCORE_VISIBLE = 1;
+const MAX_TARGET_SCORE = SCORE_API_READY + SCORE_FOCUSED + SCORE_VISIBLE;
+const PROBE_TIMEOUT = 2000;
+
+function scoreTarget(state) {
+  if (!state) return 0;
+  return (state.apiReady ? SCORE_API_READY : 0)
+    + (state.focused ? SCORE_FOCUSED : 0)
+    + (state.visible ? SCORE_VISIBLE : 0);
+}
+
+/**
+ * Briefly attach to a target to ask whether it is focused, visible and has a
+ * live chart API. Returns null if the window can't be probed in time.
+ */
+async function probeTarget(target) {
+  let probe = null;
+  try {
+    const state = await Promise.race([
+      (async () => {
+        probe = await CDP({ host: CDP_HOST, port: CDP_PORT, target: target.id });
+        const { result } = await probe.Runtime.evaluate({
+          expression: `(function () {
+            try {
+              return {
+                focused: document.hasFocus(),
+                visible: document.visibilityState === 'visible',
+                apiReady: !!(window.TradingViewApi && window.TradingViewApi._activeChartWidgetWV),
+              };
+            } catch (e) { return null; }
+          })()`,
+          returnByValue: true,
+        });
+        return result?.value ?? null;
+      })(),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('probe timeout')), PROBE_TIMEOUT)),
+    ]);
+    return state;
+  } catch {
+    return null;
+  } finally {
+    if (probe) { try { await probe.close(); } catch { /* ignore */ } }
+  }
+}
+
 async function findChartTarget() {
   const resp = await fetch(`http://${CDP_HOST}:${CDP_PORT}/json/list`);
   const targets = await resp.json();
+
+  const pages = targets.filter(t => t.type === 'page');
   // Prefer targets with tradingview.com/chart in the URL
-  return targets.find(t => t.type === 'page' && /tradingview\.com\/chart/i.test(t.url))
-    || targets.find(t => t.type === 'page' && /tradingview/i.test(t.url))
-    || null;
+  const charts = pages.filter(t => /tradingview\.com\/chart/i.test(t.url));
+  const candidates = charts.length ? charts : pages.filter(t => /tradingview/i.test(t.url));
+
+  if (candidates.length === 0) return null;
+  if (candidates.length === 1) return candidates[0];
+
+  // Several windows open (a restored session can bring back half a dozen).
+  // Taking the first match attaches to an arbitrary one — often a background
+  // window with no initialised chart API — so rank them instead.
+  let best = null;
+  let bestScore = -1;
+  for (const t of candidates) {
+    const score = scoreTarget(await probeTarget(t));
+    if (score > bestScore) { best = t; bestScore = score; }
+    if (bestScore === MAX_TARGET_SCORE) break;
+  }
+  return best || candidates[0];
 }
 
 export async function getTargetInfo() {

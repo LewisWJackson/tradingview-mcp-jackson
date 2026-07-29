@@ -105,7 +105,7 @@ export async function run(argv) {
       }
       await execute(handler, values, positionals);
     } catch (err) {
-      handleError(err);
+      await handleError(err);
     }
   } else {
     handler = cmd.handler;
@@ -123,28 +123,47 @@ export async function run(argv) {
       }
       await execute(handler, values, positionals);
     } catch (err) {
-      handleError(err);
+      await handleError(err);
     }
   }
+}
+
+/**
+ * Finish a command without calling process.exit().
+ *
+ * On Node 24 / Windows, process.exit() after a fetch() aborts the process with
+ * "Assertion failed: !(handle->flags & UV_HANDLE_CLOSING)" (src\win\async.c),
+ * so a command that printed a perfectly good result still exits 0xC0000409 and
+ * reads as a crash. Closing undici's dispatcher or sending Connection: close
+ * does not help — only letting the loop drain does.
+ *
+ * So: close the CDP socket (otherwise it holds the loop open indefinitely),
+ * set the exit code, and let Node exit on its own. The watchdog is unref'd, so
+ * it never keeps the process alive — it only fires if something else is still
+ * holding the loop, turning a hang into an exit.
+ */
+async function shutdown(code) {
+  process.exitCode = code;
+  try {
+    const { disconnect } = await import('../connection.js');
+    await disconnect();
+  } catch { /* nothing open to close */ }
+  setTimeout(() => process.exit(code), 5000).unref();
 }
 
 async function execute(handler, values, positionals) {
   try {
     const result = await handler(values, positionals);
     console.log(JSON.stringify(result, null, 2));
-    process.exit(0);
+    await shutdown(0);
   } catch (err) {
-    handleError(err);
+    await handleError(err);
   }
 }
 
-function handleError(err) {
+async function handleError(err) {
   const message = err.message || String(err);
-  // Connection failures get exit code 2
-  if (/CDP|connection|ECONNREFUSED|not running/i.test(message)) {
-    console.error(JSON.stringify({ success: false, error: message }, null, 2));
-    process.exit(2);
-  }
   console.error(JSON.stringify({ success: false, error: message }, null, 2));
-  process.exit(1);
+  // Connection failures get exit code 2
+  await shutdown(/CDP|connection|ECONNREFUSED|not running/i.test(message) ? 2 : 1);
 }

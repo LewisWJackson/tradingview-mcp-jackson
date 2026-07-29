@@ -49,8 +49,14 @@ export async function openPanel({ panel, action }) {
           else { if (typeof bwb.showWidget === 'function') bwb.showWidget(widgetName); }
           performed = 'opened';
         } else if (action === 'close' || (action === 'toggle' && isOpen)) {
-          if (typeof bwb.hideWidget === 'function') bwb.hideWidget(widgetName);
-          performed = 'closed';
+          // TradingView 3.3 dropped the public hideWidget(); fall back through
+          // the current API rather than silently reporting a close that never
+          // happened. Ordered newest-safe first, private _hideWidget last.
+          if (typeof bwb.hideWidget === 'function') { bwb.hideWidget(widgetName); performed = 'closed'; }
+          else if (typeof bwb.close === 'function') { bwb.close(); performed = 'closed'; }
+          else if (typeof bwb.hide === 'function') { bwb.hide(); performed = 'closed'; }
+          else if (typeof bwb._hideWidget === 'function') { bwb._hideWidget(widgetName); performed = 'closed'; }
+          else performed = 'unavailable';
         }
         return { was_open: isOpen, performed: performed };
       })()

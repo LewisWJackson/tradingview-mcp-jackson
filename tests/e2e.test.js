@@ -140,14 +140,11 @@ describe('TradingView MCP — Full E2E (70 tools)', () => {
     });
 
     it('tv_launch — auto-detect binary (verify path resolution only)', async () => {
-      // tv_launch is destructive (kills TradingView), so we only test path detection
-      const { existsSync } = await import('fs');
-      const paths = [
-        '/Applications/TradingView.app/Contents/MacOS/TradingView',
-        `${process.env.HOME}/Applications/TradingView.app/Contents/MacOS/TradingView`,
-      ];
-      const found = paths.some(p => existsSync(p));
-      assert.ok(found, 'TradingView binary found on disk');
+      // tv_launch is destructive (kills TradingView), so we only test detection.
+      const { detectTradingView } = await import('../src/core/health.js');
+      const { path, aumid } = detectTradingView();
+      // A Store/MSIX install resolves to an AUMID instead of a spawnable path.
+      assert.ok(path || aumid, 'TradingView resolved to a binary path or an AUMID');
     });
   });
 
@@ -1033,16 +1030,20 @@ val = array.get(a, 5)`;
       const bwb = await apiExists(BOTTOM_BAR);
       assert.ok(bwb, 'bottomWidgetBar exists');
 
-      // Open
-      await evaluate(`${BOTTOM_BAR}.showWidget('pine-editor')`);
+      // Drive the real tool rather than the raw API, so a TradingView API
+      // change (e.g. hideWidget going away in 3.3) fails here instead of
+      // silently reporting a close that never happened.
+      const { openPanel } = await import('../src/core/ui.js');
+
+      const opened = await openPanel({ panel: 'pine-editor', action: 'open' });
       await sleep(500);
+      assert.equal(opened.performed, 'opened', 'Panel reported opened');
       const isOpen = await evaluate(`!!document.querySelector('.monaco-editor.pine-editor-monaco')`);
+      assert.ok(isOpen, 'Pine editor is actually on screen after open');
 
-      // Close
-      await evaluate(`${BOTTOM_BAR}.hideWidget('pine-editor')`);
-      await sleep(300);
-
-      assert.ok(typeof isOpen === 'boolean', 'Panel toggle works');
+      const closed = await openPanel({ panel: 'pine-editor', action: 'close' });
+      await sleep(500);
+      assert.equal(closed.performed, 'closed', 'Panel reported closed (not "unavailable")');
     });
 
     it('ui_fullscreen — find fullscreen button', async () => {
@@ -1152,17 +1153,25 @@ val = array.get(a, 5)`;
   describe('Replay Mode', () => {
 
     after(async () => {
-      // Ensure replay is stopped
+      // Use the real tool: raw stopReplay() opens a confirmation dialog and
+      // leaves the chart parked in replay (every symbol then reads "doesn't
+      // exist"), which is how a interrupted run used to wreck a live layout.
       try {
-        const rp = REPLAY_API;
-        const started = await evaluate(wv(`${rp}.isReplayStarted()`));
-        if (started) {
-          await evaluate(`${rp}.stopReplay()`);
-          await evaluate(`${rp}.goToRealtime()`);
-          await evaluate(`${rp}.hideReplayToolbar()`);
-          await sleep(500);
-        }
-      } catch {}
+        const { stop } = await import('../src/core/replay.js');
+        await stop();
+      } catch { /* best effort */ }
+      // Belt and braces — force any pane still in replay back to realtime.
+      try {
+        await evaluate(`
+          (function () {
+            try {
+              window.TradingViewApi._chartWidgetCollection.getAll().forEach(function (w) {
+                try { w.model().switchToRealtime(); } catch (e) {}
+              });
+            } catch (e) {}
+          })()
+        `);
+      } catch { /* best effort */ }
     });
 
     it('replay_start — enter replay mode', async () => {
@@ -1234,13 +1243,14 @@ val = array.get(a, 5)`;
       const started = await evaluate(wv(`${REPLAY_API}.isReplayStarted()`));
       if (!started) return;
 
-      await evaluate(`${REPLAY_API}.stopReplay()`);
-      await evaluate(`${REPLAY_API}.goToRealtime()`);
-      await evaluate(`${REPLAY_API}.hideReplayToolbar()`);
+      // Drive the real tool — it handles the "Leave current replay?" dialog
+      // that makes a bare stopReplay() a no-op.
+      const { stop } = await import('../src/core/replay.js');
+      const result = await stop();
       await sleep(500);
 
       const stoppedNow = await evaluate(wv(`${REPLAY_API}.isReplayStarted()`));
-      assert.ok(!stoppedNow, 'Replay stopped');
+      assert.ok(!stoppedNow, `Replay stopped (tool reported: ${JSON.stringify(result)})`);
     });
   });
 
