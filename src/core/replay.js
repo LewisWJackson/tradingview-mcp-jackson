@@ -85,6 +85,31 @@ async function dismissLeaveReplayDialog() {
   `);
 }
 
+/**
+ * Is any pane actually in replay?
+ *
+ * Neither of the obvious signals can be trusted. `isReplayStarted()` stays true
+ * after replay has genuinely ended, and `replaySessionState()` lingers as a
+ * saved session descriptor on charts that are demonstrably live. Per-pane
+ * `model().isInReplay()` is the one that tracks reality.
+ */
+async function anyPaneInReplay() {
+  return evaluate(`
+    (function () {
+      try {
+        var widgets = window.TradingViewApi._chartWidgetCollection.getAll();
+        for (var i = 0; i < widgets.length; i++) {
+          try {
+            var v = widgets[i].model().isInReplay();
+            if (v && typeof v.value === 'function' ? v.value() : v) return true;
+          } catch (e) { /* skip this pane */ }
+        }
+        return false;
+      } catch (e) { return false; }
+    })()
+  `);
+}
+
 /** Last resort: drop each chart model back to realtime directly, no dialog. */
 async function forceModelsToRealtime() {
   return evaluate(`
@@ -106,8 +131,7 @@ async function forceModelsToRealtime() {
 
 export async function stop() {
   const rp = await getReplayApi();
-  const started = await evaluate(wv(`${rp}.isReplayStarted()`));
-  if (!started) {
+  if (!(await anyPaneInReplay())) {
     // Try to hide toolbar even if not started
     try { await evaluate(`${rp}.hideReplayToolbar()`); } catch {}
     return { success: true, action: 'already_stopped' };
@@ -120,14 +144,14 @@ export async function stop() {
 
   try { await evaluate(`${rp}.goToRealtime()`); } catch { /* ignore */ }
 
-  let stillRunning = await evaluate(wv(`${rp}.isReplayStarted()`));
+  let stillRunning = await anyPaneInReplay();
   let forced = 0;
   if (stillRunning) {
     // Leaving a chart parked in replay makes every symbol read "doesn't
     // exist", so fall back rather than reporting a stop that didn't happen.
     forced = await forceModelsToRealtime();
     await new Promise(r => setTimeout(r, 1000));
-    stillRunning = await evaluate(wv(`${rp}.isReplayStarted()`));
+    stillRunning = await anyPaneInReplay();
   }
 
   try { await evaluate(`${rp}.hideReplayToolbar()`); } catch { /* ignore */ }
