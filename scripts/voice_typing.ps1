@@ -6,4 +6,4 @@ Start-Sleep -Milliseconds 800
 
 # Open the voice typing widget as a standalone Chrome app window
 Start-Process "C:\Program Files\Google\Chrome\Application\chrome.exe" `
-    -ArgumentList '--app=http://localhost:7777', '--window-size=360,390', '--window-position=20,20'
+    -ArgumentList '--app=http://localhost:7777', '--window-size=360,390', '--window-position=20,20', '--start-minimized'
