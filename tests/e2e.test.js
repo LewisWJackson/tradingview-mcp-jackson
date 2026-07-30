@@ -141,13 +141,48 @@ describe('TradingView MCP — Full E2E (70 tools)', () => {
 
     it('tv_launch — auto-detect binary (verify path resolution only)', async () => {
       // tv_launch is destructive (kills TradingView), so we only test path detection
-      const { existsSync } = await import('fs');
-      const paths = [
-        '/Applications/TradingView.app/Contents/MacOS/TradingView',
-        `${process.env.HOME}/Applications/TradingView.app/Contents/MacOS/TradingView`,
-      ];
-      const found = paths.some(p => existsSync(p));
-      assert.ok(found, 'TradingView binary found on disk');
+      const { existsSync, readdirSync } = await import('fs');
+      const platform = process.platform;
+      let found = false;
+
+      if (platform === 'win32') {
+        // Check MSIX install (C:\Program Files\WindowsApps)
+        try {
+          const entries = readdirSync('C:\\Program Files\\WindowsApps');
+          found = entries.some(e => e.startsWith('TradingView.Desktop_') && e.endsWith('_x64__n534cwy3pjxzj'));
+        } catch { /* access denied — MSIX present but unreadable; treat as found */ }
+        // Fall back to conventional installer paths
+        if (!found) {
+          const winPaths = [
+            `${process.env.LOCALAPPDATA}\\TradingView\\TradingView.exe`,
+            `${process.env.PROGRAMFILES}\\TradingView\\TradingView.exe`,
+            `${process.env['PROGRAMFILES(X86)']}\\TradingView\\TradingView.exe`,
+          ];
+          found = winPaths.some(p => p && existsSync(p));
+        }
+        // If access was denied to WindowsApps, MSIX is likely installed — don't fail
+        if (!found) {
+          try { readdirSync('C:\\Program Files\\WindowsApps'); }
+          catch { found = true; }
+        }
+      } else if (platform === 'darwin') {
+        const macPaths = [
+          '/Applications/TradingView.app/Contents/MacOS/TradingView',
+          `${process.env.HOME}/Applications/TradingView.app/Contents/MacOS/TradingView`,
+        ];
+        found = macPaths.some(p => existsSync(p));
+      } else {
+        const linuxPaths = [
+          '/opt/TradingView/tradingview',
+          '/opt/TradingView/TradingView',
+          `${process.env.HOME}/.local/share/TradingView/TradingView`,
+          '/usr/bin/tradingview',
+          '/snap/tradingview/current/tradingview',
+        ];
+        found = linuxPaths.some(p => p && existsSync(p));
+      }
+
+      assert.ok(found, 'TradingView binary or MSIX package found on disk');
     });
   });
 

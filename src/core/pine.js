@@ -4,6 +4,7 @@
  * They throw on error (callers catch and format).
  */
 import { evaluate, evaluateAsync, getClient } from '../connection.js';
+import { request as httpsRequest } from 'node:https';
 
 // ── Monaco finder (injected into TV page) ──
 const FIND_MONACO = `
@@ -187,24 +188,36 @@ export async function check({ source }) {
   const formData = new URLSearchParams();
   formData.append('source', source);
 
-  const response = await fetch(
-    'https://pine-facade.tradingview.com/pine-facade/translate_light?user_name=Guest&pine_id=00000000-0000-0000-0000-000000000000',
-    {
+  const body = formData.toString();
+  const result = await new Promise((resolve, reject) => {
+    const req = httpsRequest({
+      hostname: 'pine-facade.tradingview.com',
+      path: '/pine-facade/translate_light?user_name=Guest&pine_id=00000000-0000-0000-0000-000000000000',
       method: 'POST',
       headers: {
         'Accept': 'application/json',
         'Content-Type': 'application/x-www-form-urlencoded',
         'Referer': 'https://www.tradingview.com/',
+        'Content-Length': Buffer.byteLength(body),
+        'Connection': 'close',
       },
-      body: formData,
-    }
-  );
-
-  if (!response.ok) {
-    throw new Error(`TradingView API returned ${response.status}: ${response.statusText}`);
-  }
-
-  const result = await response.json();
+    }, (res) => {
+      if (res.statusCode < 200 || res.statusCode >= 300) {
+        reject(new Error(`TradingView API returned ${res.statusCode}: ${res.statusMessage}`));
+        res.resume();
+        return;
+      }
+      const chunks = [];
+      res.on('data', chunk => chunks.push(chunk));
+      res.on('end', () => {
+        try { resolve(JSON.parse(Buffer.concat(chunks).toString('utf-8'))); }
+        catch (e) { reject(e); }
+      });
+    });
+    req.on('error', reject);
+    req.write(body);
+    req.end();
+  });
   const errors = [];
   const warnings = [];
   const inner = result?.result;
