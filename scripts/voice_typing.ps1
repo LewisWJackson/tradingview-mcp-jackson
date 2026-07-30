@@ -1,30 +1,9 @@
-Add-Type @"
-using System;
-using System.Runtime.InteropServices;
-using System.Threading;
-public class WinInput {
-    [DllImport("user32.dll")] public static extern IntPtr GetShellWindow();
-    [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
-    [DllImport("user32.dll")] public static extern bool AllowSetForegroundWindow(int dwProcessId);
-    [DllImport("user32.dll")] public static extern void keybd_event(byte vk, byte scan, uint flags, UIntPtr extra);
+# Start voice server (no-op if already running — server handles EADDRINUSE gracefully)
+Start-Process "node" -ArgumentList "C:\Users\ricke\voice-server.js" -WindowStyle Hidden
 
-    public static void SendWinH() {
-        AllowSetForegroundWindow(-1);
-        IntPtr shell = GetShellWindow();
-        SetForegroundWindow(shell);
-        Thread.Sleep(600);
-        keybd_event(0x5B, 0, 0, UIntPtr.Zero);
-        Thread.Sleep(50);
-        keybd_event(0x48, 0, 0, UIntPtr.Zero);
-        Thread.Sleep(50);
-        keybd_event(0x48, 0, 2, UIntPtr.Zero);
-        Thread.Sleep(50);
-        keybd_event(0x5B, 0, 2, UIntPtr.Zero);
-    }
-}
-"@
+# Give server a moment to bind if it was just started
+Start-Sleep -Milliseconds 800
 
-Start-Sleep -Seconds 2
-[WinInput]::SendWinH()
-Start-Sleep -Milliseconds 500
-exit
+# Open the voice typing widget as a standalone Chrome app window
+Start-Process "C:\Program Files\Google\Chrome\Application\chrome.exe" `
+    -ArgumentList '--app=http://localhost:7777', '--window-size=360,390', '--window-position=20,20'
