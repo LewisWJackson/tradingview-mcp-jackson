@@ -6,9 +6,8 @@ scriptDir = Left(WScript.ScriptFullName, InStrRev(WScript.ScriptFullName, "\"))
 ' 0. Voice greeting
 oVoice.Speak "Good morning. Starting your trading session."
 
-' 0a. Start voice typing widget (node server + Chrome app window)
+' 0a. Start voice typing server now (needs time to bind before Chrome opens later)
 oShell.Run "cmd /c node ""C:\Users\ricke\voice-server.js"" >nul 2>&1", 0, False
-WScript.Sleep 2000
 
 ' 1. Launch TradingView with CDP (hidden PS window, wait for it to finish activating)
 oShell.Run "powershell -NoProfile -ExecutionPolicy Bypass -File """ & scriptDir & "launch_tv_debug.ps1""", 0, True
@@ -44,3 +43,7 @@ oVoice.Speak "Trading setup complete. Good luck today."
 ' 10. Bring TradingView to front (MSIX launch opens it in background)
 WScript.Sleep 4000
 oShell.AppActivate "TradingView"
+
+' 11. Open voice typing widget last so it floats above TradingView
+WScript.Sleep 1000
+oShell.Run """C:\Program Files\Google\Chrome\Application\chrome.exe"" --app=http://localhost:7777 --window-size=360,390 --window-position=20,20", 1, False
