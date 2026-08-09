@@ -8,30 +8,80 @@ import { evaluate, evaluateAsync, getClient } from '../connection.js';
 // ── Monaco finder (injected into TV page) ──
 const FIND_MONACO = `
   (function findMonacoEditor() {
-    var container = document.querySelector('.monaco-editor.pine-editor-monaco');
-    if (!container) return null;
-    var el = container;
-    var fiberKey;
-    for (var i = 0; i < 20; i++) {
-      if (!el) break;
-      fiberKey = Object.keys(el).find(function(k) { return k.startsWith('__reactFiber$'); });
-      if (fiberKey) break;
-      el = el.parentElement;
-    }
-    if (!fiberKey) return null;
-    var current = el[fiberKey];
-    for (var d = 0; d < 15; d++) {
-      if (!current) break;
-      if (current.memoizedProps && current.memoizedProps.value && current.memoizedProps.value.monacoEnv) {
-        var env = current.memoizedProps.value.monacoEnv;
-        if (env.editor && typeof env.editor.getEditors === 'function') {
-          var editors = env.editor.getEditors();
-          if (editors.length > 0) return { editor: editors[0], env: env };
-        }
+    // TradingView renders more than one .monaco-editor.pine-editor-monaco node.
+    // The first is not always mounted in the React tree, so probe every
+    // candidate rather than trusting querySelector's first match.
+    var containers = document.querySelectorAll('.monaco-editor.pine-editor-monaco');
+    if (!containers.length) return null;
+
+    function envFromContainer(container) {
+      var el = container;
+      var fiberKey;
+      for (var i = 0; i < 20; i++) {
+        if (!el) break;
+        fiberKey = Object.keys(el).find(function(k) { return k.startsWith('__reactFiber$'); });
+        if (fiberKey) break;
+        el = el.parentElement;
       }
-      current = current.return;
+      if (!fiberKey) return null;
+      var current = el[fiberKey];
+      for (var d = 0; d < 15; d++) {
+        if (!current) break;
+        if (current.memoizedProps && current.memoizedProps.value && current.memoizedProps.value.monacoEnv) {
+          var env = current.memoizedProps.value.monacoEnv;
+          if (env.editor && typeof env.editor.getEditors === 'function') return env;
+        }
+        current = current.return;
+      }
+      return null;
     }
-    return null;
+
+    function modelUri(ed) {
+      try {
+        var model = ed.getModel && ed.getModel();
+        return model && model.uri ? String(model.uri) : '';
+      } catch (e) { return ''; }
+    }
+
+    function isVisible(ed) {
+      try {
+        var node = ed.getDomNode && ed.getDomNode();
+        return !!(node && node.offsetParent);
+      } catch (e) { return false; }
+    }
+
+    // getEditors() mixes the live source pane with the hidden diff pane
+    // ("ORIGINAL.pine?placement=dialog"). Writing to the diff pane leaves the
+    // real buffer empty and TradingView compiles nothing, so rank by
+    // visibility and never return the diff original.
+    function pickEditor(editors) {
+      var best = null;
+      var bestScore = -1;
+      for (var i = 0; i < editors.length; i++) {
+        var ed = editors[i];
+        var uri = modelUri(ed);
+        if (uri.indexOf('ORIGINAL.pine') !== -1) continue;
+        var score = 0;
+        if (isVisible(ed)) score += 2;
+        if (uri.indexOf('.pine') !== -1) score += 1;
+        if (score > bestScore) { bestScore = score; best = ed; }
+      }
+      return best;
+    }
+
+    var fallback = null;
+    for (var c = 0; c < containers.length; c++) {
+      var env = envFromContainer(containers[c]);
+      if (!env) continue;
+      var editors = env.editor.getEditors();
+      if (!editors || !editors.length) continue;
+      var chosen = pickEditor(editors);
+      if (chosen) return { editor: chosen, env: env };
+      // Env resolved but every editor looked like a diff pane — remember it
+      // in case no container yields a better candidate.
+      if (!fallback) fallback = { editor: editors[0], env: env };
+    }
+    return fallback;
   })()
 `;
 
