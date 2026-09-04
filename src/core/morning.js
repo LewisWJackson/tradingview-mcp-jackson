@@ -5,7 +5,7 @@
  */
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { homedir } from "node:os";
-import { join, resolve, dirname } from "node:path";
+import { join, resolve, dirname, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import * as chart from "./chart.js";
 import * as data from "./data.js";
@@ -19,8 +19,8 @@ function assertSafeRulesPath(p) {
   const resolved = resolve(p);
   const inProject =
     resolved === resolve(join(PROJECT_ROOT, "rules.json")) ||
-    resolved.startsWith(resolve(PROJECT_ROOT) + "/");
-  const inUserData = resolved.startsWith(USER_DATA_DIR + "/");
+    resolved.startsWith(resolve(PROJECT_ROOT) + sep);
+  const inUserData = resolved.startsWith(USER_DATA_DIR + sep);
   if (!inProject && !inUserData) {
     throw new Error(
       `rules_path must live inside the project (${PROJECT_ROOT}) or ~/.tradingview-mcp/. Got: ${resolved}`,
