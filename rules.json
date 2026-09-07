@@ -6,7 +6,7 @@
     "NSE:HEROMOTOCO", "NSE:TATASTEEL1!", "NSE:RELIANCE", "NSE:VEDL1!",
     "NSE:VBL1!", "NSE:ADANIGREEN", "NSE:TCS1!"
   ],
-  "default_timeframe": "15",
+  "default_timeframe": "5",
 
   "bias_criteria": {
     "bullish": [
