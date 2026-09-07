@@ -45,12 +45,12 @@
   "notes": "Add any other context you want Claude to factor in — e.g. macro events this week, key dates, anything that should affect your bias.",
 
   "scan_logic": {
-    "description": "Intraday BUY/SELL/WAIT scanner. 5m trend/bias plus 3m confirmation, gated by genuine confluence across all 4 active chart indicators before any signal fires. 5m sets the directional bias; 3m must confirm before an actual BUY or SELL - a 3m confirmation failure is a watch (WAIT), never a trade, and the 3m timeframe can never override or flip an invalidated 5m bias. Every gate reads the last CLOSED candle on its timeframe, never the still-forming bar, so signals do not repaint. Scans the entire TradingView watchlist exactly as-is; no symbols removed or filtered. Active indicator set is the 4 indicators currently on the chart: Supertrend (primary trend gate on 5m, confirmation trigger on 3m), Session VWAP (directional confirmation), Relative Strength Index (14) on 5m (momentum confirmation / exhaustion filter, standard 30/70), and 'Support and Resistance Levels with Breaks' [LuxAlgo] (structural entry/stop/target). All other indicator references (Hull Suite, NNFX Baseline, EMA 9/21, CM_Ultimate_MA_MTF, Trend Range Detector, MA Cross Alert) remain removed from the gates below. If any indicator conflicts with the others, the scan returns WAIT. ATR, swing highs/lows and volume are derived from OHLCV data, not chart studies.",
+    "description": "Intraday BUY/SELL/WAIT scanner. 5m trend/bias plus 3m confirmation, gated by genuine confluence across all 4 active chart indicators before any signal fires. 5m sets the directional bias; 3m must confirm before an actual BUY or SELL - a 3m confirmation failure is a watch (WAIT), never a trade, and the 3m timeframe can never override or flip an invalidated 5m bias. Every gate reads the last CLOSED candle on its timeframe, never the still-forming bar, so signals do not repaint. Scans the entire TradingView watchlist exactly as-is; no symbols removed or filtered. Active indicator set is the 4 indicators currently on the chart: Supertrend (primary trend gate on 5m, confirmation trigger on 3m), Session VWAP (directional confirmation), Relative Strength Index (14) on 5m (momentum confirmation / exhaustion filter, standard 30/70), and 'Support and Resistance Levels with Breaks' [LuxAlgo] (structural entry/stop/target). All other indicator references (Hull Suite, NNFX Baseline, EMA 9/21, CM_Ultimate_MA_MTF, Trend Range Detector, MA Cross Alert) remain removed from the gates below. If any indicator conflicts with the others, the scan returns WAIT. Supertrend, ATR(14), Wilder RSI(14) and session VWAP (hlc3, IST-session anchor), plus swing highs/lows and volume, are all computed from CLOSED OHLCV bars, not read from chart studies; only the Support/Resistance levels and a coarse Supertrend direction cross-check are read from chart indicators. Keeping the VWAP and RSI studies on the chart is optional (visual reference only).",
 
     "active_indicators": [
       "Supertrend (10, hl2, 3) - primary trend gate on 5m, confirmation trigger on 3m",
-      "Session VWAP - directional confirmation: price above VWAP required for BUY, below VWAP required for SELL",
-      "Relative Strength Index (14) on 5m - momentum confirmation: blocks BUY when overbought (>=70), blocks SELL when oversold (<=30)",
+      "Session VWAP (hlc3, computed from closed OHLCV bars) - directional confirmation: price above VWAP required for BUY, below VWAP required for SELL",
+      "Wilder RSI(14) on 5m closed bars - momentum confirmation: blocks BUY when overbought (>=70), blocks SELL when oversold (<=30)",
       "Support and Resistance Levels with Breaks [LuxAlgo] - structural entry, stop-loss and target levels"
     ],
 
@@ -107,15 +107,15 @@
 
     "gate2b_vwap_confirmation": {
       "role": "directional confirmation, not a standalone signal",
-      "indicator": "Session VWAP",
-      "bull_requirement": "price is above session VWAP for a BUY",
-      "bear_requirement": "price is below session VWAP for a SELL",
+      "indicator": "session VWAP - hlc3, anchored to the IST session, computed from CLOSED 3m OHLCV bars through the last closed bar (falls back to an unweighted hlc3 mean for a symbol with no volume, e.g. a cash index)",
+      "bull_requirement": "the last closed 3m price is above session VWAP for a BUY",
+      "bear_requirement": "the last closed 3m price is below session VWAP for a SELL",
       "fail": "if price sits on the wrong side of VWAP for the trade direction implied by Gate 1/Gate 2, that is a conflict between Supertrend and VWAP - return WAIT"
     },
 
     "gate2c_rsi_confirmation": {
       "role": "momentum confirmation / exhaustion filter",
-      "indicator": "Relative Strength Index (14) on 5m",
+      "indicator": "Wilder RSI(14) on 5m, computed from CLOSED 5m OHLCV bars and read at the last closed bar (not the chart study, which reports the still-forming bar)",
       "buy_block": "do not BUY if RSI(14) 5m >= 70 (overbought)",
       "sell_block": "do not SELL if RSI(14) 5m <= 30 (oversold)",
       "fail": "if RSI blocks the trade direction implied by Gate 1/Gate 2, that is a conflict between Supertrend and RSI momentum - return WAIT"

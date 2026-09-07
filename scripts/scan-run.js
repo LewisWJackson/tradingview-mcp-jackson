@@ -9,14 +9,17 @@
 // notifier does that on its own side of the pipe.
 //
 // Reuses the project's own CDP layer (src/connection.js + src/core/*), so
-// TradingView Desktop must be running with --remote-debugging-port=9222,
-// with the four active indicators on the chart: "Supertrend", "Support and
-// Resistance Levels with Breaks", "Volume Weighted Average Price" (Session
-// VWAP), and "Relative Strength Index".
+// TradingView Desktop must be running with --remote-debugging-port=9222.
+// Two chart studies are read directly: "Supertrend" (a direction cross-check
+// only) and "Support and Resistance Levels with Breaks" (target levels).
+// Supertrend, ATR, Wilder RSI(14) and session VWAP are all computed here from
+// the OHLCV series - not read from chart studies - so every gate can use the
+// last CLOSED bar. Keeping the "Volume Weighted Average Price" and "Relative
+// Strength Index" studies on the chart is optional (visual reference only).
 //
 // Architecture: 5m = MAIN trend / bias, 3m = CONFIRMATION / trigger.
-// Every gate reads the last CLOSED candle on its timeframe (index length-2),
-// never the still-forming bar, so a signal does not repaint.
+// Every gate evaluates the last CLOSED candle on its timeframe (index
+// length-2), never the still-forming bar, so a signal does not repaint.
 //
 // Gates (from rules.json > scan_logic, the 4-indicator confluence version):
 //   Gate 1   5m trend    - Supertrend(10, close, 3) on the last closed 5m bar:
@@ -27,10 +30,12 @@
 //   Gate 2   3m confirm  - 3m Supertrend aligned with the 5m trend AND the last
 //                          closed 3m candle closes on the trend side of the 3m
 //                          line. Failure -> WAIT (a "watch", not a trade).
-//   Gate 2b  VWAP        - price above session VWAP required for BUY, below
-//                          required for SELL; wrong side = conflict -> WAIT.
-//   Gate 2c  RSI         - RSI(14) on 5m; blocks BUY if >= 70 (overbought),
-//                          blocks SELL if <= 30 (oversold) -> WAIT.
+//   Gate 2b  VWAP        - session VWAP (hlc3, computed from CLOSED 3m OHLCV
+//                          bars): price above it required for BUY, below for
+//                          SELL; wrong side = conflict -> WAIT.
+//   Gate 2c  RSI         - Wilder RSI(14) from CLOSED 5m OHLCV bars; blocks BUY
+//                          if >= 70 (overbought), blocks SELL if <= 30
+//                          (oversold) -> WAIT.
 //   Gate 3   risk        - entry = last closed 3m close; ATR(14) on 3m; stop =
 //                          recent closed-3m swing (±0.1*ATR), clamped to
 //                          [0.8, 2.5]*ATR else 1.5*ATR; target = nearest S&R
@@ -160,6 +165,57 @@ function supertrend(bars, period = 10, factor = 3) {
   return { line, dir, atr };
 }
 
+// Wilder RSI over closes - matches TradingView ta.rsi(close, period). Returns an
+// array aligned to `bars` (null during the warmup). Read it at the last CLOSED
+// bar index so Gate 2c does not repaint on the still-forming bar.
+function wilderRSI(bars, period = 14) {
+  const n = bars.length;
+  const rsi = new Array(n).fill(null);
+  if (n < period + 1) return rsi;
+  let gain = 0, loss = 0;
+  for (let i = 1; i <= period; i++) {
+    const ch = bars[i].close - bars[i - 1].close;
+    if (ch >= 0) gain += ch; else loss -= ch;
+  }
+  let avgGain = gain / period, avgLoss = loss / period;
+  rsi[period] = avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss);
+  for (let i = period + 1; i < n; i++) {
+    const ch = bars[i].close - bars[i - 1].close;
+    const g = ch > 0 ? ch : 0;
+    const l = ch < 0 ? -ch : 0;
+    avgGain = (avgGain * (period - 1) + g) / period;
+    avgLoss = (avgLoss * (period - 1) + l) / period;
+    rsi[i] = avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss);
+  }
+  return rsi;
+}
+
+// Calendar-date key in IST for a unix-seconds bar time - the session anchor
+// (NSE 09:15-15:30 and MCX GOLD 09:00-23:30 each fall on one IST date).
+function istDateKey(unixSec) {
+  const d = new Date(unixSec * 1000 + 5.5 * 3600 * 1000);
+  return d.getUTCFullYear() * 10000 + (d.getUTCMonth() + 1) * 100 + d.getUTCDate();
+}
+
+// Session VWAP through bars[lastIdx] inclusive: hlc3 weighted by volume over
+// every bar sharing lastIdx's IST session date. Matches the chart's "Volume
+// Weighted Average Price" (hlc3 source, Session anchor) but is computed from
+// CLOSED OHLCV bars, so Gate 2b does not repaint. Falls back to an unweighted
+// hlc3 mean when the symbol carries no volume (e.g. a cash index).
+function sessionVWAP(bars, lastIdx) {
+  const dayKey = istDateKey(bars[lastIdx].time);
+  let pv = 0, vol = 0, tpSum = 0, count = 0;
+  for (let i = lastIdx; i >= 0; i--) {
+    if (istDateKey(bars[i].time) !== dayKey) break;
+    const b = bars[i];
+    const tp = (b.high + b.low + b.close) / 3;
+    const v = b.volume || 0;
+    pv += tp * v; vol += v; tpSum += tp; count += 1;
+  }
+  if (vol > 0) return pv / vol;
+  return count > 0 ? tpSum / count : null;
+}
+
 // ── study readers ──────────────────────────────────────────────────
 function findStudy(list, re) { return (list || []).find((s) => re.test(s.name || '')); }
 
@@ -178,22 +234,6 @@ function readSR(studies) {
   const v = s.values || {};
   const r = num(v.Resistance), sup = num(v.Support);
   return { resistance: Number.isFinite(r) ? r : null, support: Number.isFinite(sup) ? sup : null };
-}
-
-function readVWAP(studies) {
-  const s = findStudy(studies, /volume weighted average price/i);
-  if (!s) return null;
-  const v = s.values || {};
-  const vwap = num(v.VWAP);
-  return Number.isFinite(vwap) ? vwap : null;
-}
-
-function readRSI(studies) {
-  const s = findStudy(studies, /relative strength index/i);
-  if (!s) return null;
-  const v = s.values || {};
-  const rsi = num(v.RSI);
-  return Number.isFinite(rsi) ? rsi : null;
 }
 
 // ── session windows (IST, from scan_logic.session_profiles) ────────
@@ -260,8 +300,10 @@ async function scanSymbol(symbol, cfg, args) {
   base.trend_5m = trend5m;
 
   // ---- Gate 2c: RSI(14) 5m momentum confirmation ----
-  const rsi5m = readRSI(studies5m);
-  if (rsi5m == null) {
+  // Wilder RSI from the 5m OHLCV series, read at the last CLOSED bar (iMain) -
+  // not the chart study, which reports the still-forming bar and would repaint.
+  const rsi5m = wilderRSI(bars5m, 14)[iMain];
+  if (rsi5m == null || !Number.isFinite(rsi5m)) {
     return wait([`5m trend ${trend5m}`, `RSI(14) 5m unavailable - cannot confirm momentum, standing aside`], { bar_time: bar5mTime, trend_5m: trend5m });
   }
   if (side === 'BUY' && rsi5m >= 70) {
@@ -303,8 +345,10 @@ async function scanSymbol(symbol, cfg, args) {
   }
 
   // ---- Gate 2b: session VWAP directional confirmation ----
-  const vwap = readVWAP(studies3m) ?? readVWAP(studies5m);
-  if (vwap == null) {
+  // Session VWAP computed from the 3m OHLCV series through the last CLOSED bar
+  // (j3) - not the chart study, which reports the still-forming bar.
+  const vwap = sessionVWAP(bars3m, j3);
+  if (vwap == null || !Number.isFinite(vwap)) {
     return wait([`5m trend ${trend5m}`, `3m confirm OK`, `VWAP unavailable - cannot confirm direction, standing aside`], { bar_time });
   }
   if (side === 'BUY' && bar3m.close <= vwap) {
@@ -408,8 +452,8 @@ async function main() {
     const names = (start.studies || []).map((s) => s.name || '').join(' | ');
     if (!/supertrend/i.test(names)) console.error('scan-run: WARNING - "Supertrend" not found on the chart; every symbol will WAIT.');
     if (!/support and resistance levels with breaks/i.test(names)) console.error('scan-run: WARNING - "Support and Resistance Levels with Breaks" not on the chart; targets unavailable, every symbol will WAIT.');
-    if (!/volume weighted average price/i.test(names)) console.error('scan-run: WARNING - "Volume Weighted Average Price" (Session VWAP) not on the chart; every symbol will WAIT.');
-    if (!/relative strength index/i.test(names)) console.error('scan-run: WARNING - "Relative Strength Index" not on the chart; every symbol will WAIT.');
+    if (!/volume weighted average price/i.test(names)) console.error('scan-run: note - Session VWAP not on the chart; the scan computes its own from OHLCV, the chart copy is optional.');
+    if (!/relative strength index/i.test(names)) console.error('scan-run: note - RSI not on the chart; the scan computes its own from OHLCV, the chart copy is optional.');
   } catch (e) {
     console.error(`scan-run: cannot reach TradingView via CDP - ${e.message}`);
     console.error('  Is TradingView Desktop running with --remote-debugging-port=9222?');
