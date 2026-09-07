@@ -46,12 +46,12 @@ function run(lines, { journal, state }, extraArgs = []) {
 const buySignal = JSON.stringify({
   symbol: 'NSE:RELIANCE1!', side: 'BUY', entry: 1316.6, stop: 1308.4, target: 1333.0,
   rr: 2.0, rr_text: '1:2.0', bar_time: 1788434100, scan_time: '14:35 IST',
-  reasons: ['5m trend BULL', '3m confirm OK'],
+  reasons: ['15m bias BULL', '5m setup OK', '1m trigger OK'],
 });
 const sellSignal = JSON.stringify({
   symbol: 'MCX:GOLD1!', side: 'SELL', entry: 71000, stop: 71200, target: 70600,
   rr: 2.0, rr_text: '1:2.0', bar_time: 1788434400, scan_time: '19:10 IST',
-  reasons: ['5m trend BEAR', '3m confirm OK'],
+  reasons: ['15m bias BEAR', '5m setup OK', '1m trigger OK'],
 });
 const waitSignal = JSON.stringify({ symbol: 'NSE:NIFTY', side: 'WAIT', reasons: ['no gate passed'] });
 const invalidBuy = JSON.stringify({ symbol: 'NSE:SBIN1!', side: 'BUY' }); // missing required fields

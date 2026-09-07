@@ -10,51 +10,65 @@
 //
 // Reuses the project's own CDP layer (src/connection.js + src/core/*), so
 // TradingView Desktop must be running with --remote-debugging-port=9222.
-// Two chart studies are read directly: "Supertrend" (a direction cross-check
+// Two chart studies are read directly: "Supertrend" (a 15m direction cross-check
 // only) and "Support and Resistance Levels with Breaks" (target levels).
 // Supertrend, ATR, Wilder RSI(14) and session VWAP are all computed here from
 // the OHLCV series - not read from chart studies - so every gate can use the
 // last CLOSED bar. Keeping the "Volume Weighted Average Price" and "Relative
 // Strength Index" studies on the chart is optional (visual reference only).
 //
-// Architecture: 5m = MAIN trend / bias, 3m = CONFIRMATION / trigger.
-// Every gate evaluates the last CLOSED candle on its timeframe (index
-// length-2), never the still-forming bar, so a signal does not repaint.
+// Architecture: 15m = BIAS, 5m = pullback / SETUP, 1m = entry TRIGGER.
+// The 15m Supertrend fixes the direction; the 5m and 1m stages only confirm or
+// withhold and can never trade against an invalidated 15m bias or broken
+// structure. Every gate evaluates the last CLOSED candle on its timeframe
+// (index length-2), never the still-forming bar, so a signal does not repaint.
 //
 // Gates (from rules.json > scan_logic, the 4-indicator confluence version):
-//   Gate 1   5m trend    - Supertrend(10, close, 3) on the last closed 5m bar:
-//                          price above line = BULL, below = BEAR. This sets the
-//                          directional bias; a flip on the last closed 5m bar
-//                          = WAIT (one bar to confirm). The 3m stage can only
-//                          confirm or withhold - it never changes the side.
-//   Gate 2   3m confirm  - 3m Supertrend aligned with the 5m trend AND the last
-//                          closed 3m candle closes on the trend side of the 3m
-//                          line. Failure -> WAIT (a "watch", not a trade).
-//   Gate 2b  VWAP        - session VWAP (hlc3, computed from CLOSED 3m OHLCV
-//                          bars): price above it required for BUY, below for
-//                          SELL; wrong side = conflict -> WAIT.
-//   Gate 2c  RSI         - Wilder RSI(14) from CLOSED 5m OHLCV bars; blocks BUY
+//   Gate 1   15m bias    - Supertrend(10, close, 3) on the last closed 15m bar:
+//                          price above line = BULL, below = BEAR. Sets and FIXES
+//                          the direction. A flip on the last closed 15m bar, or
+//                          a computed-vs-chart direction disagreement, = WAIT
+//                          (returns before 5m/1m load).
+//   Gate 2   5m setup    - (a) STRUCTURE: last closed 5m close still on the bias
+//                          side of the 15m Supertrend line, else the bias is
+//                          being invalidated -> WAIT (before the 1m stage).
+//                          (b) PULLBACK: |close5 - line5| <= P*ATR5 (P from
+//                          rules.json pullback_atr_mult / --pullback-atr,
+//                          default 1.5). The 5m Supertrend direction is NOT
+//                          checked - an opposed 5m Supertrend is a valid
+//                          pullback state. Fail -> WAIT (a "watch").
+//   Gate 2t  1m trigger  - last closed 1m Supertrend aligned with the 15m bias
+//                          AND the last closed 1m candle closes on the trend
+//                          side of the 1m line. This produces the entry price.
+//                          Fail -> WAIT (a "watch").
+//   Gate 2b  VWAP        - session VWAP (hlc3, from the full CLOSED 5m session
+//                          series): 1m entry above it for BUY, below for SELL;
+//                          wrong side = conflict -> WAIT.
+//   Gate 2c  RSI         - Wilder RSI(14) from CLOSED 15m OHLCV bars; blocks BUY
 //                          if >= 70 (overbought), blocks SELL if <= 30
 //                          (oversold) -> WAIT.
-//   Gate 3   risk        - entry = last closed 3m close; ATR(14) on 3m; stop =
-//                          recent closed-3m swing (±0.1*ATR), clamped to
-//                          [0.8, 2.5]*ATR else 1.5*ATR; target = nearest S&R
-//                          level in trade direction; require final R/R >=
-//                          min_risk_reward (2.0). No valid target / R/R < min
-//                          -> WAIT.
+//   Gate 3   risk        - entry = last closed 1m close; ATR(14) and swing on
+//                          5m; stop = recent closed-5m swing (±0.1*ATR5),
+//                          clamped to [0.8, 2.5]*ATR5 else 1.5*ATR5; target =
+//                          nearest S&R level in trade direction; require final
+//                          R/R >= min_risk_reward (2.0). No valid target /
+//                          R/R < min -> WAIT.
 //   Session             - respects scan_logic.session_profiles (NSE / MCX GOLD)
 //                          new-signal windows in IST; weekends -> WAIT.
 //
-// BUY/SELL requires genuine confluence across all 4 gates; any conflict -> WAIT.
+// BUY/SELL requires genuine confluence across all gates; any conflict -> WAIT.
+// The emitted bar_time is the last closed 5m SETUP bar (not the 1m trigger),
+// so notify-telegram / journal-log dedupe to <=1 alert per 5m window per side.
 //
 // Output line shape (consumed by notify-telegram.js):
 //   {"symbol","side":"BUY|SELL|WAIT","entry","stop","target","rr","rr_text",
-//    "bar_time","reasons":[...],"scan_time","trend_5m","tf_trend","tf_entry"}
+//    "bar_time","reasons":[...],"scan_time","trend_15m","tf_trend","tf_setup","tf_entry"}
 //
 // Flags: --symbols a,b,c  (override universe)   --settle <ms>  (default 1800)
-//        --lookback <n> (swing window, default 10)   --no-restore
+//        --lookback <n> (5m swing window, default 10)   --no-restore
+//        --pullback-atr <P> (5m pullback-zone width in ATR5, default 1.5)
 //        --per-symbol <sec> (hang guard per symbol, default 35)
-//        --deadline <sec>   (hard wall-clock exit, default 300)
+//        --deadline <sec>   (hard wall-clock exit, default 420)
 //        --verbose        --help
 
 import { readFileSync } from 'node:fs';
@@ -73,18 +87,19 @@ const HELP = `scan-run.js - apply rules.json scan_logic and print JSON signal li
   node scripts/scan-run.js --symbols NSE:NIFTY,MCX:GOLD1!
   node scripts/scan-run.js | node scripts/notify-telegram.js     (the integration)
 
-  --settle <ms>   wait after each symbol/timeframe switch (default 1800)
-  --lookback <n>  bars for the 3m swing stop (default 10)
-  --no-restore    leave the chart on the last scanned symbol
-  --verbose       progress + per-gate detail on stderr
+  --settle <ms>       wait after each symbol/timeframe switch (default 1800)
+  --lookback <n>      bars for the 5m swing stop (default 10)
+  --pullback-atr <P>  5m pullback-zone width in ATR5 (default 1.5)
+  --no-restore        leave the chart on the last scanned symbol
+  --verbose           progress + per-gate detail on stderr
   --help
 
-5m = main trend / bias, 3m = confirmation. Only stdout carries JSON; all logs
-go to stderr. Nothing is sent - pipe to notify-telegram.js.`;
+15m = bias, 5m = pullback / setup, 1m = entry trigger. Only stdout carries JSON;
+all logs go to stderr. Nothing is sent - pipe to notify-telegram.js.`;
 
 // ── args ────────────────────────────────────────────────────────────
 function parseArgs(argv) {
-  const a = { symbols: null, settle: 1800, lookback: 10, perSymbol: 35, deadline: 300, restore: true, verbose: false, help: false };
+  const a = { symbols: null, settle: 1800, lookback: 10, pullbackAtr: null, perSymbol: 35, deadline: 420, restore: true, verbose: false, help: false };
   for (let i = 0; i < argv.length; i++) {
     const x = argv[i];
     if (x === '--help' || x === '-h') a.help = true;
@@ -93,8 +108,9 @@ function parseArgs(argv) {
     else if (x === '--symbols') a.symbols = (argv[++i] || '').split(',').map((s) => s.trim()).filter(Boolean);
     else if (x === '--settle') a.settle = Math.max(0, Number(argv[++i]) || 0);
     else if (x === '--lookback') a.lookback = Math.max(2, Number(argv[++i]) || 10);
+    else if (x === '--pullback-atr') a.pullbackAtr = Math.max(0.1, Number(argv[++i]) || 1.5);
     else if (x === '--per-symbol') a.perSymbol = Math.max(10, Number(argv[++i]) || 35);
-    else if (x === '--deadline') a.deadline = Math.max(60, Number(argv[++i]) || 300);
+    else if (x === '--deadline') a.deadline = Math.max(60, Number(argv[++i]) || 420);
     else { console.error(`scan-run: unknown argument "${x}" (try --help)`); process.exit(2); }
   }
   return a;
@@ -258,137 +274,179 @@ function sessionCheck(symbol, profiles) {
 
 // ── one symbol ────────────────────────────────────────────────────
 async function scanSymbol(symbol, cfg, args) {
-  const { trendTf, entryTf, minRR, profiles } = cfg;
+  const { biasTf, setupTf, entryTf, minRR, profiles } = cfg;
+  const P = args.pullbackAtr;
   const scanTime = new Date(Date.now() + 5.5 * 3600 * 1000);
   const scan_time = `${String(scanTime.getUTCHours()).padStart(2, '0')}:${String(scanTime.getUTCMinutes()).padStart(2, '0')} IST`;
-  const base = { symbol, tf_trend: trendTf, tf_entry: entryTf, scan_time };
+  const base = { symbol, tf_trend: biasTf, tf_setup: setupTf, tf_entry: entryTf, scan_time };
   const wait = (reasons, extra = {}) => ({ ...base, side: 'WAIT', reasons: [].concat(reasons), ...extra });
 
-  // ---- 5m : MAIN trend / bias (Gate 1) ----
+  // ---- 15m : BIAS (Gate 1) - sets and FIXES the direction ----
   await chart.setSymbol({ symbol });
-  await chart.setTimeframe({ timeframe: trendTf });
+  await chart.setTimeframe({ timeframe: biasTf });
   await sleep(args.settle);
 
-  const bars5m = await readBars(40);
-  if (bars5m.length < 40) return wait(`insufficient 5m history (${bars5m.length} bars)`);
-  const studies5m = (await data.getStudyValues())?.studies || [];
-  const sr5m = readSR(studies5m);
+  const bars15 = await readBars(40);
+  if (bars15.length < 40) return wait(`insufficient 15m history (${bars15.length} bars)`);
+  const studies15 = (await data.getStudyValues())?.studies || [];
+  const sr15 = readSR(studies15);
 
-  const st5m = supertrend(bars5m, 10, 3);
-  const iMain = bars5m.length - 2; // last CLOSED 5m bar - never the forming bar
-  if (iMain < 1) return wait(`insufficient 5m history (${bars5m.length} bars)`);
-  const dir5m = st5m.dir[iMain];
-  const dirPrev5m = st5m.dir[iMain - 1];
-  const line5m = st5m.line[iMain];
-  const bar5mTime = bars5m[iMain].time;
-  const price5m = bars5m[iMain].close;
-  if (dir5m == null || line5m == null) return wait('5m Supertrend not computable yet', { bar_time: bar5mTime });
+  const st15 = supertrend(bars15, 10, 3);
+  const iBias = bars15.length - 2; // last CLOSED 15m bar - never the forming bar
+  if (iBias < 1) return wait(`insufficient 15m history (${bars15.length} bars)`);
+  const dir15 = st15.dir[iBias];
+  const dirPrev15 = st15.dir[iBias - 1];
+  const line15 = st15.line[iBias];
+  const bar15Time = bars15[iBias].time;
+  const price15 = bars15[iBias].close;
+  if (dir15 == null || line15 == null) return wait('15m Supertrend not computable yet', { bar_time: bar15Time });
 
-  const chartSt5m = readSupertrendChart(studies5m);
-  if (chartSt5m && chartSt5m.dir !== dir5m) {
+  const chartSt15 = readSupertrendChart(studies15);
+  if (chartSt15 && chartSt15.dir !== dir15) {
     return wait(
-      `5m Supertrend disagreement: computed ${dir5m === 1 ? 'BULL' : 'BEAR'} vs chart ${chartSt5m.dir === 1 ? 'BULL' : 'BEAR'} - standing aside`,
-      { bar_time: bar5mTime },
+      `15m Supertrend disagreement: computed ${dir15 === 1 ? 'BULL' : 'BEAR'} vs chart ${chartSt15.dir === 1 ? 'BULL' : 'BEAR'} - standing aside`,
+      { bar_time: bar15Time },
     );
   }
-  if (dir5m !== dirPrev5m) {
-    return wait(`5m Supertrend flipped on the last closed bar - waiting one bar to confirm`, { bar_time: bar5mTime, trend_5m: dir5m === 1 ? 'BULL' : 'BEAR' });
+  if (dir15 !== dirPrev15) {
+    return wait(`15m Supertrend flipped on the last closed bar - waiting one bar to confirm`, { bar_time: bar15Time, trend_15m: dir15 === 1 ? 'BULL' : 'BEAR' });
   }
 
-  const trend5m = dir5m === 1 ? 'BULL' : 'BEAR';
-  const side = dir5m === 1 ? 'BUY' : 'SELL';
-  base.trend_5m = trend5m;
+  const bias = dir15 === 1 ? 'BULL' : 'BEAR';
+  const side = dir15 === 1 ? 'BUY' : 'SELL';
+  base.trend_15m = bias;
 
-  // ---- Gate 2c: RSI(14) 5m momentum confirmation ----
-  // Wilder RSI from the 5m OHLCV series, read at the last CLOSED bar (iMain) -
-  // not the chart study, which reports the still-forming bar and would repaint.
-  const rsi5m = wilderRSI(bars5m, 14)[iMain];
-  if (rsi5m == null || !Number.isFinite(rsi5m)) {
-    return wait([`5m trend ${trend5m}`, `RSI(14) 5m unavailable - cannot confirm momentum, standing aside`], { bar_time: bar5mTime, trend_5m: trend5m });
+  // ---- Gate 2c: RSI(14) 15m momentum ----
+  // Wilder RSI from the 15m OHLCV series at the last CLOSED bar - not the chart
+  // study, which reports the still-forming bar and would repaint.
+  const rsi15 = wilderRSI(bars15, 14)[iBias];
+  if (rsi15 == null || !Number.isFinite(rsi15)) {
+    return wait([`15m bias ${bias}`, `RSI(14) 15m unavailable - cannot confirm momentum, standing aside`], { bar_time: bar15Time });
   }
-  if (side === 'BUY' && rsi5m >= 70) {
-    return wait([`5m trend ${trend5m}`, `RSI(14) 5m ${rsi5m.toFixed(2)} is overbought (>=70) - momentum exhausted, no BUY`], { bar_time: bar5mTime, trend_5m: trend5m });
+  if (side === 'BUY' && rsi15 >= 70) {
+    return wait([`15m bias ${bias}`, `RSI(14) 15m ${rsi15.toFixed(2)} is overbought (>=70) - momentum exhausted, no BUY`], { bar_time: bar15Time });
   }
-  if (side === 'SELL' && rsi5m <= 30) {
-    return wait([`5m trend ${trend5m}`, `RSI(14) 5m ${rsi5m.toFixed(2)} is oversold (<=30) - momentum exhausted, no SELL`], { bar_time: bar5mTime, trend_5m: trend5m });
+  if (side === 'SELL' && rsi15 <= 30) {
+    return wait([`15m bias ${bias}`, `RSI(14) 15m ${rsi15.toFixed(2)} is oversold (<=30) - momentum exhausted, no SELL`], { bar_time: bar15Time });
   }
 
   // ---- session ----
   const sess = sessionCheck(symbol, profiles);
-  if (!sess.ok) return wait([`5m trend ${trend5m}`, `Session - ${sess.why}`], { bar_time: bar5mTime });
+  if (!sess.ok) return wait([`15m bias ${bias}`, `Session - ${sess.why}`], { bar_time: bar15Time });
 
-  // ---- 3m : CONFIRMATION / trigger (Gate 2) ----
+  // ---- 5m : pullback / SETUP (Gate 2) ----
+  // The 5m Supertrend DIRECTION is not checked - an opposed 5m Supertrend near
+  // its line is a valid pullback state. Two checks: (a) the 15m bias must still
+  // be structurally intact on the 5m, and (b) price must be in a pullback zone.
+  await chart.setTimeframe({ timeframe: setupTf });
+  await sleep(args.settle);
+  const bars5 = await readBars(50, 500);
+  if (bars5.length < 50) return wait([`15m bias ${bias}`, `insufficient 5m history (${bars5.length} bars)`], { bar_time: bar15Time });
+  const studies5 = (await data.getStudyValues())?.studies || [];
+  const sr = sr15 || readSR(studies5);
+
+  const st5 = supertrend(bars5, 10, 3);
+  const iSetup = bars5.length - 2; // last CLOSED 5m bar
+  if (iSetup < 1) return wait([`15m bias ${bias}`, `insufficient 5m history (${bars5.length} bars)`], { bar_time: bar15Time });
+  const dir5 = st5.dir[iSetup];
+  const line5 = st5.line[iSetup];
+  const bar5 = bars5[iSetup];
+  const bar_time = bar5.time; // dedupe anchor: the 5m SETUP bar, for every line below
+  if (dir5 == null || line5 == null) return wait([`15m bias ${bias}`, `5m Supertrend not computable yet`], { bar_time });
+
+  const atr5arr = wilderATR(bars5, 14);
+  const atr5 = atr5arr[iSetup];
+  if (!Number.isFinite(atr5) || atr5 <= 0) return wait([`15m bias ${bias}`, `5m setup - ATR(14) 5m not available`], { bar_time });
+
+  // (a) STRUCTURE: last closed 5m price must still be on the bias side of the
+  // 15m Supertrend line. If it has crossed against the bias, the 15m bias is
+  // being invalidated - stand aside BEFORE the 1m stage loads.
+  const structureIntact = bias === 'BULL' ? bar5.close > line15 : bar5.close < line15;
+  if (!structureIntact) {
+    return wait(
+      [`15m bias ${bias}`, `5m setup - 15m bias structurally broken: last closed 5m ${f2(bar5.close)} has crossed the 15m Supertrend line ${f2(line15)} against the bias; standing aside`],
+      { bar_time },
+    );
+  }
+
+  // (b) PULLBACK: last closed 5m price within P*ATR5 of the 5m Supertrend line.
+  const distToLine5 = Math.abs(bar5.close - line5);
+  const st5Aligned = (bias === 'BULL' && dir5 === 1) || (bias === 'BEAR' && dir5 === -1);
+  if (distToLine5 > P * atr5) {
+    return wait(
+      [`15m bias ${bias}`, `5m setup - not in a pullback zone: price ${f2(bar5.close)} is ${(distToLine5 / atr5).toFixed(2)}x ATR5 from the 5m Supertrend line ${f2(line5)} (need <= ${P}x); ${st5Aligned ? 'trend extended' : 'pullback too deep'}, watch`],
+      { bar_time },
+    );
+  }
+
+  // ---- Gate 2b: session VWAP from the FULL closed 5m session series ----
+  const vwap = sessionVWAP(bars5, iSetup);
+  if (vwap == null || !Number.isFinite(vwap)) {
+    return wait([`15m bias ${bias}`, `5m setup OK`, `VWAP unavailable - cannot confirm direction, standing aside`], { bar_time });
+  }
+
+  // ---- 1m : entry TRIGGER (Gate 2t) - produces the entry price ----
   await chart.setTimeframe({ timeframe: entryTf });
   await sleep(args.settle);
-  const bars3m = await readBars(40);
-  if (bars3m.length < 40) return wait(`insufficient 3m history (${bars3m.length} bars)`, { bar_time: bar5mTime });
-  const studies3m = (await data.getStudyValues())?.studies || [];
-  const sr3m = readSR(studies3m) || sr5m;
+  const bars1 = await readBars(50, 500);
+  if (bars1.length < 50) return wait([`15m bias ${bias}`, `5m setup OK`, `insufficient 1m history (${bars1.length} bars)`], { bar_time });
 
-  const st3m = supertrend(bars3m, 10, 3);
-  const j3 = bars3m.length - 2; // last CLOSED 3m bar - never the forming bar
-  if (j3 < 1) return wait(`insufficient 3m history (${bars3m.length} bars)`, { bar_time: bar5mTime });
-  const dir3m = st3m.dir[j3];
-  const line3m = st3m.line[j3];
-  const bar3m = bars3m[j3];
-  const bar_time = bar3m.time;
-  if (dir3m == null || line3m == null) return wait('3m Supertrend not computable yet', { bar_time });
+  const st1 = supertrend(bars1, 10, 3);
+  const jTrig = bars1.length - 2; // last CLOSED 1m bar
+  if (jTrig < 1) return wait([`15m bias ${bias}`, `5m setup OK`, `insufficient 1m history (${bars1.length} bars)`], { bar_time });
+  const dir1 = st1.dir[jTrig];
+  const line1 = st1.line[jTrig];
+  const bar1 = bars1[jTrig];
+  if (dir1 == null || line1 == null) return wait([`15m bias ${bias}`, `5m setup OK`, `1m Supertrend not computable yet`], { bar_time });
 
-  // The 3m stage can only confirm the 5m bias; it never sets or flips `side`.
-  const aligned = (trend5m === 'BULL' && dir3m === 1) || (trend5m === 'BEAR' && dir3m === -1);
-  if (!aligned) {
-    return wait([`5m trend ${trend5m}`, `3m confirm - 3m Supertrend not aligned with the 5m trend (watch, not a trade)`], { bar_time });
+  // The 1m stage can only trigger IN the 15m bias direction; it never sets or
+  // flips `side`, and it is only reached once the 15m bias and 5m structure are
+  // both intact.
+  const trigAligned = (bias === 'BULL' && dir1 === 1) || (bias === 'BEAR' && dir1 === -1);
+  if (!trigAligned) {
+    return wait([`15m bias ${bias}`, `5m setup OK`, `1m trigger - 1m Supertrend not yet aligned with the 15m bias (watch, not a trade)`], { bar_time });
   }
-  const closedOnSide = trend5m === 'BULL' ? bar3m.close > line3m : bar3m.close < line3m;
-  if (!closedOnSide) {
-    return wait([`5m trend ${trend5m}`, `3m confirm - last closed 3m candle has not closed on the trend side of the 3m Supertrend line (watch, not a trade)`], { bar_time });
-  }
-
-  // ---- Gate 2b: session VWAP directional confirmation ----
-  // Session VWAP computed from the 3m OHLCV series through the last CLOSED bar
-  // (j3) - not the chart study, which reports the still-forming bar.
-  const vwap = sessionVWAP(bars3m, j3);
-  if (vwap == null || !Number.isFinite(vwap)) {
-    return wait([`5m trend ${trend5m}`, `3m confirm OK`, `VWAP unavailable - cannot confirm direction, standing aside`], { bar_time });
-  }
-  if (side === 'BUY' && bar3m.close <= vwap) {
-    return wait([`5m trend ${trend5m}`, `3m confirm OK`, `VWAP conflict - price ${f2(bar3m.close)} is not above session VWAP ${f2(vwap)}, no BUY`], { bar_time });
-  }
-  if (side === 'SELL' && bar3m.close >= vwap) {
-    return wait([`5m trend ${trend5m}`, `3m confirm OK`, `VWAP conflict - price ${f2(bar3m.close)} is not below session VWAP ${f2(vwap)}, no SELL`], { bar_time });
+  const trigClosedOnSide = bias === 'BULL' ? bar1.close > line1 : bar1.close < line1;
+  if (!trigClosedOnSide) {
+    return wait([`15m bias ${bias}`, `5m setup OK`, `1m trigger - last closed 1m candle has not closed on the trend side of the 1m Supertrend line (watch, not a trade)`], { bar_time });
   }
 
-  // ---- Gate 3: risk (3m data, closed bars only) ----
-  const atr3arr = wilderATR(bars3m, 14);
-  const atr3 = atr3arr[j3]; // ATR at the last closed 3m bar
-  if (!Number.isFinite(atr3) || atr3 <= 0) return wait([`5m trend ${trend5m}`, `3m confirm OK`, `Risk - 3m ATR(14) not available`], { bar_time });
+  const entry = bar1.close;
 
-  const entry = bar3m.close;
-  const win = bars3m.slice(0, -1).slice(-args.lookback); // closed 3m bars only
+  // ---- Gate 2b: VWAP directional check on the 1m entry price ----
+  if (side === 'BUY' && entry <= vwap) {
+    return wait([`15m bias ${bias}`, `5m setup OK`, `1m trigger OK`, `VWAP conflict - entry ${f2(entry)} is not above session VWAP ${f2(vwap)}, no BUY`], { bar_time });
+  }
+  if (side === 'SELL' && entry >= vwap) {
+    return wait([`15m bias ${bias}`, `5m setup OK`, `1m trigger OK`, `VWAP conflict - entry ${f2(entry)} is not below session VWAP ${f2(vwap)}, no SELL`], { bar_time });
+  }
+
+  // ---- Gate 3: risk - 5m ATR + 5m swing, entered at the 1m close ----
+  const win = bars5.slice(0, -1).slice(-args.lookback); // closed 5m bars only
   let stop;
   if (side === 'BUY') {
     const swingLow = Math.min(...win.map((b) => b.low));
-    const raw = swingLow - 0.1 * atr3;
+    const raw = swingLow - 0.1 * atr5;
     const dist = entry - raw;
-    stop = dist < 0.8 * atr3 || dist > 2.5 * atr3 ? entry - 1.5 * atr3 : raw;
+    stop = dist < 0.8 * atr5 || dist > 2.5 * atr5 ? entry - 1.5 * atr5 : raw;
   } else {
     const swingHigh = Math.max(...win.map((b) => b.high));
-    const raw = swingHigh + 0.1 * atr3;
+    const raw = swingHigh + 0.1 * atr5;
     const dist = raw - entry;
-    stop = dist < 0.8 * atr3 || dist > 2.5 * atr3 ? entry + 1.5 * atr3 : raw;
+    stop = dist < 0.8 * atr5 || dist > 2.5 * atr5 ? entry + 1.5 * atr5 : raw;
   }
   const risk = Math.abs(entry - stop);
-  if (!Number.isFinite(risk) || risk <= 0) return wait([`5m trend ${trend5m}`, `3m confirm OK`, `Risk - could not derive a valid stop`], { bar_time });
+  if (!Number.isFinite(risk) || risk <= 0) return wait([`15m bias ${bias}`, `5m setup OK`, `1m trigger OK`, `Risk - could not derive a valid stop`], { bar_time });
 
   // target = nearest S&R level in the trade direction
   let target = null;
-  if (side === 'BUY') target = sr3m?.resistance != null && sr3m.resistance > entry ? sr3m.resistance : null;
-  else target = sr3m?.support != null && sr3m.support < entry ? sr3m.support : null;
+  if (side === 'BUY') target = sr?.resistance != null && sr.resistance > entry ? sr.resistance : null;
+  else target = sr?.support != null && sr.support < entry ? sr.support : null;
 
   if (target == null) {
-    const lvl = side === 'BUY' ? sr3m?.resistance : sr3m?.support;
+    const lvl = side === 'BUY' ? sr?.resistance : sr?.support;
     return wait(
-      [`5m trend ${trend5m}`, `3m confirm OK`, `Risk - no structural ${side === 'BUY' ? 'resistance above' : 'support below'} entry ${f2(entry)} (nearest S&R level ${lvl != null ? f2(lvl) : 'n/a'} is on the wrong side); do not invent a target`],
+      [`15m bias ${bias}`, `5m setup OK`, `1m trigger OK`, `Risk - no structural ${side === 'BUY' ? 'resistance above' : 'support below'} entry ${f2(entry)} (nearest S&R level ${lvl != null ? f2(lvl) : 'n/a'} is on the wrong side); do not invent a target`],
       { bar_time },
     );
   }
@@ -397,12 +455,11 @@ async function scanSymbol(symbol, cfg, args) {
   const rr = reward / risk;
   if (rr < minRR) {
     return wait(
-      [`5m trend ${trend5m}`, `3m confirm OK`, `Risk - nearest structural target ${f2(target)} gives R/R 1:${rr.toFixed(2)}, below the ${minRR}:1 minimum`],
+      [`15m bias ${bias}`, `5m setup OK`, `1m trigger OK`, `Risk - nearest structural target ${f2(target)} gives R/R 1:${rr.toFixed(2)}, below the ${minRR}:1 minimum`],
       { bar_time },
     );
   }
 
-  const extended = Math.abs(entry - line3m) > 1.5 * atr3;
   return {
     ...base,
     side,
@@ -413,11 +470,12 @@ async function scanSymbol(symbol, cfg, args) {
     rr_text: `1:${rr.toFixed(1)}`,
     bar_time,
     reasons: [
-      `5m trend ${trend5m} - price ${f2(price5m)} ${trend5m === 'BULL' ? 'above' : 'below'} the 5m Supertrend line ${f2(line5m)} on the last closed bar; no fresh flip`,
-      `RSI(14) 5m ${rsi5m.toFixed(2)} confirms momentum (not ${side === 'BUY' ? 'overbought' : 'oversold'})`,
-      `3m confirm - 3m Supertrend aligned ${trend5m === 'BULL' ? 'bullish' : 'bearish'}; last closed 3m candle closed ${trend5m === 'BULL' ? 'above' : 'below'} the 3m Supertrend line ${f2(line3m)}${extended ? ' (note: extended from the line - not a pullback entry)' : ''}`,
-      `VWAP confirms - price ${f2(bar3m.close)} is ${side === 'BUY' ? 'above' : 'below'} session VWAP ${f2(vwap)}`,
-      `Risk - stop ${f2(stop)} (${side === 'BUY' ? 'swing low' : 'swing high'} +/- 0.1*ATR, ATR14 ${f2(atr3)}), target ${f2(target)} (nearest S&R ${side === 'BUY' ? 'resistance' : 'support'}), risk ${f2(risk)}, R/R 1:${rr.toFixed(2)}`,
+      `15m bias ${bias} - price ${f2(price15)} ${bias === 'BULL' ? 'above' : 'below'} the 15m Supertrend line ${f2(line15)} on the last closed bar; no fresh flip`,
+      `RSI(14) 15m ${rsi15.toFixed(2)} confirms momentum (not ${side === 'BUY' ? 'overbought' : 'oversold'})`,
+      `5m setup - 15m structure intact; last closed 5m ${f2(bar5.close)} is ${(distToLine5 / atr5).toFixed(2)}x ATR5 from the 5m Supertrend line ${f2(line5)} (${st5Aligned ? 'aligned pullback' : 'counter-trend pullback'}, within ${P}x ATR5)`,
+      `1m trigger - 1m Supertrend aligned ${bias === 'BULL' ? 'bullish' : 'bearish'}; last closed 1m candle closed ${bias === 'BULL' ? 'above' : 'below'} the 1m Supertrend line ${f2(line1)}`,
+      `VWAP confirms - entry ${f2(entry)} is ${side === 'BUY' ? 'above' : 'below'} session VWAP ${f2(vwap)}`,
+      `Risk - stop ${f2(stop)} (${side === 'BUY' ? 'swing low' : 'swing high'} +/- 0.1*ATR5, ATR14(5m) ${f2(atr5)}), target ${f2(target)} (nearest S&R ${side === 'BUY' ? 'resistance' : 'support'}), risk ${f2(risk)}, R/R 1:${rr.toFixed(2)}`,
       `Session - ${sess.why}`,
     ],
   };
@@ -435,14 +493,17 @@ async function main() {
   const sl = rules.scan_logic || {};
   const universe = args.symbols || sl.universe?.symbols || rules.watchlist || [];
   if (!universe.length) { console.error('scan-run: no symbols in rules.json (scan_logic.universe.symbols / watchlist)'); process.exit(2); }
+  // pullback-zone width: --pullback-atr flag wins, else rules.json pullback_atr_mult, else 1.5
+  args.pullbackAtr = args.pullbackAtr != null ? args.pullbackAtr : Math.max(0.1, Number(sl.pullback_atr_mult) || 1.5);
   const cfg = {
-    trendTf: String(sl.timeframes?.trend || '5'),
-    entryTf: String(sl.timeframes?.entry || '3'),
+    biasTf: String(sl.timeframes?.trend || '15'),
+    setupTf: String(sl.timeframes?.setup || '5'),
+    entryTf: String(sl.timeframes?.entry || '1'),
     minRR: Number(sl.gate3_risk?.min_risk_reward ?? 2.0),
     profiles: sl.session_profiles || {},
   };
 
-  console.error(`scan-run: ${universe.length} symbols | trend ${cfg.trendTf}m / entry ${cfg.entryTf}m | min R/R ${cfg.minRR}:1`);
+  console.error(`scan-run: ${universe.length} symbols | bias ${cfg.biasTf}m / setup ${cfg.setupTf}m / trigger ${cfg.entryTf}m | pullback <= ${args.pullbackAtr}x ATR5 | min R/R ${cfg.minRR}:1`);
   console.error(`scan-run: universe (${args.symbols ? 'from --symbols' : 'from rules.json'}):`);
   universe.forEach((s, i) => console.error(`  ${String(i + 1).padStart(2)}. ${s}`));
 
