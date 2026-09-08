@@ -69,9 +69,18 @@
 //        --pullback-atr <P> (5m pullback-zone width in ATR5, default 1.5)
 //        --per-symbol <sec> (hang guard per symbol, default 35)
 //        --deadline <sec>   (hard wall-clock exit, default 420)
+//        --notify           send each BUY/SELL to Telegram the moment it is
+//                           evaluated, by shelling out to notify-telegram.js
+//                           --signal per signal. Off by default (stdout only),
+//                           so a plain run and manual smoke tests send nothing.
+//                           This makes delivery independent of the pipe reader
+//                           surviving to end-of-run: a later per-symbol timeout
+//                           or a Task Scheduler taskkill can no longer drop an
+//                           already-evaluated BUY/SELL.
 //        --verbose        --help
 
 import { readFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { chart, data } from '../src/core/index.js';
@@ -91,20 +100,25 @@ const HELP = `scan-run.js - apply rules.json scan_logic and print JSON signal li
   --lookback <n>      bars for the 5m swing stop (default 10)
   --pullback-atr <P>  5m pullback-zone width in ATR5 (default 1.5)
   --no-restore        leave the chart on the last scanned symbol
+  --notify            send each BUY/SELL to Telegram as it is evaluated
+                      (notify-telegram.js --signal); off by default
   --verbose           progress + per-gate detail on stderr
   --help
 
 15m = bias, 5m = pullback / setup, 1m = entry trigger. Only stdout carries JSON;
-all logs go to stderr. Nothing is sent - pipe to notify-telegram.js.`;
+all logs go to stderr. Without --notify nothing is sent - pipe to
+notify-telegram.js. With --notify each BUY/SELL is delivered per-signal, so a
+later timeout / taskkill cannot drop an already-evaluated alert.`;
 
 // ── args ────────────────────────────────────────────────────────────
 function parseArgs(argv) {
-  const a = { symbols: null, settle: 1800, lookback: 10, pullbackAtr: null, perSymbol: 35, deadline: 420, restore: true, verbose: false, help: false };
+  const a = { symbols: null, settle: 1800, lookback: 10, pullbackAtr: null, perSymbol: 35, deadline: 420, restore: true, notify: false, verbose: false, help: false };
   for (let i = 0; i < argv.length; i++) {
     const x = argv[i];
     if (x === '--help' || x === '-h') a.help = true;
     else if (x === '--verbose' || x === '-v') a.verbose = true;
     else if (x === '--no-restore') a.restore = false;
+    else if (x === '--notify') a.notify = true;
     else if (x === '--symbols') a.symbols = (argv[++i] || '').split(',').map((s) => s.trim()).filter(Boolean);
     else if (x === '--settle') a.settle = Math.max(0, Number(argv[++i]) || 0);
     else if (x === '--lookback') a.lookback = Math.max(2, Number(argv[++i]) || 10);
@@ -118,6 +132,25 @@ function parseArgs(argv) {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const emit = (obj) => process.stdout.write(JSON.stringify(obj) + '\n');
+
+// Deliver one BUY/SELL immediately by shelling out to the standalone notifier
+// (which reads .env, dedupes on symbol+side+bar_time, and redacts the token on
+// its own side). Synchronous and best-effort: the Telegram round-trip finishes
+// before the next symbol is scanned, so a per-symbol timeout or a Task Scheduler
+// taskkill later in the run cannot lose a signal that was already evaluated.
+// A send failure is logged to stderr and never aborts the scan.
+const NOTIFIER = resolve(SCRIPT_DIR, 'notify-telegram.js');
+function notifyOne(sig) {
+  if (sig.side !== 'BUY' && sig.side !== 'SELL') return;
+  try {
+    execFileSync(process.execPath, [NOTIFIER, '--signal', JSON.stringify(sig)], {
+      stdio: ['ignore', 'ignore', 'inherit'],
+      timeout: 20000,
+    });
+  } catch (e) {
+    console.error(`scan-run: notify failed for ${sig.symbol} ${sig.side} - ${e && e.message ? e.message : e}`);
+  }
+}
 
 // getOhlcv can throw "chart may still be loading" for a few seconds after a
 // symbol / timeframe switch. Poll until we get a usable series or time out.
@@ -503,7 +536,7 @@ async function main() {
     profiles: sl.session_profiles || {},
   };
 
-  console.error(`scan-run: ${universe.length} symbols | bias ${cfg.biasTf}m / setup ${cfg.setupTf}m / trigger ${cfg.entryTf}m | pullback <= ${args.pullbackAtr}x ATR5 | min R/R ${cfg.minRR}:1`);
+  console.error(`scan-run: ${universe.length} symbols | bias ${cfg.biasTf}m / setup ${cfg.setupTf}m / trigger ${cfg.entryTf}m | pullback <= ${args.pullbackAtr}x ATR5 | min R/R ${cfg.minRR}:1 | notify ${args.notify ? 'ON (per-signal)' : 'off'}`);
   console.error(`scan-run: universe (${args.symbols ? 'from --symbols' : 'from rules.json'}):`);
   universe.forEach((s, i) => console.error(`  ${String(i + 1).padStart(2)}. ${s}`));
 
@@ -552,6 +585,7 @@ async function main() {
     if (timedOut) { await disconnect().catch(() => {}); await sleep(500); }
     tally[sig.side] = (tally[sig.side] || 0) + 1;
     emit(sig);
+    if (args.notify) notifyOne(sig);
     if (args.verbose) console.error(`      -> ${sig.side}${sig.side !== 'WAIT' ? ` entry ${sig.entry} stop ${sig.stop} target ${sig.target} R/R ${sig.rr_text}` : ` (${(sig.reasons || []).slice(-1)[0] || ''})`}`);
   }
   clearTimeout(killTimer);
