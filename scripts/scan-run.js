@@ -13,52 +13,52 @@
 //
 // ALL decision logic lives in ./scan-logic.js (pure, unit-tested). This file
 // only does CDP orchestration: switch symbol/timeframe, pull OHLCV + the two
-// chart studies it reads ("Supertrend" 15m cross-check, "Support and Resistance
+// chart studies it reads ("Supertrend" 5m cross-check, "Support and Resistance
 // Levels with Breaks" for levels), then hand the bars to scan-logic's
 // evaluate(). Supertrend, ATR, Wilder RSI(14) and session VWAP are all computed
 // from the CLOSED OHLCV series, never read from chart studies, so no gate
 // repaints on the still-forming bar.
 //
-// Architecture: 15m = BIAS, 5m = SETUP + STRUCTURAL CONFIRMATION, 1m = TRIGGER.
+// Architecture: 5m = BIAS, 3m = SETUP + STRUCTURAL CONFIRMATION, 1m = TRIGGER.
 // Exactly 4 indicators, no fifth: Supertrend(10,close,3), Session VWAP, Wilder
-// RSI(14) on 15m, and Support & Resistance Levels with Breaks.
+// RSI(14) on 5m, and Support & Resistance Levels with Breaks.
 //
-//   Gate 1   15m BIAS   - Supertrend on the last closed 15m bar sets & FIXES the
+//   Gate 1   5m BIAS    - Supertrend on the last closed 5m bar sets & FIXES the
 //                         direction. Fresh flip / computed-vs-chart disagreement
-//                         = WAIT (before any 5m or 1m load).
-//   Gate 2c  RSI(14) 15m - block BUY >= 70, block SELL <= 30.
+//                         = WAIT (before any 3m or 1m load).
+//   Gate 2c  RSI(14) 5m - block BUY >= 70, block SELL <= 30.
 //   Session             - inside the symbol's IST new-signal window.
-//   Gate 2   5m SETUP   - (a) 15m structure still intact on the 5m  <-- HARD 15m
+//   Gate 2   3m SETUP   - (a) 5m structure still intact on the 3m  <-- HARD 5m
 //                         protection; the 1m stage can never override it.
-//                         (b) price in a pullback zone vs the 5m Supertrend.
-//   Gate 2s  5m STRUCTURE - a meaningful S/R level (break + retest preferred, 5m
+//                         (b) price in a pullback zone vs the 3m Supertrend.
+//   Gate 2s  3m STRUCTURE - a meaningful S/R level (break + retest preferred, 3m
 //                         swing as fallback) was pulled into AND HELD, and the
-//                         last CLOSED 5m candle confirms the bias direction with
-//                         the 5m Supertrend aligned on that bar. The 5m
+//                         last CLOSED 3m candle confirms the bias direction with
+//                         the 3m Supertrend aligned on that bar. The 3m
 //                         Supertrend MAY be counter-trend earlier in the
 //                         pullback. Until Gate 2 AND Gate 2s both pass, the 1m
 //                         trigger stays DISARMED.
 //   Gate 2b  VWAP       - session VWAP supportive of the trade direction (on the
-//                         5m close and again on the 1m entry).
+//                         3m close and again on the 1m entry).
 //   Gate 2t  1m TRIGGER - only armed after Gate 1 + 2 + 2s. Last closed 1m
 //                         Supertrend aligned + candle closed on the trend side.
 //                         Produces the entry price only; never sets/flips the
 //                         side, never fires on its own.
-//   Gate 3   RISK       - 5m-swing stop (0.1*ATR5 buffer, clamped to
-//                         [0.8, 2.5]*ATR5 else 1.5*ATR5), target = nearest S&R
+//   Gate 3   RISK       - 3m-swing stop (0.1*ATR3 buffer, clamped to
+//                         [0.8, 2.5]*ATR3 else 1.5*ATR3), target = nearest S&R
 //                         level in the trade direction, require R/R >= 2.
 //
 // BUY/SELL only when every gate passes and agrees on one direction; else WAIT.
-// The emitted bar_time is the last closed 5m SETUP bar, so notify-telegram /
-// journal-log dedupe to <=1 alert per 5m window per side.
+// The emitted bar_time is the last closed 3m SETUP bar, so notify-telegram /
+// journal-log dedupe to <=1 alert per 3m window per side.
 //
 // Output line shape (consumed by notify-telegram.js):
 //   {"symbol","side":"BUY|SELL|WAIT","entry","stop","target","rr","rr_text",
-//    "bar_time","reasons":[...],"scan_time","trend_15m","tf_trend","tf_setup","tf_entry"}
+//    "bar_time","reasons":[...],"scan_time","trend_5m","tf_trend","tf_setup","tf_entry"}
 //
 // Flags: --symbols a,b,c  (override universe)   --settle <ms>  (default 1800)
-//        --lookback <n> (5m swing window, default 10)   --no-restore
-//        --pullback-atr <P> (5m pullback-zone width in ATR5, default 1.5)
+//        --lookback <n> (3m swing window, default 10)   --no-restore
+//        --pullback-atr <P> (3m pullback-zone width in ATR3, default 1.5)
 //        --per-symbol <sec> (hang guard per symbol, default 35)
 //        --deadline <sec>   (hard wall-clock exit, default 420)
 //        --notify           send each BUY/SELL to Telegram the moment it is
@@ -90,15 +90,15 @@ const HELP = `scan-run.js - apply rules.json scan_logic and print JSON signal li
   node scripts/scan-run.js | node scripts/notify-telegram.js     (the integration)
 
   --settle <ms>       wait after each symbol/timeframe switch (default 1800)
-  --lookback <n>      bars for the 5m swing stop (default 10)
-  --pullback-atr <P>  5m pullback-zone width in ATR5 (default 1.5)
+  --lookback <n>      bars for the 3m swing stop (default 10)
+  --pullback-atr <P>  3m pullback-zone width in ATR3 (default 1.5)
   --no-restore        leave the chart on the last scanned symbol
   --notify            send each BUY/SELL to Telegram as it is evaluated
                       (notify-telegram.js --signal); off by default
   --verbose           progress + per-gate detail on stderr
   --help
 
-15m = bias, 5m = setup + structural confirmation, 1m = entry trigger. Only stdout
+5m = bias, 3m = setup + structural confirmation, 1m = entry trigger. Only stdout
 carries JSON; all logs go to stderr. Without --notify nothing is sent - pipe to
 notify-telegram.js. With --notify each BUY/SELL is delivered per-signal, so a
 later timeout / taskkill cannot drop an already-evaluated alert.`;
@@ -163,7 +163,7 @@ async function readBars(minBars, count = 250, tries = 12, gap = 600) {
 
 // ── one symbol ────────────────────────────────────────────────────
 // CDP orchestration only. evaluate() (scan-logic.js) drives the gate pipeline
-// and pulls each timeframe lazily through `load`, so the 5m / 1m series are
+// and pulls each timeframe lazily through `load`, so the 3m / 1m series are
 // fetched only when the pipeline actually reaches them - a Gate 1 WAIT still
 // costs a single chart switch.
 async function scanSymbol(symbol, cfg, args) {
@@ -182,7 +182,7 @@ async function scanSymbol(symbol, cfg, args) {
     }
     const isBias = tf === cfg.biasTf;
     const bars = await readBars(isBias ? 40 : 50, isBias ? 250 : 500);
-    // 1m needs no studies; 15m / 5m need Supertrend (cross-check) + S&R (levels).
+    // 1m needs no studies; 5m / 3m need Supertrend (cross-check) + S&R (levels).
     const studies = tf === cfg.entryTf ? [] : ((await data.getStudyValues())?.studies || []);
     return { bars, studies };
   };
@@ -212,14 +212,14 @@ async function main() {
   // pullback-zone width: --pullback-atr flag wins, else rules.json pullback_atr_mult, else 1.5
   args.pullbackAtr = args.pullbackAtr != null ? args.pullbackAtr : Math.max(0.1, Number(sl.pullback_atr_mult) || 1.5);
   const cfg = {
-    biasTf: String(sl.timeframes?.trend || '15'),
-    setupTf: String(sl.timeframes?.setup || '5'),
+    biasTf: String(sl.timeframes?.trend || '5'),
+    setupTf: String(sl.timeframes?.setup || '3'),
     entryTf: String(sl.timeframes?.entry || '1'),
     minRR: Number(sl.gate3_risk?.min_risk_reward ?? 2.0),
     profiles: sl.session_profiles || {},
   };
 
-  console.error(`scan-run: ${universe.length} symbols | bias ${cfg.biasTf}m / setup ${cfg.setupTf}m / trigger ${cfg.entryTf}m | pullback <= ${args.pullbackAtr}x ATR5 | min R/R ${cfg.minRR}:1 | notify ${args.notify ? 'ON (per-signal)' : 'off'}`);
+  console.error(`scan-run: ${universe.length} symbols | bias ${cfg.biasTf}m / setup ${cfg.setupTf}m / trigger ${cfg.entryTf}m | pullback <= ${args.pullbackAtr}x ATR3 | min R/R ${cfg.minRR}:1 | notify ${args.notify ? 'ON (per-signal)' : 'off'}`);
   console.error(`scan-run: universe (${args.symbols ? 'from --symbols' : 'from rules.json'}):`);
   universe.forEach((s, i) => console.error(`  ${String(i + 1).padStart(2)}. ${s}`));
 

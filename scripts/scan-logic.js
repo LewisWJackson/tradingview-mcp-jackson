@@ -1,44 +1,51 @@
 // scripts/scan-logic.js
-// Pure decision logic for the 15m-BIAS / 5m-STRUCTURE / 1m-TRIGGER scanner.
+// Pure decision logic for the 5m-BIAS / 3m-STRUCTURE / 1m-TRIGGER scanner.
 // No CDP, no chart I/O - deterministic and unit-testable. scan-run.js feeds it
 // OHLCV bars via a lazy load(tf) callback; tests feed synthetic fixtures.
 //
+// NOTE ON IDENTIFIERS: some locals keep historical suffixes from an earlier
+// timeframe layout - `*15` names carry the BIAS-stage series/values (now 5m) and
+// `*5` / `atr5` / `line5` names carry the SETUP-stage series/values (now 3m).
+// They are slot tags, not literal minute values; the timeframe a stage runs on
+// is set entirely by cfg.biasTf / cfg.setupTf / cfg.entryTf (rules.json
+// scan_logic.timeframes).
+//
 // Exactly 4 indicators, no fifth:
 //   1. Supertrend (10, close, 3)
-//   2. Session VWAP (hlc3, IST-session anchor, from CLOSED 5m bars)
-//   3. Wilder RSI(14) on 15m CLOSED bars
+//   2. Session VWAP (hlc3, IST-session anchor, from CLOSED 3m bars)
+//   3. Wilder RSI(14) on 5m CLOSED bars
 //   4. Support and Resistance Levels with Breaks [LuxAlgo]  (structural level)
 //
 // Every gate reads the last CLOSED bar on its timeframe (index length-2), never
 // the still-forming bar, so decisions do not repaint.
 //
 // Pipeline - a stage can only CONFIRM or WITHHOLD, never set or flip the side:
-//   Gate 1   15m BIAS        Supertrend on the last closed 15m bar sets & FIXES
+//   Gate 1   5m BIAS         Supertrend on the last closed 5m bar sets & FIXES
 //                            the direction. A fresh flip, or a computed-vs-chart
-//                            disagreement, = WAIT (before 5m / 1m load).
-//   Gate 2c  RSI(14) 15m     block BUY if >= 70, block SELL if <= 30.
+//                            disagreement, = WAIT (before 3m / 1m load).
+//   Gate 2c  RSI(14) 5m      block BUY if >= 70, block SELL if <= 30.
 //   Session                  inside the symbol's IST new-signal window.
-//   Gate 2   5m SETUP        (a) 15m structure still intact on the 5m  <-- HARD
-//                                15m protection: the 1m stage can NEVER override
-//                                an invalidated 15m structure.
-//                            (b) price is in a pullback zone vs the 5m Supertrend
-//   Gate 2s  5m STRUCTURE    NEW. A meaningful S/R level (break + retest preferred;
-//                            5m swing as fallback) was pulled into AND HELD, and
-//                            the last CLOSED 5m candle confirms the bias direction
-//                            with the 5m Supertrend aligned on that bar. The 5m
+//   Gate 2   3m SETUP        (a) 5m structure still intact on the 3m  <-- HARD
+//                                5m protection: the 1m stage can NEVER override
+//                                an invalidated 5m structure.
+//                            (b) price is in a pullback zone vs the 3m Supertrend
+//   Gate 2s  3m STRUCTURE    A meaningful S/R level (break + retest preferred;
+//                            3m swing as fallback) was pulled into AND HELD, and
+//                            the last CLOSED 3m candle confirms the bias direction
+//                            with the 3m Supertrend aligned on that bar. The 3m
 //                            Supertrend may be counter-trend EARLIER in the
 //                            pullback - it just has to be aligned on the
 //                            confirmation bar. Until Gate 2 AND Gate 2s both pass
 //                            the 1m trigger stays DISARMED.
 //   Gate 2b  VWAP            session VWAP supportive of the trade direction
-//                            (checked on the 5m close and again on the 1m entry).
+//                            (checked on the 3m close and again on the 1m entry).
 //   Gate 2t  1m TRIGGER      only armed after Gate 1 + 2 + 2s. Last CLOSED 1m
 //                            Supertrend aligned with the bias AND the last closed
 //                            1m candle closed on the trend side of the 1m line.
 //                            Produces the entry price only - it can never set or
 //                            flip the side, and never fires on its own.
-//   Gate 3   RISK            5m-swing stop (0.1*ATR5 buffer, clamped to
-//                            [0.8, 2.5]*ATR5 else 1.5*ATR5), target = nearest
+//   Gate 3   RISK            3m-swing stop (0.1*ATR3 buffer, clamped to
+//                            [0.8, 2.5]*ATR3 else 1.5*ATR3), target = nearest
 //                            S&R level in the trade direction, require R/R >= 2.
 //
 // Only when every gate passes and agrees on one direction is BUY / SELL emitted.
@@ -178,34 +185,34 @@ export function sessionCheck(symbol, profiles, now = new Date()) {
 // Each returns either { wait: <WAIT signal> } to stop the pipeline, or a context
 // object the next gate consumes. `carry` is the accumulating reasons prefix.
 
-// Gate 1 - 15m bias. ctx15: { dir, dirPrev, line, price, rsi, barTime, chartDir }
+// Gate 1 - 5m bias. ctx15: { dir, dirPrev, line, price, rsi, barTime, chartDir }
 export function decideBias(ctx15) {
   const { dir, dirPrev, line, price, rsi, barTime, chartDir } = ctx15 || {};
   const W = (reason, extra = {}) => ({ wait: { side: 'WAIT', reasons: [reason], bar_time: barTime, ...extra } });
-  if (dir == null || line == null) return W('15m Supertrend not computable yet');
+  if (dir == null || line == null) return W('5m Supertrend not computable yet');
   if (chartDir != null && chartDir !== dir) {
-    return W(`15m Supertrend disagreement: computed ${dir === 1 ? 'BULL' : 'BEAR'} vs chart ${chartDir === 1 ? 'BULL' : 'BEAR'} - standing aside`);
+    return W(`5m Supertrend disagreement: computed ${dir === 1 ? 'BULL' : 'BEAR'} vs chart ${chartDir === 1 ? 'BULL' : 'BEAR'} - standing aside`);
   }
   if (dir !== dirPrev) {
-    return W('15m Supertrend flipped on the last closed bar - waiting one bar to confirm', { trend_15m: dir === 1 ? 'BULL' : 'BEAR' });
+    return W('5m Supertrend flipped on the last closed bar - waiting one bar to confirm', { trend_5m: dir === 1 ? 'BULL' : 'BEAR' });
   }
   const bias = dir === 1 ? 'BULL' : 'BEAR';
   const side = dir === 1 ? 'BUY' : 'SELL';
-  const carry = [`15m bias ${bias}`];
+  const carry = [`5m bias ${bias}`];
 
   if (rsi == null || !Number.isFinite(rsi)) {
-    return { wait: { side: 'WAIT', reasons: [...carry, 'RSI(14) 15m unavailable - cannot confirm momentum, standing aside'], bar_time: barTime } };
+    return { wait: { side: 'WAIT', reasons: [...carry, 'RSI(14) 5m unavailable - cannot confirm momentum, standing aside'], bar_time: barTime } };
   }
   if (side === 'BUY' && rsi >= 70) {
-    return { wait: { side: 'WAIT', reasons: [...carry, `RSI(14) 15m ${rsi.toFixed(2)} is overbought (>=70) - momentum exhausted, no BUY`], bar_time: barTime } };
+    return { wait: { side: 'WAIT', reasons: [...carry, `RSI(14) 5m ${rsi.toFixed(2)} is overbought (>=70) - momentum exhausted, no BUY`], bar_time: barTime } };
   }
   if (side === 'SELL' && rsi <= 30) {
-    return { wait: { side: 'WAIT', reasons: [...carry, `RSI(14) 15m ${rsi.toFixed(2)} is oversold (<=30) - momentum exhausted, no SELL`], bar_time: barTime } };
+    return { wait: { side: 'WAIT', reasons: [...carry, `RSI(14) 5m ${rsi.toFixed(2)} is oversold (<=30) - momentum exhausted, no SELL`], bar_time: barTime } };
   }
   return { bias, side, line15: line, price15: price, rsi15: rsi, bar15Time: barTime, carry };
 }
 
-// Gate 2 + Gate 2s - 5m setup and structural confirmation.
+// Gate 2 + Gate 2s - 3m setup and structural confirmation.
 // ctx5: { dir, line, atr, bar:{open,high,low,close,time}, win:[{open,high,low,close}...],
 //         sr:{support,resistance}, vwap }
 export function decideSetup(prev, ctx5, cfg = {}) {
@@ -215,39 +222,39 @@ export function decideSetup(prev, ctx5, cfg = {}) {
   const bar_time = bar5?.time ?? prev.bar15Time;
   const W = (reason) => ({ wait: { side: 'WAIT', reasons: [...carry, reason], bar_time } });
 
-  if (dir5 == null || line5 == null || bar5 == null) return W('5m Supertrend not computable yet');
-  if (!Number.isFinite(atr5) || atr5 <= 0) return W('5m setup - ATR(14) 5m not available');
+  if (dir5 == null || line5 == null || bar5 == null) return W('3m Supertrend not computable yet');
+  if (!Number.isFinite(atr5) || atr5 <= 0) return W('3m setup - ATR(14) 3m not available');
 
-  // (a) HARD 15m protection - 5m close must still be on the bias side of the 15m
-  //     Supertrend line. If it has crossed against the bias the 15m structure is
+  // (a) HARD 5m protection - 3m close must still be on the bias side of the 5m
+  //     Supertrend line. If it has crossed against the bias the 5m structure is
   //     invalidated: stand aside BEFORE the 1m stage. The 1m trigger can never
   //     override this.
   const structureIntact = bias === 'BULL' ? bar5.close > line15 : bar5.close < line15;
   if (!structureIntact) {
-    return W(`5m setup - 15m bias structurally broken: last closed 5m ${f2(bar5.close)} has crossed the 15m Supertrend line ${f2(line15)} against the bias; standing aside`);
+    return W(`3m setup - 5m bias structurally broken: last closed 3m ${f2(bar5.close)} has crossed the 5m Supertrend line ${f2(line15)} against the bias; standing aside`);
   }
 
-  // (b) pullback zone vs the 5m Supertrend line
+  // (b) pullback zone vs the 3m Supertrend line
   const distToLine5 = Math.abs(bar5.close - line5);
   const st5Aligned = (bias === 'BULL' && dir5 === 1) || (bias === 'BEAR' && dir5 === -1);
   if (distToLine5 > P * atr5) {
-    return W(`5m setup - not in a pullback zone: price ${f2(bar5.close)} is ${(distToLine5 / atr5).toFixed(2)}x ATR5 from the 5m Supertrend line ${f2(line5)} (need <= ${P}x); ${st5Aligned ? 'trend extended' : 'pullback too deep'}, watch`);
+    return W(`3m setup - not in a pullback zone: price ${f2(bar5.close)} is ${(distToLine5 / atr5).toFixed(2)}x ATR3 from the 3m Supertrend line ${f2(line5)} (need <= ${P}x); ${st5Aligned ? 'trend extended' : 'pullback too deep'}, watch`);
   }
 
-  // ---- Gate 2s: 5m STRUCTURAL CONFIRMATION (new) ----
+  // ---- Gate 2s: 3m STRUCTURAL CONFIRMATION ----
   const tol = 0.5 * atr5;
   const priorBars = win.filter((b) => b && b !== bar5);
 
-  // structural level: prefer the S&R level on the bias side; else a recent 5m swing
+  // structural level: prefer the S&R level on the bias side; else a recent 3m swing
   let level = null, levelSrc = '';
   if (bias === 'BULL' && Number.isFinite(sr.support)) { level = sr.support; levelSrc = 'S&R support'; }
   else if (bias === 'BEAR' && Number.isFinite(sr.resistance)) { level = sr.resistance; levelSrc = 'S&R resistance'; }
   else if (priorBars.length >= 2) {
     level = bias === 'BULL' ? Math.min(...priorBars.map((b) => b.low)) : Math.max(...priorBars.map((b) => b.high));
-    levelSrc = bias === 'BULL' ? '5m swing low' : '5m swing high';
+    levelSrc = bias === 'BULL' ? '3m swing low' : '3m swing high';
   }
   if (!Number.isFinite(level)) {
-    return W('5m setup OK; no structural S/R or 5m swing level to retest - standing aside');
+    return W('3m setup OK; no structural S/R or 3m swing level to retest - standing aside');
   }
 
   // the pullback must have reached INTO the level area
@@ -256,36 +263,36 @@ export function decideSetup(prev, ctx5, cfg = {}) {
   const ext = bias === 'BULL' ? Math.min(...lows) : Math.max(...highs);
   const reached = bias === 'BULL' ? ext <= level + tol : ext >= level - tol;
   if (!reached) {
-    return W(`5m setup OK; pullback has not reached the ${bias === 'BULL' ? 'support' : 'resistance'} retest area (${levelSrc} ${f2(level)}, pullback extreme ${f2(ext)}, tol +/-${f2(tol)})`);
+    return W(`3m setup OK; pullback has not reached the ${bias === 'BULL' ? 'support' : 'resistance'} retest area (${levelSrc} ${f2(level)}, pullback extreme ${f2(ext)}, tol +/-${f2(tol)})`);
   }
 
-  // the level must NOT have been broken by a CLOSED 5m bar against the bias
+  // the level must NOT have been broken by a CLOSED 3m bar against the bias
   const broken = [...priorBars, bar5].find((b) => (bias === 'BULL' ? b.close < level - tol : b.close > level + tol));
   if (broken) {
-    return W(`5m setup OK; ${levelSrc} ${f2(level)} broken - a closed 5m bar at ${f2(broken.close)} is through the level, not a valid retest`);
+    return W(`3m setup OK; ${levelSrc} ${f2(level)} broken - a closed 3m bar at ${f2(broken.close)} is through the level, not a valid retest`);
   }
 
-  // the last CLOSED 5m candle must HOLD the level, print a confirming body, and
-  // have the 5m Supertrend aligned with the 15m bias on THAT bar
+  // the last CLOSED 3m candle must HOLD the level, print a confirming body, and
+  // have the 3m Supertrend aligned with the 5m bias on THAT bar
   const held = bias === 'BULL' ? bar5.close >= level : bar5.close <= level;
   const body = bias === 'BULL' ? bar5.close > bar5.open : bar5.close < bar5.open;
   if (!held) {
-    return W(`5m setup OK; ${levelSrc} ${f2(level)} not held - last closed 5m closed ${bias === 'BULL' ? 'below' : 'above'} it`);
+    return W(`3m setup OK; ${levelSrc} ${f2(level)} not held - last closed 3m closed ${bias === 'BULL' ? 'below' : 'above'} it`);
   }
   if (!body) {
-    return W(`5m setup OK; last closed 5m candle is not ${bias === 'BULL' ? 'bullish' : 'bearish'} - 5m has not confirmed direction, 1m trigger stays disarmed`);
+    return W(`3m setup OK; last closed 3m candle is not ${bias === 'BULL' ? 'bullish' : 'bearish'} - 3m has not confirmed direction, 1m trigger stays disarmed`);
   }
   if (!st5Aligned) {
-    return W('5m setup OK; 5m Supertrend not yet aligned with the 15m bias on the last closed bar - 5m has not confirmed, 1m trigger stays disarmed');
+    return W('3m setup OK; 3m Supertrend not yet aligned with the 5m bias on the last closed bar - 3m has not confirmed, 1m trigger stays disarmed');
   }
 
-  // VWAP must be available and supportive of the trade direction on the 5m close
+  // VWAP must be available and supportive of the trade direction on the 3m close
   if (vwap == null || !Number.isFinite(vwap)) {
     return W('VWAP unavailable - cannot confirm direction, standing aside');
   }
   const vwapOk5 = bias === 'BULL' ? bar5.close >= vwap : bar5.close <= vwap;
   if (!vwapOk5) {
-    return W(`VWAP not supportive - last closed 5m ${f2(bar5.close)} is on the wrong side of session VWAP ${f2(vwap)} for a ${side}`);
+    return W(`VWAP not supportive - last closed 3m ${f2(bar5.close)} is on the wrong side of session VWAP ${f2(vwap)} for a ${side}`);
   }
 
   // break + retest is the preferred structural read; a plain pullback retest also
@@ -294,7 +301,7 @@ export function decideSetup(prev, ctx5, cfg = {}) {
     ? Number.isFinite(sr.resistance) && priorBars.some((b) => b.close > sr.resistance)
     : Number.isFinite(sr.support) && priorBars.some((b) => b.close < sr.support);
   const retestKind = brokeThenBack ? 'break + retest' : 'pullback retest';
-  const struct5Reason = `5m structure - ${retestKind} of ${levelSrc} ${f2(level)} held; last closed 5m ${f2(bar5.close)} is a ${bias === 'BULL' ? 'bullish' : 'bearish'} confirmation candle, 5m Supertrend aligned (${(distToLine5 / atr5).toFixed(2)}x ATR5 from the 5m line ${f2(line5)})`;
+  const struct5Reason = `3m structure - ${retestKind} of ${levelSrc} ${f2(level)} held; last closed 3m ${f2(bar5.close)} is a ${bias === 'BULL' ? 'bullish' : 'bearish'} confirmation candle, 3m Supertrend aligned (${(distToLine5 / atr5).toFixed(2)}x ATR3 from the 3m line ${f2(line5)})`;
 
   return {
     ...prev,
@@ -313,7 +320,7 @@ export function decideTrigger(setup, ctx1, _cfg = {}) {
 
   if (dir1 == null || line1 == null || close1 == null) return W('1m Supertrend not computable yet');
   const trigAligned = (bias === 'BULL' && dir1 === 1) || (bias === 'BEAR' && dir1 === -1);
-  if (!trigAligned) return W('1m trigger - 1m Supertrend not yet aligned with the 15m bias (watch, not a trade)');
+  if (!trigAligned) return W('1m trigger - 1m Supertrend not yet aligned with the 5m bias (watch, not a trade)');
   const trigClosedOnSide = bias === 'BULL' ? close1 > line1 : close1 < line1;
   if (!trigClosedOnSide) return W('1m trigger - last closed 1m candle has not closed on the trend side of the 1m Supertrend line (watch, not a trade)');
 
@@ -325,7 +332,7 @@ export function decideTrigger(setup, ctx1, _cfg = {}) {
   return { ...setup, entry, line1, trig1Reason };
 }
 
-// Gate 3 - risk. Uses the 5m swing + 5m ATR; entered at the 1m close.
+// Gate 3 - risk. Uses the 3m swing + 3m ATR; entered at the 1m close.
 export function decideRisk(trig, cfg = {}) {
   const minRR = cfg.minRR ?? 2;
   const L = cfg.lookback ?? 10;
@@ -377,14 +384,14 @@ function assemble(bias15, setup, trig, risk) {
     rr: Number(rr.toFixed(2)),
     rr_text: `1:${rr.toFixed(1)}`,
     bar_time: setup.bar_time,
-    trend_15m: bias,
+    trend_5m: bias,
     reasons: [
-      `15m bias ${bias} - price ${f2(price15)} ${bias === 'BULL' ? 'above' : 'below'} the 15m Supertrend line ${f2(line15)} on the last closed bar; no fresh flip`,
-      `RSI(14) 15m ${rsi15.toFixed(2)} confirms momentum (not ${side === 'BUY' ? 'overbought' : 'oversold'})`,
-      `5m structure - ${retestKind} of ${levelSrc} ${f2(level)} held; last closed 5m ${f2(bar5.close)} is a ${bias === 'BULL' ? 'bullish' : 'bearish'} confirmation candle, 5m Supertrend aligned (${(distToLine5 / atr5).toFixed(2)}x ATR5 from the 5m line ${f2(line5)})`,
+      `5m bias ${bias} - price ${f2(price15)} ${bias === 'BULL' ? 'above' : 'below'} the 5m Supertrend line ${f2(line15)} on the last closed bar; no fresh flip`,
+      `RSI(14) 5m ${rsi15.toFixed(2)} confirms momentum (not ${side === 'BUY' ? 'overbought' : 'oversold'})`,
+      `3m structure - ${retestKind} of ${levelSrc} ${f2(level)} held; last closed 3m ${f2(bar5.close)} is a ${bias === 'BULL' ? 'bullish' : 'bearish'} confirmation candle, 3m Supertrend aligned (${(distToLine5 / atr5).toFixed(2)}x ATR3 from the 3m line ${f2(line5)})`,
       `1m trigger - 1m Supertrend aligned ${bias === 'BULL' ? 'bullish' : 'bearish'}; last closed 1m candle closed ${bias === 'BULL' ? 'above' : 'below'} the 1m Supertrend line ${f2(line1)}`,
       `VWAP confirms - entry ${f2(entry)} is ${side === 'BUY' ? 'above' : 'below'} session VWAP ${f2(vwap)}`,
-      `Risk - stop ${f2(stop)} (${side === 'BUY' ? 'swing low' : 'swing high'} +/- 0.1*ATR5, ATR14(5m) ${f2(atr5)}), target ${f2(target)} (nearest S&R ${side === 'BUY' ? 'resistance' : 'support'}), risk ${f2(Math.abs(entry - stop))}, R/R 1:${rr.toFixed(2)}`,
+      `Risk - stop ${f2(stop)} (${side === 'BUY' ? 'swing low' : 'swing high'} +/- 0.1*ATR3, ATR14(3m) ${f2(atr5)}), target ${f2(target)} (nearest S&R ${side === 'BUY' ? 'resistance' : 'support'}), risk ${f2(Math.abs(entry - stop))}, R/R 1:${rr.toFixed(2)}`,
     ],
   };
 }
@@ -409,7 +416,7 @@ export function decide({ ctx15, ctx5, ctx1, cfg = {} }) {
 // ── bars -> context adapters ──────────────────────────────────────
 export function ctx15From(bars15, studies15) {
   const st = supertrend(bars15, 10, 3);
-  const i = bars15.length - 2; // last CLOSED 15m bar
+  const i = bars15.length - 2; // last CLOSED bias bar (5m)
   return {
     dir: st.dir[i], dirPrev: st.dir[i - 1], line: st.line[i],
     price: bars15[i].close, rsi: wilderRSI(bars15, 14)[i], barTime: bars15[i].time,
@@ -420,7 +427,7 @@ export function ctx15From(bars15, studies15) {
 export function ctx5From(bars5, studies5, sr15, lookback = 10) {
   const st = supertrend(bars5, 10, 3);
   const atr = wilderATR(bars5, 14);
-  const i = bars5.length - 2; // last CLOSED 5m bar
+  const i = bars5.length - 2; // last CLOSED setup bar (3m)
   const closed = bars5.slice(0, i + 1);           // all CLOSED bars, incl. bar5
   const win = closed.slice(-Math.max(lookback, 12));
   return {
@@ -437,7 +444,7 @@ export function ctx1From(bars1) {
   return { dir: st.dir[j], line: st.line[j], close: bars1[j].close };
 }
 
-// Full evaluation from live-style bars, with lazy timeframe loading so the 5m /
+// Full evaluation from live-style bars, with lazy timeframe loading so the 3m /
 // 1m series are only fetched when the pipeline actually reaches them.
 // load(tf) -> { bars: [...], studies: [...] }
 export async function evaluate({ symbol, cfg, opts = {}, now = new Date(), load }) {
@@ -450,7 +457,7 @@ export async function evaluate({ symbol, cfg, opts = {}, now = new Date(), load 
 
   const s15 = await load(cfg.biasTf);
   const bars15 = s15?.bars || [];
-  if (bars15.length < 40) return mkWait(`insufficient 15m history (${bars15.length} bars)`);
+  if (bars15.length < 40) return mkWait(`insufficient 5m history (${bars15.length} bars)`);
   const b = decideBias(ctx15From(bars15, s15?.studies));
   if (b.wait) return b.wait;
 
@@ -460,7 +467,7 @@ export async function evaluate({ symbol, cfg, opts = {}, now = new Date(), load 
 
   const s5 = await load(cfg.setupTf);
   const bars5 = s5?.bars || [];
-  if (bars5.length < 50) return { side: 'WAIT', reasons: [...b.carry, `insufficient 5m history (${bars5.length} bars)`], bar_time: b.bar15Time };
+  if (bars5.length < 50) return { side: 'WAIT', reasons: [...b.carry, `insufficient 3m history (${bars5.length} bars)`], bar_time: b.bar15Time };
   const sr15 = readSR(s15?.studies);
   const s = decideSetup(b, ctx5From(bars5, s5?.studies, sr15, gateCfg.lookback), gateCfg);
   if (s.wait) return s.wait;

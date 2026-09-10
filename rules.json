@@ -45,13 +45,13 @@
   "notes": "Add any other context you want Claude to factor in — e.g. macro events this week, key dates, anything that should affect your bias.",
 
   "scan_logic": {
-    "description": "Intraday BUY/SELL/WAIT scanner. Three timeframes: 15m sets the directional BIAS, 5m is the SETUP + STRUCTURAL CONFIRMATION stage (pullback into a meaningful S/R or swing level that is then RETESTED and HELD, plus a confirming CLOSED 5m candle with the 5m Supertrend aligned), and 1m is the closed-bar entry TRIGGER that is armed ONLY after every 5m condition has confirmed. The 1m must NEVER generate a BUY/SELL by itself. Gated by genuine confluence across all 4 active chart indicators before any signal fires. The 15m Supertrend fixes the trade direction; the 5m and 1m stages can only confirm or withhold - they never set or flip the direction, and they can never trade against an invalidated 15m bias or a 5m structure that has not confirmed. Every gate reads the last CLOSED candle on its timeframe, never the still-forming bar, so signals do not repaint. Scans the entire TradingView watchlist exactly as-is; no symbols removed or filtered. Exactly 4 indicators, no fifth (no EMA / MACD / Bollinger): Supertrend (10, close, 3) - 15m bias, 5m confirmation, 1m trigger; Session VWAP (hlc3, IST-session anchor) - directional confirmation on the 5m close and the 1m entry; Wilder RSI(14) on 15m closed bars - momentum / exhaustion filter (blocks BUY >=70, SELL <=30); and 'Support and Resistance Levels with Breaks' [LuxAlgo] - the structural retest level (break + retest preferred) and the risk target. All other indicator references (Hull Suite, NNFX Baseline, EMA 9/21, CM_Ultimate_MA_MTF, Trend Range Detector, MA Cross Alert) remain removed. If any indicator conflicts with the others, the scan returns WAIT. Supertrend, ATR(14), Wilder RSI(14) and session VWAP, plus swing highs/lows and volume, are all computed from CLOSED OHLCV bars, not read from chart studies; only the Support/Resistance levels and a coarse Supertrend direction cross-check are read from chart indicators. Keeping the VWAP and RSI studies on the chart is optional (visual reference only).",
+    "description": "Intraday BUY/SELL/WAIT scanner. Three timeframes: 5m sets the directional BIAS, 3m is the SETUP + STRUCTURAL CONFIRMATION stage (pullback into a meaningful S/R or swing level that is then RETESTED and HELD, plus a confirming CLOSED 3m candle with the 3m Supertrend aligned), and 1m is the closed-bar entry TRIGGER that is armed ONLY after every 3m condition has confirmed. The 1m must NEVER generate a BUY/SELL by itself. Gated by genuine confluence across all 4 active chart indicators before any signal fires. The 5m Supertrend fixes the trade direction; the 3m and 1m stages can only confirm or withhold - they never set or flip the direction, and they can never trade against an invalidated 5m bias or a 3m structure that has not confirmed. Every gate reads the last CLOSED candle on its timeframe, never the still-forming bar, so signals do not repaint. Scans the entire TradingView watchlist exactly as-is; no symbols removed or filtered. Exactly 4 indicators, no fifth (no EMA / MACD / Bollinger): Supertrend (10, close, 3) - 5m bias, 3m confirmation, 1m trigger; Session VWAP (hlc3, IST-session anchor) - directional confirmation on the 3m close and the 1m entry; Wilder RSI(14) on 5m closed bars - momentum / exhaustion filter (blocks BUY >=70, SELL <=30); and 'Support and Resistance Levels with Breaks' [LuxAlgo] - the structural retest level (break + retest preferred) and the risk target. All other indicator references (Hull Suite, NNFX Baseline, EMA 9/21, CM_Ultimate_MA_MTF, Trend Range Detector, MA Cross Alert) remain removed. If any indicator conflicts with the others, the scan returns WAIT. Supertrend, ATR(14), Wilder RSI(14) and session VWAP, plus swing highs/lows and volume, are all computed from CLOSED OHLCV bars, not read from chart studies; only the Support/Resistance levels and a coarse Supertrend direction cross-check are read from chart indicators. Keeping the VWAP and RSI studies on the chart is optional (visual reference only).",
 
     "active_indicators": [
-      "Supertrend (10, close, 3) - bias gate on 15m (last closed bar), structural-confirmation gate on 5m (must be aligned with the 15m bias on the last closed 5m bar), entry trigger on 1m",
-      "Session VWAP (hlc3, computed from the full CLOSED 5m session series) - directional confirmation: the last closed 5m must be on the supportive side of VWAP, and so must the 1m entry price (above for a BUY, below for a SELL)",
-      "Wilder RSI(14) on 15m closed bars - momentum confirmation: blocks BUY when overbought (>=70), blocks SELL when oversold (<=30)",
-      "Support and Resistance Levels with Breaks [LuxAlgo] - the 5m structural RETEST level (break + retest preferred; nearest opposing 5m swing is the fallback) and the Gate 3 risk target"
+      "Supertrend (10, close, 3) - bias gate on 5m (last closed bar), structural-confirmation gate on 3m (must be aligned with the 5m bias on the last closed 3m bar), entry trigger on 1m",
+      "Session VWAP (hlc3, computed from the full CLOSED 3m session series) - directional confirmation: the last closed 3m must be on the supportive side of VWAP, and so must the 1m entry price (above for a BUY, below for a SELL)",
+      "Wilder RSI(14) on 5m closed bars - momentum confirmation: blocks BUY when overbought (>=70), blocks SELL when oversold (<=30)",
+      "Support and Resistance Levels with Breaks [LuxAlgo] - the 3m structural RETEST level (break + retest preferred; nearest opposing 3m swing is the fallback) and the Gate 3 risk target"
     ],
 
     "universe": {
@@ -66,7 +66,7 @@
       "notes": "20-symbol snapshot of the watchlist at build time. NSEIX:NIFTY1! (GIFT Nifty) replaced by domestic NSE:NIFTY per user. RELIANCE1! (future) and RELIANCE (cash) both kept. No deduping, no filtering, nothing excluded."
     },
 
-    "timeframes": { "trend": "15", "setup": "5", "entry": "1" },
+    "timeframes": { "trend": "5", "setup": "3", "entry": "1" },
 
     "pullback_atr_mult": 1.5,
 
@@ -88,45 +88,45 @@
       }
     },
 
-    "gate1_bias_15m": {
-      "role": "bias gate - sets and fixes the directional bias for the symbol; the 5m and 1m stages can never change it",
+    "gate1_bias_5m": {
+      "role": "bias gate - sets and fixes the directional bias for the symbol; the 3m and 1m stages can never change it",
       "components": [
-        "Supertrend (10, hl2, 3) on 15m, read on the last CLOSED bar: BULL if price is above the Supertrend line, BEAR if price is below it"
+        "Supertrend (10, hl2, 3) on 5m, read on the last CLOSED bar: BULL if price is above the Supertrend line, BEAR if price is below it"
       ],
-      "bull": "the last closed 15m price is above the 15m Supertrend line",
-      "bear": "the last closed 15m price is below the 15m Supertrend line",
-      "wait": "the 15m Supertrend flipped on the most recent closed bar (wait one bar for confirmation), or the computed 15m direction disagrees with the chart's Supertrend study - a WAIT here stops the scan before the 5m and 1m stages load, so no lower timeframe can trade against an invalidated 15m bias"
+      "bull": "the last closed 5m price is above the 5m Supertrend line",
+      "bear": "the last closed 5m price is below the 5m Supertrend line",
+      "wait": "the 5m Supertrend flipped on the most recent closed bar (wait one bar for confirmation), or the computed 5m direction disagrees with the chart's Supertrend study - a WAIT here stops the scan before the 3m and 1m stages load, so no lower timeframe can trade against an invalidated 5m bias"
     },
 
-    "gate2_setup_5m": {
+    "gate2_setup_3m": {
       "role": "pullback / setup validity - can confirm or withhold, never set or flip the trade direction",
-      "note": "The 5m Supertrend MAY be counter-trend (opposed to the 15m bias) EARLIER in the pullback - that is a healthy retracement. It must, however, be aligned with the 15m bias on the last CLOSED 5m bar for Gate 2s to confirm (see below).",
-      "structure_intact": "the last closed 5m price must still be on the bias side of the 15m Supertrend line (BULL: 5m close above line15; BEAR: 5m close below line15). If the 5m price has closed through the 15m Supertrend line against the bias, the 15m bias is being invalidated - return WAIT and do not load the 1m stage. This is HARD 15m protection: the 1m trigger can never override it.",
-      "pullback_proximity": "the last closed 5m price must be within pullback_atr_mult x ATR(14, 5m) of the 5m Supertrend line (|close5 - line5| <= pullback_atr_mult * atr5). Price far from the 5m line (extended, or a pullback that has run too deep) fails - return WAIT.",
-      "fail": "if the 15m-bias structure is broken on the 5m, or the 5m price is not in the pullback-proximity zone, return WAIT (a watch, not a trade)"
+      "note": "The 3m Supertrend MAY be counter-trend (opposed to the 5m bias) EARLIER in the pullback - that is a healthy retracement. It must, however, be aligned with the 5m bias on the last CLOSED 3m bar for Gate 2s to confirm (see below).",
+      "structure_intact": "the last closed 3m price must still be on the bias side of the 5m Supertrend line (BULL: 3m close above line5; BEAR: 3m close below line5). If the 3m price has closed through the 5m Supertrend line against the bias, the 5m bias is being invalidated - return WAIT and do not load the 1m stage. This is HARD 5m protection: the 1m trigger can never override it.",
+      "pullback_proximity": "the last closed 3m price must be within pullback_atr_mult x ATR(14, 3m) of the 3m Supertrend line (|close3 - line3| <= pullback_atr_mult * atr3). Price far from the 3m line (extended, or a pullback that has run too deep) fails - return WAIT.",
+      "fail": "if the 5m-bias structure is broken on the 3m, or the 3m price is not in the pullback-proximity zone, return WAIT (a watch, not a trade)"
     },
 
-    "gate2s_structure_5m": {
-      "role": "5m STRUCTURAL CONFIRMATION - the 1m trigger stays DISARMED until this passes. Confirms or withholds only; never sets or flips the direction.",
-      "retest_level": "prefer the 'Support and Resistance Levels with Breaks' level on the bias side (support for a BUY, resistance for a SELL); a broken level that price has reclaimed (break + retest) is the preferred read. If the S&R study exposes no level on that side, fall back to the most recent opposing 5m swing (swing low for a BUY, swing high for a SELL) over the lookback window.",
-      "reached": "over the last `lookback` closed 5m bars the pullback extreme (lowest low for a BUY, highest high for a SELL) must have come within 0.5 x ATR(14,5m) of the retest level - price actually traded into the support/resistance area.",
-      "not_broken": "no CLOSED 5m bar in the window may have closed through the level against the bias by more than 0.5 x ATR5 (a close-through is a broken level, not a retest) - return WAIT.",
-      "held_and_confirmed": "the last CLOSED 5m candle must (a) close back on the bias side of the level (held), (b) print a confirming body (BUY: close > open; SELL: close < open), and (c) have the 5m Supertrend aligned with the 15m bias on that bar. Any of the three missing -> WAIT: the 5m has not confirmed and the 1m trigger is not armed.",
-      "vwap": "session VWAP must be available and the last closed 5m must be on the supportive side of it (BUY: close5 >= VWAP; SELL: close5 <= VWAP), else WAIT.",
-      "fail": "if there is no structural level, the pullback never reached it, the level was broken, the last closed 5m candle did not hold + confirm with the 5m Supertrend aligned, or VWAP is not supportive - return WAIT and do not load the 1m stage."
+    "gate2s_structure_3m": {
+      "role": "3m STRUCTURAL CONFIRMATION - the 1m trigger stays DISARMED until this passes. Confirms or withholds only; never sets or flips the direction.",
+      "retest_level": "prefer the 'Support and Resistance Levels with Breaks' level on the bias side (support for a BUY, resistance for a SELL); a broken level that price has reclaimed (break + retest) is the preferred read. If the S&R study exposes no level on that side, fall back to the most recent opposing 3m swing (swing low for a BUY, swing high for a SELL) over the lookback window.",
+      "reached": "over the last `lookback` closed 3m bars the pullback extreme (lowest low for a BUY, highest high for a SELL) must have come within 0.5 x ATR(14,3m) of the retest level - price actually traded into the support/resistance area.",
+      "not_broken": "no CLOSED 3m bar in the window may have closed through the level against the bias by more than 0.5 x ATR3 (a close-through is a broken level, not a retest) - return WAIT.",
+      "held_and_confirmed": "the last CLOSED 3m candle must (a) close back on the bias side of the level (held), (b) print a confirming body (BUY: close > open; SELL: close < open), and (c) have the 3m Supertrend aligned with the 5m bias on that bar. Any of the three missing -> WAIT: the 3m has not confirmed and the 1m trigger is not armed.",
+      "vwap": "session VWAP must be available and the last closed 3m must be on the supportive side of it (BUY: close3 >= VWAP; SELL: close3 <= VWAP), else WAIT.",
+      "fail": "if there is no structural level, the pullback never reached it, the level was broken, the last closed 3m candle did not hold + confirm with the 3m Supertrend aligned, or VWAP is not supportive - return WAIT and do not load the 1m stage."
     },
 
     "gate2t_trigger_1m": {
       "role": "entry trigger - the only stage that produces the entry price; can confirm or withhold, never set or flip the direction. It NEVER generates a BUY/SELL by itself.",
-      "trigger": "the last CLOSED 1m Supertrend is aligned with the 15m bias AND the last closed 1m candle closes on the trend side of the 1m Supertrend line",
+      "trigger": "the last CLOSED 1m Supertrend is aligned with the 5m bias AND the last closed 1m candle closes on the trend side of the 1m Supertrend line",
       "entry": "close of the last CLOSED 1m candle once the trigger passes",
-      "fail": "if the 1m Supertrend is not yet aligned with the 15m bias, or the last closed 1m candle has not closed on the trend side of the 1m line, return WAIT (a watch, not a trade)",
-      "never_overrides": "the 1m trigger is reached ONLY after Gate 1 (15m bias intact, no fresh flip), Gate 2 (15m structure intact on the 5m + pullback proximity) AND Gate 2s (5m retest held + confirming 5m candle + 5m Supertrend aligned + VWAP supportive) have all passed; it can never override an invalidated 15m bias or a 5m structure that has not confirmed."
+      "fail": "if the 1m Supertrend is not yet aligned with the 5m bias, or the last closed 1m candle has not closed on the trend side of the 1m line, return WAIT (a watch, not a trade)",
+      "never_overrides": "the 1m trigger is reached ONLY after Gate 1 (5m bias intact, no fresh flip), Gate 2 (5m structure intact on the 3m + pullback proximity) AND Gate 2s (3m retest held + confirming 3m candle + 3m Supertrend aligned + VWAP supportive) have all passed; it can never override an invalidated 5m bias or a 3m structure that has not confirmed."
     },
 
     "gate2b_vwap_confirmation": {
       "role": "directional confirmation, not a standalone signal",
-      "indicator": "session VWAP - hlc3, anchored to the IST session, computed from the full CLOSED 5m session series through the last closed 5m bar (the 5m series covers a whole session within the 500-bar OHLCV cap; a 1m series would not for long sessions). Falls back to an unweighted hlc3 mean for a symbol with no volume, e.g. a cash index.",
+      "indicator": "session VWAP - hlc3, anchored to the IST session, computed from the full CLOSED 3m session series through the last closed 3m bar (the 3m series covers a whole session within the 500-bar OHLCV cap; a 1m series would not for long sessions). Falls back to an unweighted hlc3 mean for a symbol with no volume, e.g. a cash index.",
       "bull_requirement": "the 1m entry price is above session VWAP for a BUY",
       "bear_requirement": "the 1m entry price is below session VWAP for a SELL",
       "fail": "if the entry price sits on the wrong side of VWAP for the trade direction, that is a conflict between Supertrend and VWAP - return WAIT"
@@ -134,31 +134,31 @@
 
     "gate2c_rsi_confirmation": {
       "role": "momentum confirmation / exhaustion filter",
-      "indicator": "Wilder RSI(14) on 15m, computed from CLOSED 15m OHLCV bars and read at the last closed 15m bar (not the chart study, which reports the still-forming bar)",
-      "buy_block": "do not BUY if RSI(14) 15m >= 70 (overbought)",
-      "sell_block": "do not SELL if RSI(14) 15m <= 30 (oversold)",
-      "fail": "if RSI blocks the trade direction implied by the 15m bias, that is a conflict between Supertrend and RSI momentum - return WAIT"
+      "indicator": "Wilder RSI(14) on 5m, computed from CLOSED 5m OHLCV bars and read at the last closed 5m bar (not the chart study, which reports the still-forming bar)",
+      "buy_block": "do not BUY if RSI(14) 5m >= 70 (overbought)",
+      "sell_block": "do not SELL if RSI(14) 5m <= 30 (oversold)",
+      "fail": "if RSI blocks the trade direction implied by the 5m bias, that is a conflict between Supertrend and RSI momentum - return WAIT"
     },
 
     "gate3_risk": {
       "entry": "close of the last CLOSED 1m trigger candle",
-      "atr": "ATR(14) on 5m (the 1m entry price is combined with 5m-scale risk sizing so stops are not inside 1m noise)",
-      "stop_loss": "most recent CLOSED-5m swing low (BUY) or swing high (SELL), offset by 0.1x ATR(5m) buffer; clamp the entry-to-stop distance to [0.8x ATR5, 2.5x ATR5]; if outside that band, use 1.5x ATR5 instead",
+      "atr": "ATR(14) on 3m (the 1m entry price is combined with 3m-scale risk sizing so stops are not inside 1m noise)",
+      "stop_loss": "most recent CLOSED-3m swing low (BUY) or swing high (SELL), offset by 0.1x ATR(3m) buffer; clamp the entry-to-stop distance to [0.8x ATR3, 2.5x ATR3]; if outside that band, use 1.5x ATR3 instead",
       "risk_R": "absolute distance from the 1m entry to the stop-loss",
       "target": "nearest structural Support/Resistance level in the trade direction, from the 'Support and Resistance Levels with Breaks' indicator",
       "min_risk_reward": 2.0,
       "insufficient_room": "if the nearest structural target produces a final R/R below 2.0, return WAIT - do not widen, skip, or invent a target"
     },
 
-    "dedupe": "The emitted bar_time is the last closed 5m SETUP bar's timestamp (not the 1m trigger bar). notify-telegram.js and journal-log.js de-duplicate on symbol + side + bar_time, so at most one BUY/SELL alert fires per 5m setup window per side per symbol, even though the 1m trigger is re-evaluated every minute.",
+    "dedupe": "The emitted bar_time is the last closed 3m SETUP bar's timestamp (not the 1m trigger bar). notify-telegram.js and journal-log.js de-duplicate on symbol + side + bar_time, so at most one BUY/SELL alert fires per 3m setup window per side per symbol, even though the 1m trigger is re-evaluated every minute.",
 
-    "decision": "Return BUY or SELL only when Gate 1 (15m Supertrend bias, no fresh flip), Gate 2c (RSI(14) 15m momentum, not >=70 for BUY / not <=30 for SELL), the session window, Gate 2 (15m structure intact on the 5m + pullback proximity), Gate 2s (5m structural confirmation: a meaningful S/R or swing level retested AND held, a confirming CLOSED 5m candle, the 5m Supertrend aligned on that bar, VWAP supportive), Gate 2t (1m Supertrend trigger - armed ONLY after Gate 2s), Gate 2b (VWAP also on the 1m entry price) and Gate 3 (S/R structural risk/target, R/R >= 2.0) all pass and agree on the same direction. The direction is fixed by the 15m bias; the 5m and 1m stages only confirm or withhold, and the 1m can never fire on its own. If any gate fails, return WAIT with the specific failing reason.",
+    "decision": "Return BUY or SELL only when Gate 1 (5m Supertrend bias, no fresh flip), Gate 2c (RSI(14) 5m momentum, not >=70 for BUY / not <=30 for SELL), the session window, Gate 2 (5m structure intact on the 3m + pullback proximity), Gate 2s (3m structural confirmation: a meaningful S/R or swing level retested AND held, a confirming CLOSED 3m candle, the 3m Supertrend aligned on that bar, VWAP supportive), Gate 2t (1m Supertrend trigger - armed ONLY after Gate 2s), Gate 2b (VWAP also on the 1m entry price) and Gate 3 (S/R structural risk/target, R/R >= 2.0) all pass and agree on the same direction. The direction is fixed by the 5m bias; the 3m and 1m stages only confirm or withhold, and the 1m can never fire on its own. If any gate fails, return WAIT with the specific failing reason.",
 
     "alert_format": {
       "on_signal_must_include": ["symbol", "BUY or SELL", "entry price", "stop-loss", "target", "risk/reward", "reasons for the signal"],
       "on_no_signal": "WAIT plus the specific reason (which gate failed and why)",
-      "example_signal": "[SCAN 14:35 IST] RELIANCE1! - BUY | Entry 1,316.6 | Stop 1,308.4 (-8.2 pts, 1.4x ATR5) | Target 1,333.0 (structural resistance from S&R Levels with Breaks) | R/R 1:2.0 | Reasons: 15m bias BULL - price above the 15m Supertrend line on the last closed bar, RSI(14) 15m 58 not overbought; 5m setup - 15m structure intact and price within 1.0x ATR5 of the 5m Supertrend line (pullback); 1m trigger - 1m Supertrend flipped up and the last closed 1m candle closed above it; VWAP 1,312 below entry",
-      "example_wait": "[SCAN 22:10 IST] GOLD1! - WAIT | Inside MCX session, 15m bias BEAR, 5m structure intact, but price is 3.1x ATR5 from the 5m Supertrend line -> no pullback zone, watch",
+      "example_signal": "[SCAN 14:35 IST] RELIANCE1! - BUY | Entry 1,316.6 | Stop 1,308.4 (-8.2 pts, 1.4x ATR3) | Target 1,333.0 (structural resistance from S&R Levels with Breaks) | R/R 1:2.0 | Reasons: 5m bias BULL - price above the 5m Supertrend line on the last closed bar, RSI(14) 5m 58 not overbought; 3m setup - 5m structure intact and price within 1.0x ATR3 of the 3m Supertrend line (pullback); 1m trigger - 1m Supertrend flipped up and the last closed 1m candle closed above it; VWAP 1,312 below entry",
+      "example_wait": "[SCAN 22:10 IST] GOLD1! - WAIT | Inside MCX session, 5m bias BEAR, 3m structure intact, but price is 3.1x ATR3 from the 3m Supertrend line -> no pullback zone, watch",
       "telegram": "Only confirmed BUY / SELL lines are forwarded to Telegram by notify-telegram.js; every WAIT / watch line is logged and journaled only, never sent."
     },
 
