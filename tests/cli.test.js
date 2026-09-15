@@ -148,3 +148,35 @@ describe('CLI — pine check (server compile)', () => {
     assert.ok(result.error_count > 0);
   });
 });
+
+describe('CLI — analyze (offline SET signals)', () => {
+  it('analyze --help shows usage', () => {
+    const { stdout, exitCode } = run(['analyze', '--help']);
+    assert.equal(exitCode, 0);
+    assert.ok(stdout.includes('Usage: tv analyze'));
+    assert.ok(stdout.includes('--json'));
+  });
+
+  it('analyzes brief-output.json and prints SET regime', () => {
+    const { stdout, exitCode } = run(['analyze', 'brief-output.json']);
+    assert.equal(exitCode, 0);
+    assert.ok(stdout.includes('SET Swing Brief'));
+    assert.ok(stdout.includes('SET Regime:'));
+    assert.ok(stdout.includes('Top 3 Actionable Setups:'));
+  });
+
+  it('analyzes brief-output.json with --json flag', () => {
+    const { stdout, exitCode } = run(['analyze', 'brief-output.json', '--json']);
+    assert.equal(exitCode, 0);
+    const result = JSON.parse(stdout);
+    assert.equal(result.set_regime.available, true);
+    assert.equal(result.set_regime.symbol, 'SET:SET');
+    assert.equal(result.top_setups.length, 3);
+  });
+
+  it('errors on missing file', () => {
+    const { exitCode, stderr } = run(['analyze', 'does-not-exist.json']);
+    assert.equal(exitCode, 1);
+    assert.ok(stderr.includes('not found'));
+  });
+});

@@ -4,8 +4,9 @@ scripts/current.pine
 temp_*
 *.log
 discovery-log.json
+live-brief-output.json
 
-# Secrets — never commit
+# Secrets - never commit
 .env
 .env.*
 !.env.example

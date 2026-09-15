@@ -9,6 +9,7 @@ import { join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import * as chart from "./chart.js";
 import * as data from "./data.js";
+import { generateSignals } from "./signals.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = resolve(__dirname, "../../");
@@ -119,7 +120,7 @@ export async function runBrief({ rules_path } = {}) {
     } catch (_) {}
   }
 
-  return {
+  const briefPayload = {
     success: true,
     generated_at: new Date().toISOString(),
     rules_loaded_from: loadedFrom,
@@ -135,6 +136,21 @@ export async function runBrief({ rules_path } = {}) {
       "End with a one-sentence overall market read.",
       "Be direct. No preamble.",
     ].join(" "),
+  };
+
+  // Auto-generate machine-readable signals from the scan.
+  // This still preserves the raw symbols_scanned data for transparency.
+  const signals = generateSignals(briefPayload);
+
+  return {
+    ...briefPayload,
+    signals: {
+      generated_at: signals.generated_at,
+      set_regime: signals.set_regime,
+      summary: signals.summary,
+      top_setups: signals.top_setups,
+      all_symbols: signals.symbols,
+    },
   };
 }
 
