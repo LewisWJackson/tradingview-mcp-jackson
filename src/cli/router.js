@@ -3,6 +3,7 @@
  * Zero dependencies — uses only Node.js built-ins.
  */
 import { parseArgs } from 'node:util';
+import { disconnect } from '../connection.js';
 
 /** @type {Map<string, { description: string, options?: object, handler: Function, subcommands?: Map<string, object> }>} */
 const commands = new Map();
@@ -136,8 +137,10 @@ async function execute(handler, values, positionals) {
     } else {
       console.log(JSON.stringify(result, null, 2));
     }
+    await disconnect();
     process.exit(0);
   } catch (err) {
+    await disconnect().catch(() => {});
     handleError(err);
   }
 }

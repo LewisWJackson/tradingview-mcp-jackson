@@ -5,22 +5,43 @@
  * the rules defined in rules.json to produce per-symbol bias, setup stage,
  * key level, trigger, invalidation, and top actionable setups.
  *
+ * Supports both the original SET-tuned indicator names and simplified variants
+ * (e.g. "Simple Supertrend", "Simple LaRSI"). Auto-detects common scales.
+ *
  * No TradingView connection is required — this works entirely on the structured
  * JSON produced by `morning_brief` or saved as `brief-output.json`.
  */
 
-const INDICATOR_NAMES = {
-  supertrend: "Pivot Point Supertrend [SET]",
-  confluence: "SET Swing Dashboard [7-Star Confluence]",
-  laguerre: "Laguerre RSI Ehlers [SET]",
-  hurst: "Hurst Choppiness [SET] Regime",
-  costDist: "Position Cost Distribution SET",
+const INDICATOR_MATCHERS = {
+  supertrend: ["Supertrend", "Pivot Point Supertrend"],
+  confluence: ["Confluence Score", "7-Star Confluence", "Confluence"],
+  laguerre: ["LaRSI", "Laguerre RSI"],
+  hurst: ["Market Regime", "Hurst Choppiness", "Choppiness Regime"],
+  costDist: ["Position Cost", "Peak Cost"],
+};
+
+const VALUE_KEYS = {
+  supertrendUp: ["Up Trend", "Support", "Trail"],
+  supertrendDown: ["Down Trend", "Resistance", "Trail"],
+  supertrendBuyFlag: ["BUY", "Buy", "Long Entry"],
+  supertrendSellFlag: ["SELL", "Sell", "Short Entry"],
+  confluenceScore: ["Confluence Score", "Score"],
+  lagRsi: ["Laguerre RSI", "LaRSI"],
+  lagBuyFlag: ["Long Entry", "BUY", "Buy"],
+  lagSellFlag: ["Short Entry", "SELL", "Sell"],
+  hurstSmooth: ["Hurst Smooth", "Hurst"],
+  choppiness: ["Choppiness (norm)", "Chop"],
+  peakCost: ["Peak Cost Zone", "Peak Cost"],
+};
+
+const DEFAULT_SCALES = {
+  lagRsiScale: 1,
+  chopScale: 1,
+  confStrong: 6,
+  confWeak: 4,
 };
 
 const THRESHOLDS = {
-  strongConfluence: 6,
-  developingConfluence: 5,
-  weakConfluence: 4,
   lagLongEntry: 0.15,
   lagShortEntry: 0.85,
   lagLongChase: 0.8,
@@ -38,33 +59,83 @@ function parseNumber(value) {
   return Number.isFinite(n) ? n : null;
 }
 
-function findStudy(scan, nameSubstring) {
+function findStudy(scan, matchers) {
   const studies = scan?.indicators?.studies || scan?.state?.studies || [];
-  return studies.find((s) => s?.name?.includes(nameSubstring));
+  for (const m of matchers) {
+    const found = studies.find((s) => s?.name?.includes(m));
+    if (found) return found;
+  }
+  return undefined;
 }
 
-function getValue(study, key) {
-  return parseNumber(study?.values?.[key]);
+function getValue(study, ...keys) {
+  for (const key of keys) {
+    const v = parseNumber(study?.values?.[key]);
+    if (v !== null) return v;
+  }
+  return null;
 }
 
-function extractMetrics(scan) {
-  const supertrend = findStudy(scan, INDICATOR_NAMES.supertrend);
-  const confluence = findStudy(scan, INDICATOR_NAMES.confluence);
-  const laguerre = findStudy(scan, INDICATOR_NAMES.laguerre);
-  const hurst = findStudy(scan, INDICATOR_NAMES.hurst);
-  const costDist = findStudy(scan, INDICATOR_NAMES.costDist);
+function detectScales(symbols) {
+  let maxConf = 0;
+  let maxLagRsi = 0;
+  let maxChop = 0;
+  let maxHurst = 0;
 
-  const upTrend = getValue(supertrend, "Up Trend");
-  const downTrend = getValue(supertrend, "Down Trend");
-  const conf = getValue(confluence, "Confluence Score");
-  const lagRsi = getValue(laguerre, "Laguerre RSI");
-  const longEntryFlag = getValue(laguerre, "Long Entry");
-  const shortEntryFlag = getValue(laguerre, "Short Entry");
-  const midUp = getValue(laguerre, "Mid Up");
-  const midDown = getValue(laguerre, "Mid Down");
-  const hurstSmooth = getValue(hurst, "Hurst Smooth");
-  const choppiness = getValue(hurst, "Choppiness (norm)");
-  const peakCost = getValue(costDist, "Peak Cost Zone");
+  for (const scan of symbols) {
+    const m = extractRawMetrics(scan);
+    if (m.conf !== null) maxConf = Math.max(maxConf, m.conf);
+    if (m.lagRsi !== null) maxLagRsi = Math.max(maxLagRsi, m.lagRsi);
+    if (m.choppiness !== null) maxChop = Math.max(maxChop, m.choppiness);
+    if (m.hurstSmooth !== null) maxHurst = Math.max(maxHurst, m.hurstSmooth);
+  }
+
+  // LaRSI and Chop are usually either 0-1 or 0-100.
+  const lagRsiScale = maxLagRsi > 1 ? 100 : 1;
+  const chopScale = maxChop > 1 ? 100 : 1;
+
+  // Confluence could be 0-7 or 0-10 (or 0-100 in simplified variants).
+  let confStrong = 6;
+  let confWeak = 4;
+  if (maxConf > 7 && maxConf <= 10) {
+    confStrong = 8;
+    confWeak = 5;
+  } else if (maxConf > 10) {
+    confStrong = 80;
+    confWeak = 50;
+  }
+
+  return {
+    lagRsiScale,
+    chopScale,
+    confStrong,
+    confWeak,
+    detected: { maxConf, maxLagRsi, maxChop, maxHurst },
+  };
+}
+
+function extractRawMetrics(scan) {
+  const supertrend = findStudy(scan, INDICATOR_MATCHERS.supertrend);
+  const confluence = findStudy(scan, INDICATOR_MATCHERS.confluence);
+  const laguerre = findStudy(scan, INDICATOR_MATCHERS.laguerre);
+  const hurst = findStudy(scan, INDICATOR_MATCHERS.hurst);
+  const costDist = findStudy(scan, INDICATOR_MATCHERS.costDist);
+
+  const upTrend = getValue(supertrend, ...VALUE_KEYS.supertrendUp);
+  const downTrend = getValue(supertrend, ...VALUE_KEYS.supertrendDown);
+  const stBuyFlag = getValue(supertrend, ...VALUE_KEYS.supertrendBuyFlag);
+  const stSellFlag = getValue(supertrend, ...VALUE_KEYS.supertrendSellFlag);
+
+  const conf = getValue(confluence, ...VALUE_KEYS.confluenceScore);
+
+  const lagRsi = getValue(laguerre, ...VALUE_KEYS.lagRsi);
+  const lagBuyFlag = getValue(laguerre, ...VALUE_KEYS.lagBuyFlag);
+  const lagSellFlag = getValue(laguerre, ...VALUE_KEYS.lagSellFlag);
+
+  const hurstSmooth = getValue(hurst, ...VALUE_KEYS.hurstSmooth);
+  const choppiness = getValue(hurst, ...VALUE_KEYS.choppiness);
+
+  const peakCost = getValue(costDist, ...VALUE_KEYS.peakCost);
 
   const close = parseNumber(scan?.quote?.close);
   const last = parseNumber(scan?.quote?.last) ?? close;
@@ -72,23 +143,52 @@ function extractMetrics(scan) {
   return {
     symbol: scan.symbol,
     close: last ?? close,
-    supertrendDirection: upTrend !== null ? "up" : downTrend !== null ? "down" : "unknown",
-    trailLevel: upTrend ?? downTrend,
     upTrend,
     downTrend,
+    stBuyFlag,
+    stSellFlag,
     conf,
     lagRsi,
-    longEntryFlag,
-    shortEntryFlag,
-    midUp,
-    midDown,
+    lagBuyFlag,
+    lagSellFlag,
     hurstSmooth,
     choppiness,
     peakCost,
   };
 }
 
-function scoreConditions(m) {
+function normalizeMetrics(raw, scales) {
+  const m = { ...raw };
+
+  if (m.lagRsi !== null && scales.lagRsiScale > 1) {
+    m.lagRsi = m.lagRsi / scales.lagRsiScale;
+  }
+  if (m.choppiness !== null && scales.chopScale > 1) {
+    m.choppiness = m.choppiness / scales.chopScale;
+  }
+
+  // Determine supertrend direction.
+  // Prefer explicit BUY/SELL flags, then price vs trail.
+  let trailLevel = null;
+  if (m.upTrend !== null) trailLevel = m.upTrend;
+  else if (m.downTrend !== null) trailLevel = m.downTrend;
+
+  let direction = "unknown";
+  if (m.stBuyFlag !== null && m.stBuyFlag > 0) direction = "up";
+  else if (m.stSellFlag !== null && m.stSellFlag > 0) direction = "down";
+  else if (trailLevel !== null && m.close !== null) {
+    direction = m.close > trailLevel ? "up" : "down";
+  }
+
+  m.supertrendDirection = direction;
+  m.trailLevel = trailLevel;
+  m.longEntryFlag = m.lagBuyFlag !== null && m.lagBuyFlag > 0 ? 1 : 0;
+  m.shortEntryFlag = m.lagSellFlag !== null && m.lagSellFlag > 0 ? 1 : 0;
+
+  return m;
+}
+
+function scoreConditions(m, scales) {
   const checks = {
     trendAlign:
       m.supertrendDirection === "up"
@@ -96,7 +196,7 @@ function scoreConditions(m) {
         : m.supertrendDirection === "down"
           ? m.close < m.trailLevel
           : false,
-    strongConf: m.conf !== null && m.conf >= THRESHOLDS.strongConfluence,
+    strongConf: m.conf !== null && m.conf >= scales.confStrong,
     lagSignal:
       (m.supertrendDirection === "up" &&
         (m.lagRsi !== null && m.lagRsi < THRESHOLDS.lagLongEntry)) ||
@@ -112,11 +212,11 @@ function scoreConditions(m) {
   return { checks, metCount };
 }
 
-export function analyzeSymbol(scan) {
-  const m = extractMetrics(scan);
-  const { checks, metCount } = scoreConditions(m);
+export function analyzeSymbol(scan, scales = DEFAULT_SCALES) {
+  const raw = extractRawMetrics(scan);
+  const m = normalizeMetrics(raw, scales);
+  const { checks, metCount } = scoreConditions(m, scales);
 
-  // Default to neutral
   let bias = "neutral";
   let strength = "none";
   let stage = "waiting";
@@ -147,11 +247,11 @@ export function analyzeSymbol(scan) {
       else if (lagEntryZone && allFiveMet) stage = "in_trade";
       else stage = "waiting";
       trigger = lagTriggered
-        ? `Long Entry flag fired (Lag RSI ${m.lagRsi?.toFixed(3)})`
+        ? `Long Entry flag fired (LaRSI ${m.lagRsi?.toFixed(3)})`
         : lagEntryZone
-          ? `Lag RSI ${m.lagRsi?.toFixed(3)} in long entry zone (<${THRESHOLDS.lagLongEntry})`
-          : `Wait for Lag RSI to drop below ${THRESHOLDS.lagLongEntry} in Up Trend`;
-      invalidation = `close below Supertrend trail ${m.trailLevel?.toFixed(2)} OR Conf drops below ${THRESHOLDS.strongConfluence}`;
+          ? `LaRSI ${m.lagRsi?.toFixed(3)} in long entry zone (<${THRESHOLDS.lagLongEntry})`
+          : `Wait for LaRSI to drop below ${THRESHOLDS.lagLongEntry} in Up Trend`;
+      invalidation = `close below Supertrend trail ${m.trailLevel?.toFixed(2)} OR Conf drops below ${scales.confStrong}`;
     }
   } else if (isBearishBase) {
     const lagEntryZone = m.lagRsi !== null && m.lagRsi > THRESHOLDS.lagShortEntry;
@@ -164,33 +264,33 @@ export function analyzeSymbol(scan) {
       else if (lagEntryZone && allFiveMet) stage = "in_trade";
       else stage = "waiting";
       trigger = lagTriggered
-        ? `Short Entry flag fired (Lag RSI ${m.lagRsi?.toFixed(3)})`
+        ? `Short Entry flag fired (LaRSI ${m.lagRsi?.toFixed(3)})`
         : lagEntryZone
-          ? `Lag RSI ${m.lagRsi?.toFixed(3)} in short entry zone (>${THRESHOLDS.lagShortEntry})`
-          : `Wait for Lag RSI to rise above ${THRESHOLDS.lagShortEntry} in Down Trend`;
-      invalidation = `close above Supertrend trail ${m.trailLevel?.toFixed(2)} OR Conf drops below ${THRESHOLDS.strongConfluence}`;
+          ? `LaRSI ${m.lagRsi?.toFixed(3)} in short entry zone (>${THRESHOLDS.lagShortEntry})`
+          : `Wait for LaRSI to rise above ${THRESHOLDS.lagShortEntry} in Down Trend`;
+      invalidation = `close above Supertrend trail ${m.trailLevel?.toFixed(2)} OR Conf drops below ${scales.confStrong}`;
     }
   }
 
   // Neutral overrides
   if (
-    (m.conf !== null && m.conf <= THRESHOLDS.weakConfluence) ||
+    (m.conf !== null && m.conf <= scales.confWeak) ||
     (m.choppiness !== null && m.choppiness > THRESHOLDS.choppyHigh)
   ) {
     bias = "neutral";
     strength = "none";
     stage = "waiting";
-    if (m.conf !== null && m.conf <= THRESHOLDS.weakConfluence) notes.push("Conf ≤ 4 → no edge");
+    if (m.conf !== null && m.conf <= scales.confWeak) notes.push(`Conf ≤ ${scales.confWeak} → no edge`);
     if (m.choppiness !== null && m.choppiness > THRESHOLDS.choppyHigh) notes.push("Choppy market → skip");
   }
 
   // Avoid chasing
   if (bias === "bullish" && m.lagRsi !== null && m.lagRsi > THRESHOLDS.lagLongChase) {
-    notes.push("Lag RSI > 0.80 → do NOT chase long");
+    notes.push("LaRSI > 0.80 → do NOT chase long");
     stage = "waiting";
   }
   if (bias === "bearish" && m.lagRsi !== null && m.lagRsi < THRESHOLDS.lagShortChase) {
-    notes.push("Lag RSI < 0.20 → do NOT chase short");
+    notes.push("LaRSI < 0.20 → do NOT chase short");
     stage = "waiting";
   }
 
@@ -227,12 +327,13 @@ export function analyzeSymbol(scan) {
   };
 }
 
-export function analyzeSetRegime(symbols) {
+export function analyzeSetRegime(symbols, scales = DEFAULT_SCALES) {
   const setScan = symbols.find((s) => s.symbol === "SET:SET");
   if (!setScan) return { available: false, reason: "SET:SET not in scan" };
 
-  const m = extractMetrics(setScan);
-  const { checks, metCount } = scoreConditions(m);
+  const raw = extractRawMetrics(setScan);
+  const m = normalizeMetrics(raw, scales);
+  const { checks, metCount } = scoreConditions(m, scales);
 
   let regime = "neutral";
   if (m.supertrendDirection === "up" && checks.strongConf && checks.hurstTrending) regime = "bullish";
@@ -262,8 +363,9 @@ export function generateSignals(briefOutput) {
   const symbols = briefOutput?.symbols_scanned || [];
   const rules = briefOutput?.rules || {};
 
-  const analyzed = symbols.map((scan) => analyzeSymbol(scan));
-  const setRegime = analyzeSetRegime(symbols);
+  const scales = detectScales(symbols);
+  const analyzed = symbols.map((scan) => analyzeSymbol(scan, scales));
+  const setRegime = analyzeSetRegime(symbols, scales);
 
   // Score actionable setups
   const scored = analyzed
@@ -274,32 +376,33 @@ export function generateSignals(briefOutput) {
       if (a.strength === "strong") score += 5;
       if (a.stage === "triggered") score += 5;
       if (a.met_count >= 4) score += 2;
-      if (a.metrics.conf !== null) score += a.metrics.conf;
+      if (a.metrics.conf !== null) score += Math.min(a.metrics.conf, 10);
       return { ...a, action_score: score };
     })
     .sort((a, b) => b.action_score - a.action_score);
 
   const topSetups = scored.slice(0, 3);
 
-  // Apply SET regime filter: if SET bearish, only allow longs with conf=7
+  // Apply SET regime filter: if SET bearish, only allow longs with conf=7 (or max scale)
+  const confRequiredForCounterTrend = scales.confStrong >= 8 ? 10 : 7;
   const filtered = topSetups.map((setup) => {
     const filteredSetup = { ...setup };
     if (setRegime.available && setRegime.regime === "bearish" && setup.bias === "bullish") {
-      if (setup.metrics.conf !== 7) {
+      if (setup.metrics.conf < confRequiredForCounterTrend) {
         filteredSetup.regime_filter = "skipped";
         filteredSetup.notes = [
           ...filteredSetup.notes,
-          `SET bearish + Conf=${setup.metrics.conf} (not 7) → skip per regime filter`,
+          `SET bearish + Conf=${setup.metrics.conf?.toFixed(2)} → skip per regime filter`,
         ];
       } else {
         filteredSetup.regime_filter = "allowed";
       }
     } else if (setRegime.available && setRegime.regime === "bullish" && setup.bias === "bearish") {
-      if (setup.metrics.conf !== 7) {
+      if (setup.metrics.conf < confRequiredForCounterTrend) {
         filteredSetup.regime_filter = "skipped";
         filteredSetup.notes = [
           ...filteredSetup.notes,
-          `SET bullish + Conf=${setup.metrics.conf} (not 7) → skip per regime filter`,
+          `SET bullish + Conf=${setup.metrics.conf?.toFixed(2)} → skip per regime filter`,
         ];
       } else {
         filteredSetup.regime_filter = "allowed";
@@ -314,6 +417,7 @@ export function generateSignals(briefOutput) {
     generated_at: new Date().toISOString(),
     rules_loaded_from: briefOutput?.rules_loaded_from || null,
     default_timeframe: briefOutput?.symbols_scanned?.[0]?.timeframe || null,
+    scale_detection: scales.detected,
     set_regime: setRegime,
     symbols: analyzed,
     top_setups: filtered,
@@ -334,6 +438,7 @@ export function formatBrief(briefOutput, { compact = false } = {}) {
   lines.push(`SET Swing Brief — ${signals.generated_at}`);
   lines.push(`Rules: ${signals.rules_loaded_from || "n/a"}`);
   lines.push(`SET Regime: ${signals.set_regime.regime?.toUpperCase() || "N/A"} | ${signals.set_regime.note || ""}`);
+  lines.push(`Scales detected: Conf max=${signals.scale_detection.maxConf}, LaRSI max=${signals.scale_detection.maxLagRsi}, Chop max=${signals.scale_detection.maxChop}, Hurst max=${signals.scale_detection.maxHurst}`);
   lines.push(`Summary: ${signals.summary.bullish} bullish | ${signals.summary.bearish} bearish | ${signals.summary.neutral} neutral | ${signals.summary.triggered} triggered`);
   lines.push("");
 
