@@ -28,11 +28,22 @@ const KNOWN_PATHS = {
 
 export { KNOWN_PATHS };
 
+const CHART_URL_RE = /tradingview\.com\/chart/i;
+
 export async function getClient() {
   if (client) {
     try {
       // Quick liveness check
       await client.Runtime.evaluate({ expression: '1', returnByValue: true });
+      // If we attached to a non-chart page (e.g. the Electron shell window while
+      // the chart was still loading), switch over once a real chart page exists.
+      if (!CHART_URL_RE.test(targetInfo?.url || '')) {
+        const better = await findChartTarget().catch(() => null);
+        if (better && CHART_URL_RE.test(better.url)) {
+          await disconnect();
+          return connect();
+        }
+      }
       return client;
     } catch {
       client = null;
@@ -72,8 +83,10 @@ async function findChartTarget() {
   const resp = await fetch(`http://${CDP_HOST}:${CDP_PORT}/json/list`);
   const targets = await resp.json();
   // Prefer targets with tradingview.com/chart in the URL
-  return targets.find(t => t.type === 'page' && /tradingview\.com\/chart/i.test(t.url))
-    || targets.find(t => t.type === 'page' && /tradingview/i.test(t.url))
+  // Fallback must be an http(s) TradingView page — file:// URLs under
+  // "Program Files/TradingView" are Electron shell windows without the chart API.
+  return targets.find(t => t.type === 'page' && CHART_URL_RE.test(t.url))
+    || targets.find(t => t.type === 'page' && /^https?:\/\/[^/]*tradingview\.com/i.test(t.url))
     || null;
 }
 
