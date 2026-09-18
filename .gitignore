@@ -6,6 +6,7 @@ temp_*
 discovery-log.json
 mt5-bridge/*.log
 .DS_Store
+.claude/
 
 # Secrets — never commit
 .env
