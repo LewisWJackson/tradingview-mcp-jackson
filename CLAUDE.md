@@ -82,6 +82,23 @@ Use `study_filter` parameter to target a specific indicator by name substring (e
 
 ### "TradingView isn't running"
 - `tv_launch` → auto-detect and launch TradingView with CDP on Mac/Win/Linux
+
+### "I need live account/position state, or need to place/modify/close an order" (MT5, not TradingView)
+This is a **separate bridge**, unrelated to the CDP tools above. TradingView tools only read/draw on charts — they cannot see or touch a real trading account. For that, use the `mt5_*` tools:
+
+1. `mt5_ensure_running` → starts/verifies the bridge (Wine Python + official `MetaTrader5` package talking to the MT5 terminal). Call first if any `mt5_*` tool errors with a connection failure.
+2. `mt5_get_account` / `mt5_get_positions` / `mt5_get_orders` → live balance, equity, open positions, pending orders
+3. `mt5_get_quote` / `mt5_get_symbol_info` / `mt5_get_ohlcv` → market data straight from the MT5 feed (independent of whatever TradingView is showing)
+4. `mt5_place_order` → market (`buy`/`sell`) or pending (`buy_limit`/`sell_limit`/`buy_stop`/`sell_stop`). **Always pass `dry_run: true` first** to see the exact request MT5 would receive, confirm it against the chart-based plan, then call again without `dry_run` to actually submit.
+5. `mt5_close_position` / `mt5_modify_position` → close (full or partial) / adjust SL-TP on an open position
+6. `mt5_cancel_order` / `mt5_modify_order` → cancel or adjust a pending order
+7. `mt5_get_history_deals` / `mt5_get_history_orders` → trade history over the last N days
+
+**How it works:** MT5 for Mac is itself a Wine-wrapped app (`/Applications/MetaTrader 5.app`). A Python 3.11 install lives inside that same Wine prefix with the official `MetaTrader5` pip package, running `mt5-bridge/server.py` as a persistent local HTTP server on `127.0.0.1:6789`. Node's `src/core/mt5.js` talks to it over plain HTTP; `src/tools/mt5.js` exposes it as MCP tools. macOS only.
+
+**Credentials:** read from `.env.mt5` in the repo root (gitignored, never committed) — `MT5_LOGIN`, `MT5_SERVER`, `MT5_PASSWORD`. Never print this file's contents back into chat or logs.
+
+**Before suggesting any order or modification:** read the live chart (TradingView tools) AND live order/position data (`mt5_*` tools) first — never act on stale assumptions from earlier in a conversation. This mirrors the "AI Order Modification Rules" in the global trading rulebook.
 - `tv_health_check` → verify connection is working
 
 ## Context Management Rules

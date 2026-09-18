@@ -4,3 +4,6 @@ scripts/current.pine
 temp_*
 *.log
 discovery-log.json
+.env.mt5
+mt5-bridge/*.log
+.DS_Store
