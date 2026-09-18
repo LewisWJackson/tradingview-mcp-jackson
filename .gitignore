@@ -4,11 +4,15 @@ scripts/current.pine
 temp_*
 *.log
 discovery-log.json
+mt5-bridge/*.log
+.DS_Store
+.claude/
 
 # Secrets — never commit
 .env
 .env.*
 !.env.example
+!.env.mt5.example
 
 # Install-time symlink created by the one-shot setup
 AGENTS.md

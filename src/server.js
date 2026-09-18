@@ -15,6 +15,7 @@ import { registerUiTools } from "./tools/ui.js";
 import { registerPaneTools } from "./tools/pane.js";
 import { registerTabTools } from "./tools/tab.js";
 import { registerMorningTools } from "./tools/morning.js";
+import { registerMt5Tools } from "./tools/mt5.js";
 
 const server = new McpServer(
   {
@@ -62,6 +63,16 @@ Launch: tv_launch → auto-detect and start TradingView with CDP on any platform
 Panes: pane_list, pane_set_layout (s, 2h, 2v, 4, 6, 8), pane_focus, pane_set_symbol
 Tabs: tab_list, tab_new, tab_close, tab_switch
 
+MT5 execution (separate bridge — live account state and order placement, macOS only, via Wine):
+- mt5_ensure_running → start/verify the bridge; call first if other mt5_* tools error
+- mt5_get_account, mt5_get_positions, mt5_get_orders → live account/position/pending-order state
+- mt5_get_quote, mt5_get_symbol_info, mt5_get_ohlcv → market data direct from the MT5 feed
+- mt5_get_history_deals, mt5_get_history_orders → trade history over the last N days
+- mt5_place_order → buy/sell (market) or buy_limit/sell_limit/buy_stop/sell_stop (pending). Pass dry_run=true to preview the exact request before really sending it
+- mt5_close_position, mt5_modify_position → close/partial-close, adjust SL/TP on an open position
+- mt5_cancel_order, mt5_modify_order → cancel or adjust a pending order
+- TradingView tools above are for chart analysis; MT5 tools are for the actual account/orders — they are separate systems, don't assume a TradingView chart change affects MT5 or vice versa
+
 CONTEXT MANAGEMENT:
 - ALWAYS use summary=true on data_get_ohlcv
 - ALWAYS use study_filter on pine tools when you know which indicator you want
@@ -87,6 +98,7 @@ registerUiTools(server);
 registerPaneTools(server);
 registerTabTools(server);
 registerMorningTools(server);
+registerMt5Tools(server);
 
 // Startup notice (stderr so it doesn't interfere with MCP stdio protocol)
 process.stderr.write(
