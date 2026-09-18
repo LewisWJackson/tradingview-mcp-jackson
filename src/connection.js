@@ -48,7 +48,7 @@ export async function connect() {
     try {
       const target = await findChartTarget();
       if (!target) {
-        throw new Error('No TradingView chart target found. Is TradingView open with a chart?');
+        throw new Error(`No TradingView chart target found — CDP is reachable on port ${CDP_PORT}, but no tradingview.com chart page is open. Open a chart in TradingView Desktop and retry.`);
       }
       targetInfo = target;
       client = await CDP({ host: CDP_HOST, port: CDP_PORT, target: target.id });
@@ -68,12 +68,21 @@ export async function connect() {
   throw new Error(`CDP connection failed after ${MAX_RETRIES} attempts: ${lastError?.message}`);
 }
 
+// Only http(s) tradingview.com pages host window.TradingViewApi. The desktop
+// app's own shell pages are file:// URLs under the install directory
+// (".../TradingView.Desktop_3.4.1.8194_x64.../app.asar/app/new-tab/index.html"),
+// which match a bare /tradingview/ — attaching to one looks like a healthy
+// connection, but every chart API call then fails.
+const TV_PAGE = /^https?:\/\/([^/]+\.)?tradingview\.com(\/|$)/i;
+const TV_CHART_PAGE = /^https?:\/\/([^/]+\.)?tradingview\.com\/chart(\/|$|\?)/i;
+
 async function findChartTarget() {
   const resp = await fetch(`http://${CDP_HOST}:${CDP_PORT}/json/list`);
   const targets = await resp.json();
-  // Prefer targets with tradingview.com/chart in the URL
-  return targets.find(t => t.type === 'page' && /tradingview\.com\/chart/i.test(t.url))
-    || targets.find(t => t.type === 'page' && /tradingview/i.test(t.url))
+  const pages = targets.filter(t => t.type === 'page' && TV_PAGE.test(t.url || ''));
+  // Prefer an actual chart page, then any other tradingview.com page
+  return pages.find(t => TV_CHART_PAGE.test(t.url))
+    || pages[0]
     || null;
 }
 
