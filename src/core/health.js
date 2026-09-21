@@ -197,6 +197,20 @@ export async function launch({ port, kill_existing } = {}) {
     } catch { /* ignore */ }
   }
 
+  if (!tvPath && platform === 'win32') {
+    // Microsoft Store (MSIX) installs live under %PROGRAMFILES%\WindowsApps, whose ACLs
+    // block directory listing -- so globbing that path finds nothing. Resolve the install
+    // location from the package manifest instead; executing the binary is still permitted.
+    try {
+      const psCmd = 'powershell -NoProfile -NonInteractive -Command "(Get-AppxPackage -Name \\"*TradingView*\\" | Sort-Object Version -Descending | Select-Object -First 1).InstallLocation"';
+      const installDir = execSync(psCmd, { timeout: 10000 }).toString().trim();
+      if (installDir) {
+        const candidate = `${installDir}/TradingView.exe`;
+        if (existsSync(candidate)) tvPath = candidate;
+      }
+    } catch { /* ignore */ }
+  }
+
   if (!tvPath && platform === 'darwin') {
     try {
       const found = execSync('mdfind "kMDItemFSName == TradingView.app" | head -1', { timeout: 5000 }).toString().trim();
