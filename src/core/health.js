@@ -197,6 +197,21 @@ export async function launch({ port, kill_existing } = {}) {
     } catch { /* ignore */ }
   }
 
+  if (!tvPath && platform === 'win32') {
+    // MSIX / Microsoft Store builds install under C:\Program Files\WindowsApps, which a
+    // normal user cannot enumerate — so the candidate paths above and `where` both miss
+    // them. Resolve the package install location through Appx instead; the exe is
+    // readable by direct path even though its parent directory is not listable.
+    try {
+      const psCmd = `powershell -NoProfile -ExecutionPolicy Bypass -Command "(Get-AppxPackage -Name 'TradingView*' | Select-Object -First 1).InstallLocation"`;
+      const loc = execSync(psCmd, { timeout: 15000 }).toString().trim().split('\n')[0].trim();
+      if (loc) {
+        const candidate = `${loc}\\TradingView.exe`;
+        if (existsSync(candidate)) tvPath = candidate;
+      }
+    } catch { /* ignore */ }
+  }
+
   if (!tvPath && platform === 'darwin') {
     try {
       const found = execSync('mdfind "kMDItemFSName == TradingView.app" | head -1', { timeout: 5000 }).toString().trim();

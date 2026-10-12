@@ -242,12 +242,25 @@ export async function getEquity() {
   return { success: true, data_points: equity?.data?.length || 0, source: equity?.source, data: equity?.data || [], equity_summary: equity?.equity_summary, note: equity?.note, error: equity?.error };
 }
 
+// Compare a requested symbol with the chart's, ignoring the exchange prefix,
+// so "BTCUSDT" matches "BINANCE:BTCUSDT" but "NASDAQ:TSLA" does not match
+// "OANDA:XAUUSD".
+function symbolsMatch(requested, actual) {
+  if (!requested || !actual) return true;
+  const norm = (s) => String(s).toUpperCase().trim();
+  const bare = (s) => norm(s).split(':').pop();
+  return norm(requested) === norm(actual) || bare(requested) === bare(actual);
+}
+
 export async function getQuote({ symbol } = {}) {
   const data = await evaluate(`
     (function() {
       var api = ${CHART_API};
-      var sym = '${symbol || ''}';
-      if (!sym) { try { sym = api.symbol(); } catch(e) {} }
+      // Always report the symbol the chart is actually showing. Using the
+      // caller's string here labelled this chart's bars with a symbol that
+      // was never loaded.
+      var sym = '';
+      try { sym = api.symbol(); } catch(e) {}
       if (!sym) { try { sym = api.symbolExt().symbol; } catch(e) {} }
       var ext = {};
       try { ext = api.symbolExt() || {}; } catch(e) {}
@@ -274,6 +287,19 @@ export async function getQuote({ symbol } = {}) {
     })()
   `);
   if (!data || (!data.last && !data.close)) throw new Error('Could not retrieve quote. The chart may still be loading.');
+
+  // This tool reads the chart's own bar series; it cannot load a different
+  // symbol. Returning the chart's prices under the requested name produced
+  // confident, wrong data, so refuse and say what the chart actually holds.
+  if (symbol && !symbolsMatch(symbol, data.symbol)) {
+    return {
+      success: false,
+      error: `quote_get reads the current chart only. The chart is on ${data.symbol}, not ${symbol}.`,
+      hint: `Call chart_set_symbol with "${symbol}" first, then quote_get, or omit "symbol" to quote the current chart.`,
+      chart_symbol: data.symbol,
+      requested_symbol: symbol,
+    };
+  }
   return { success: true, ...data };
 }
 

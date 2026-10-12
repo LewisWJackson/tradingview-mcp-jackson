@@ -35,8 +35,8 @@ export function registerDataTools(server) {
     catch (err) { return jsonResult({ success: false, error: err.message }, true); }
   });
 
-  server.tool('quote_get', 'Get real-time quote data for a symbol (price, OHLC, volume)', {
-    symbol: z.string().optional().describe('Symbol to quote (blank = current chart symbol)'),
+  server.tool('quote_get', 'Get real-time quote data for the CURRENT chart (price, OHLC, volume). Reads the chart\'s own series — it cannot load another symbol. To quote something else, call chart_set_symbol first.', {
+    symbol: z.string().optional().describe('Optional guard: the symbol you expect the chart to be on. If the chart is on a different symbol the call fails instead of returning the wrong instrument. Blank = whatever the chart shows.'),
   }, async ({ symbol }) => {
     try { return jsonResult(await core.getQuote({ symbol })); }
     catch (err) { return jsonResult({ success: false, error: err.message }, true); }
