@@ -2,6 +2,8 @@ import CDP from 'chrome-remote-interface';
 
 let client = null;
 let targetInfo = null;
+// The CDP target chosen by switchTab; preferred over the first chart page on every (re)connect.
+let pinnedTargetId = null;
 const CDP_HOST = 'localhost';
 const CDP_PORT = 9222;
 const MAX_RETRIES = 5;
@@ -68,9 +70,29 @@ export async function connect() {
   throw new Error(`CDP connection failed after ${MAX_RETRIES} attempts: ${lastError?.message}`);
 }
 
+/**
+ * Pin the connection to one CDP target (a chart tab) and reconnect to it now.
+ */
+export async function connectToTarget(targetId) {
+  pinnedTargetId = targetId;
+  if (client) {
+    try { await client.close(); } catch {}
+  }
+  client = null;
+  targetInfo = null;
+  const c = await connect();
+  if (targetInfo?.id !== targetId) {
+    throw new Error(`Connected to ${targetInfo?.id}, not the requested tab ${targetId}`);
+  }
+  return c;
+}
+
 async function findChartTarget() {
   const resp = await fetch(`http://${CDP_HOST}:${CDP_PORT}/json/list`);
   const targets = await resp.json();
+  // The tab switchTab chose, while it is still open
+  const pinned = pinnedTargetId && targets.find(t => t.id === pinnedTargetId && t.type === 'page');
+  if (pinned) return pinned;
   // Prefer targets with tradingview.com/chart in the URL
   return targets.find(t => t.type === 'page' && /tradingview\.com\/chart/i.test(t.url))
     || targets.find(t => t.type === 'page' && /tradingview/i.test(t.url))

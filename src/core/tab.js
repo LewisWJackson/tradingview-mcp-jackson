@@ -2,7 +2,7 @@
  * Core tab management logic.
  * Controls TradingView Desktop tabs via CDP and Electron keyboard shortcuts.
  */
-import { getClient, evaluate } from '../connection.js';
+import { getClient, evaluate, connectToTarget } from '../connection.js';
 
 const CDP_HOST = 'localhost';
 const CDP_PORT = 9222;
@@ -95,12 +95,13 @@ export async function switchTab({ index }) {
 
   const target = tabs.tabs[idx];
 
-  // Use CDP Target.activateTarget to bring the tab to front
+  // Bring the tab to front, then point the CDP connection at it: later tools act on this tab
   try {
-    const resp = await fetch(`http://${CDP_HOST}:${CDP_PORT}/json/activate/${target.id}`);
-    const text = await resp.text();
-    return { success: true, action: 'switched', index: idx, tab_id: target.id, chart_id: target.chart_id };
+    await fetch(`http://${CDP_HOST}:${CDP_PORT}/json/activate/${target.id}`);
+    await connectToTarget(target.id);
   } catch (e) {
-    throw new Error(`Failed to activate tab ${idx}: ${e.message}`);
+    throw new Error(`Failed to switch to tab ${idx}: ${e.message}`);
   }
+  const path = await evaluate('location.pathname');
+  return { success: true, action: 'switched', index: idx, tab_id: target.id, chart_id: target.chart_id, connected_path: path };
 }
